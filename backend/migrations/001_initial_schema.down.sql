@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS attributions;
+DROP TABLE IF EXISTS daily_summaries;
+DROP TABLE IF EXISTS ad_spend;
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS integrations;
+DROP TABLE IF EXISTS users;

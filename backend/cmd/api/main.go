@@ -132,7 +132,6 @@ func main() {
 
 		// Team
 		api.GET("/team/members", teamHandler.ListMembers)
-		api.POST("/team/invite", authHandler.InviteMember)
 		api.PATCH("/team/members/:user_id", teamHandler.UpdateMember)
 		api.DELETE("/team/members/:user_id", teamHandler.DeleteMember)
 		api.GET("/organization", teamHandler.GetOrganization)

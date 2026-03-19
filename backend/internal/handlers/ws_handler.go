@@ -49,7 +49,7 @@ func (h *WSHandler) Handle(c *gin.Context) {
 		Send:   make(chan []byte, 256),
 	}
 
-	h.hub.Register <- client
+	h.hub.Register(client)
 
 	go client.WritePump()
 	go client.ReadPump(h.hub)

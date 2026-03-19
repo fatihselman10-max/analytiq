@@ -4,35 +4,38 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import {
-  LayoutDashboard,
-  ShoppingCart,
+  Inbox,
   BarChart3,
-  Plug,
-  Megaphone,
+  Bot,
+  Radio,
+  Users,
+  UserCircle,
   Settings,
   LogOut,
-  TrendingUp,
+  MessageSquare,
+  Tag,
 } from "lucide-react";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/orders", label: "Siparişler", icon: ShoppingCart },
-  { href: "/analytics", label: "Kar/Zarar Analizi", icon: TrendingUp },
-  { href: "/marketing", label: "Reklam Performansı", icon: Megaphone },
-  { href: "/integrations", label: "Entegrasyonlar", icon: Plug },
+  { href: "/inbox", label: "Gelen Kutusu", icon: Inbox },
+  { href: "/reports", label: "Raporlar", icon: BarChart3 },
+  { href: "/bot", label: "AI Bot", icon: Bot },
+  { href: "/channels", label: "Kanallar", icon: Radio },
+  { href: "/contacts", label: "Kisiler", icon: UserCircle },
+  { href: "/team", label: "Ekip", icon: Users },
   { href: "/settings", label: "Ayarlar", icon: Settings },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { user, logout } = useAuthStore();
+  const { user, organization, logout } = useAuthStore();
 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 min-h-screen flex flex-col">
       <div className="p-6 border-b border-gray-200">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <BarChart3 className="h-8 w-8 text-primary-600" />
-          <span className="text-xl font-bold text-gray-900">AnalytiQ</span>
+        <Link href="/inbox" className="flex items-center gap-2">
+          <MessageSquare className="h-8 w-8 text-primary-600" />
+          <span className="text-xl font-bold text-gray-900">Repliq</span>
         </Link>
       </div>
 
@@ -57,6 +60,11 @@ export default function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-gray-200">
+        {organization && (
+          <div className="px-3 py-1 mb-2">
+            <p className="text-xs text-gray-400 uppercase tracking-wider">{organization.name}</p>
+          </div>
+        )}
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
             <span className="text-primary-700 text-sm font-medium">
@@ -67,7 +75,7 @@ export default function Sidebar() {
             <p className="text-sm font-medium text-gray-900 truncate">
               {user?.full_name}
             </p>
-            <p className="text-xs text-gray-500 truncate">{user?.company}</p>
+            <p className="text-xs text-gray-500 truncate">{user?.email}</p>
           </div>
           <button
             onClick={logout}

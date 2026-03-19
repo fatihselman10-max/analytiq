@@ -10,54 +10,58 @@ type Config struct {
 	RedisURL    string
 	JWTSecret   string
 
-	// Marketplace API Keys
-	TrendyolAPIKey     string
-	TrendyolSellerID   string
-	HepsiburadaAPIKey  string
-	N11APIKey          string
-	N11APISecret       string
-	AmazonSellerID     string
-	AmazonMWSAuthToken string
-	CiceksepetiAPIKey  string
-
-	// E-commerce Platform Keys
-	ShopifyAPIKey    string
-	ShopifyAPISecret string
-
-	// Advertising Platform Keys
-	MetaAccessToken   string
-	MetaAdAccountID   string
-	GoogleAdsDevToken string
-	GoogleAdsClientID string
-	TikTokAccessToken string
-	TikTokAdvertiserID string
+	// Channel Provider Keys
+	WhatsAppToken      string
+	WhatsAppPhoneID    string
+	WhatsAppVerifyToken string
+	TelegramBotToken   string
+	InstagramToken     string
+	InstagramAppSecret string
+	FacebookPageToken  string
+	FacebookAppSecret  string
+	TwitterAPIKey      string
+	TwitterAPISecret   string
+	TwitterBearerToken string
+	VKAccessToken      string
+	VKGroupID          string
+	SMTPHost           string
+	SMTPPort           string
+	SMTPUser           string
+	SMTPPassword       string
+	IMAPHost           string
+	IMAPPort           string
+	IMAPUser           string
+	IMAPPassword       string
 }
 
 func Load() *Config {
 	return &Config{
 		Port:        getEnv("PORT", "8080"),
-		DatabaseURL: getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/analytiq?sslmode=disable"),
+		DatabaseURL: getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/repliq?sslmode=disable"),
 		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
 		JWTSecret:   getEnv("JWT_SECRET", "change-me-in-production"),
 
-		TrendyolAPIKey:     os.Getenv("TRENDYOL_API_KEY"),
-		TrendyolSellerID:   os.Getenv("TRENDYOL_SELLER_ID"),
-		HepsiburadaAPIKey:  os.Getenv("HEPSIBURADA_API_KEY"),
-		N11APIKey:          os.Getenv("N11_API_KEY"),
-		N11APISecret:       os.Getenv("N11_API_SECRET"),
-		AmazonSellerID:     os.Getenv("AMAZON_SELLER_ID"),
-		AmazonMWSAuthToken: os.Getenv("AMAZON_MWS_AUTH_TOKEN"),
-		CiceksepetiAPIKey:  os.Getenv("CICEKSEPETI_API_KEY"),
-
-		ShopifyAPIKey:    os.Getenv("SHOPIFY_API_KEY"),
-		ShopifyAPISecret: os.Getenv("SHOPIFY_API_SECRET"),
-
-		MetaAccessToken:    os.Getenv("META_ACCESS_TOKEN"),
-		MetaAdAccountID:    os.Getenv("META_AD_ACCOUNT_ID"),
-		GoogleAdsDevToken:  os.Getenv("GOOGLE_ADS_DEV_TOKEN"),
-		GoogleAdsClientID:  os.Getenv("GOOGLE_ADS_CLIENT_ID"),
-		TikTokAccessToken:  os.Getenv("TIKTOK_ACCESS_TOKEN"),
-		TikTokAdvertiserID: os.Getenv("TIKTOK_ADVERTISER_ID"),
+		WhatsAppToken:       os.Getenv("WHATSAPP_TOKEN"),
+		WhatsAppPhoneID:     os.Getenv("WHATSAPP_PHONE_ID"),
+		WhatsAppVerifyToken: os.Getenv("WHATSAPP_VERIFY_TOKEN"),
+		TelegramBotToken:    os.Getenv("TELEGRAM_BOT_TOKEN"),
+		InstagramToken:      os.Getenv("INSTAGRAM_TOKEN"),
+		InstagramAppSecret:  os.Getenv("INSTAGRAM_APP_SECRET"),
+		FacebookPageToken:   os.Getenv("FACEBOOK_PAGE_TOKEN"),
+		FacebookAppSecret:   os.Getenv("FACEBOOK_APP_SECRET"),
+		TwitterAPIKey:       os.Getenv("TWITTER_API_KEY"),
+		TwitterAPISecret:    os.Getenv("TWITTER_API_SECRET"),
+		TwitterBearerToken:  os.Getenv("TWITTER_BEARER_TOKEN"),
+		VKAccessToken:       os.Getenv("VK_ACCESS_TOKEN"),
+		VKGroupID:           os.Getenv("VK_GROUP_ID"),
+		SMTPHost:            getEnv("SMTP_HOST", ""),
+		SMTPPort:            getEnv("SMTP_PORT", "587"),
+		SMTPUser:            os.Getenv("SMTP_USER"),
+		SMTPPassword:        os.Getenv("SMTP_PASSWORD"),
+		IMAPHost:            os.Getenv("IMAP_HOST"),
+		IMAPPort:            getEnv("IMAP_PORT", "993"),
+		IMAPUser:            os.Getenv("IMAP_USER"),
+		IMAPPassword:        os.Getenv("IMAP_PASSWORD"),
 	}
 }
 

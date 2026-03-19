@@ -34,51 +34,114 @@ export const authAPI = {
     email: string;
     password: string;
     full_name: string;
-    company?: string;
+    organization_name: string;
   }) => api.post("/auth/register", data),
 };
 
-// Dashboard
-export const dashboardAPI = {
-  getOverview: (startDate: string, endDate: string) =>
-    api.get("/dashboard/overview", {
-      params: { start_date: startDate, end_date: endDate },
-    }),
-};
-
-// Orders
-export const ordersAPI = {
-  list: (params: {
-    page?: number;
-    per_page?: number;
-    platform?: string;
+// Conversations
+export const conversationsAPI = {
+  list: (params?: {
     status?: string;
-    start_date?: string;
-    end_date?: string;
+    assigned_to?: number;
+    channel_id?: number;
     search?: string;
-  }) => api.get("/orders", { params }),
-  get: (id: number) => api.get(`/orders/${id}`),
+    priority?: string;
+  }) => api.get("/conversations", { params }),
+  get: (id: number) => api.get(`/conversations/${id}`),
+  update: (id: number, data: { status?: string; priority?: string; assigned_to?: number }) =>
+    api.patch(`/conversations/${id}`, data),
+  assign: (id: number, userId: number) =>
+    api.post(`/conversations/${id}/assign`, { user_id: userId }),
+  addTag: (id: number, tagId: number) =>
+    api.post(`/conversations/${id}/tags`, { tag_id: tagId }),
+  removeTag: (id: number, tagId: number) =>
+    api.delete(`/conversations/${id}/tags/${tagId}`),
 };
 
-// Integrations
-export const integrationsAPI = {
-  list: () => api.get("/integrations"),
-  create: (data: {
-    platform: string;
-    platform_type: string;
-    credentials: Record<string, string>;
-  }) => api.post("/integrations", data),
-  delete: (id: number) => api.delete(`/integrations/${id}`),
-  sync: (id: number) => api.post(`/integrations/${id}/sync`),
+// Messages
+export const messagesAPI = {
+  list: (conversationId: number) =>
+    api.get(`/conversations/${conversationId}/messages`),
+  reply: (conversationId: number, content: string) =>
+    api.post(`/conversations/${conversationId}/messages`, { content }),
+  addNote: (conversationId: number, content: string) =>
+    api.post(`/conversations/${conversationId}/notes`, { content }),
 };
 
-// Analytics
-export const analyticsAPI = {
-  getAdPerformance: (params: {
-    start_date: string;
-    end_date: string;
-    platform?: string;
-  }) => api.get("/analytics/ads", { params }),
-  getProfitAnalysis: (params: { start_date: string; end_date: string }) =>
-    api.get("/analytics/profit", { params }),
+// Channels
+export const channelsAPI = {
+  list: () => api.get("/channels"),
+  create: (data: { type: string; name: string; credentials?: Record<string, string> }) =>
+    api.post("/channels", data),
+  update: (id: number, data: { name?: string; is_active?: boolean; credentials?: Record<string, string> }) =>
+    api.patch(`/channels/${id}`, data),
+  delete: (id: number) => api.delete(`/channels/${id}`),
+};
+
+// Contacts
+export const contactsAPI = {
+  list: (params?: { search?: string }) => api.get("/contacts", { params }),
+  get: (id: number) => api.get(`/contacts/${id}`),
+  update: (id: number, data: { name?: string; email?: string; phone?: string }) =>
+    api.patch(`/contacts/${id}`, data),
+};
+
+// Reports
+export const reportsAPI = {
+  overview: () => api.get("/reports/overview"),
+  agents: () => api.get("/reports/agents"),
+  channels: () => api.get("/reports/channels"),
+};
+
+// Bot
+export const botAPI = {
+  listRules: () => api.get("/bot/rules"),
+  createRule: (data: {
+    name: string;
+    keywords: string[];
+    match_type?: string;
+    response_template: string;
+    priority?: number;
+    channel_types?: string[];
+  }) => api.post("/bot/rules", data),
+  updateRule: (id: number, data: Partial<{
+    name: string;
+    keywords: string[];
+    match_type: string;
+    response_template: string;
+    priority: number;
+    channel_types: string[];
+  }>) => api.put(`/bot/rules/${id}`, data),
+  deleteRule: (id: number) => api.delete(`/bot/rules/${id}`),
+  toggleRule: (id: number) => api.patch(`/bot/rules/${id}/toggle`),
+  listLogs: () => api.get("/bot/logs"),
+};
+
+// Team
+export const teamAPI = {
+  listMembers: () => api.get("/team/members"),
+  invite: (data: { email: string; full_name: string; role: string }) =>
+    api.post("/team/invite", data),
+  updateMember: (userId: number, role: string) =>
+    api.patch(`/team/members/${userId}`, { role }),
+  deleteMember: (userId: number) => api.delete(`/team/members/${userId}`),
+  getOrganization: () => api.get("/organization"),
+  updateOrganization: (data: { name?: string }) => api.patch("/organization", data),
+};
+
+// Canned responses
+export const cannedAPI = {
+  list: () => api.get("/canned-responses"),
+  create: (data: { shortcut: string; title: string; content: string }) =>
+    api.post("/canned-responses", data),
+  update: (id: number, data: { shortcut?: string; title?: string; content?: string }) =>
+    api.put(`/canned-responses/${id}`, data),
+  delete: (id: number) => api.delete(`/canned-responses/${id}`),
+};
+
+// Tags
+export const tagsAPI = {
+  list: () => api.get("/tags"),
+  create: (data: { name: string; color?: string }) => api.post("/tags", data),
+  delete: (id: number) => api.delete(`/tags/${id}`),
 };

@@ -1,159 +1,168 @@
--- Users table
-CREATE TABLE IF NOT EXISTS users (
+-- Organizations (multi-tenant root)
+CREATE TABLE IF NOT EXISTS organizations (
     id BIGSERIAL PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    full_name VARCHAR(255) NOT NULL,
-    company VARCHAR(255),
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL,
     plan VARCHAR(50) DEFAULT 'free',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Integrations table
-CREATE TABLE IF NOT EXISTS integrations (
+-- Users
+CREATE TABLE IF NOT EXISTS users (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    platform VARCHAR(50) NOT NULL,
-    platform_type VARCHAR(50) NOT NULL, -- marketplace, ecommerce, advertising
-    credentials TEXT NOT NULL, -- encrypted JSON
-    status VARCHAR(20) DEFAULT 'active',
-    last_sync_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, platform)
-);
-
--- Products table (unified product catalog)
-CREATE TABLE IF NOT EXISTS products (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    sku VARCHAR(255),
-    barcode VARCHAR(255),
-    name VARCHAR(500) NOT NULL,
-    brand VARCHAR(255),
-    category VARCHAR(255),
-    cost_price DECIMAL(12, 2) DEFAULT 0,
-    image_url TEXT,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255) NOT NULL,
+    avatar_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_products_user_sku ON products(user_id, sku);
-CREATE INDEX idx_products_user_barcode ON products(user_id, barcode);
-
--- Orders table (unified orders from all platforms)
-CREATE TABLE IF NOT EXISTS orders (
-    id BIGSERIAL PRIMARY KEY,
+-- Organization members (links users to orgs with roles)
+CREATE TABLE IF NOT EXISTS org_members (
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    integration_id BIGINT NOT NULL REFERENCES integrations(id),
-    platform VARCHAR(50) NOT NULL,
-    platform_order_id VARCHAR(255) NOT NULL,
-    status VARCHAR(50) NOT NULL,
-    customer_name VARCHAR(255),
-    customer_email VARCHAR(255),
-    currency VARCHAR(10) DEFAULT 'TRY',
-    total_amount DECIMAL(12, 2) NOT NULL,
-    subtotal_amount DECIMAL(12, 2) DEFAULT 0,
-    shipping_amount DECIMAL(12, 2) DEFAULT 0,
-    discount_amount DECIMAL(12, 2) DEFAULT 0,
-    tax_amount DECIMAL(12, 2) DEFAULT 0,
-    commission_amount DECIMAL(12, 2) DEFAULT 0,
-    net_profit DECIMAL(12, 2) DEFAULT 0,
-    city VARCHAR(255),
-    order_date TIMESTAMPTZ NOT NULL,
-    shipped_at TIMESTAMPTZ,
-    delivered_at TIMESTAMPTZ,
-    cancelled_at TIMESTAMPTZ,
+    role VARCHAR(20) NOT NULL DEFAULT 'agent', -- owner, admin, agent
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, platform, platform_order_id)
+    PRIMARY KEY (org_id, user_id)
 );
 
-CREATE INDEX idx_orders_user_date ON orders(user_id, order_date DESC);
-CREATE INDEX idx_orders_user_platform ON orders(user_id, platform);
-CREATE INDEX idx_orders_user_status ON orders(user_id, status);
-
--- Order items table
-CREATE TABLE IF NOT EXISTS order_items (
+-- Channels (connected messaging channels)
+CREATE TABLE IF NOT EXISTS channels (
     id BIGSERIAL PRIMARY KEY,
-    order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    product_id VARCHAR(255),
-    sku VARCHAR(255),
-    barcode VARCHAR(255),
-    product_name VARCHAR(500),
-    quantity INT NOT NULL DEFAULT 1,
-    unit_price DECIMAL(12, 2) NOT NULL,
-    total_price DECIMAL(12, 2) NOT NULL,
-    cost_price DECIMAL(12, 2) DEFAULT 0,
-    commission DECIMAL(12, 2) DEFAULT 0
-);
-
-CREATE INDEX idx_order_items_order ON order_items(order_id);
-CREATE INDEX idx_order_items_sku ON order_items(sku);
-
--- Ad spend table (data from Meta, Google, TikTok)
-CREATE TABLE IF NOT EXISTS ad_spend (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    integration_id BIGINT NOT NULL REFERENCES integrations(id),
-    platform VARCHAR(50) NOT NULL,
-    campaign_id VARCHAR(255),
-    campaign_name VARCHAR(500),
-    ad_set_id VARCHAR(255),
-    ad_set_name VARCHAR(500),
-    impressions BIGINT DEFAULT 0,
-    clicks BIGINT DEFAULT 0,
-    spend DECIMAL(12, 2) DEFAULT 0,
-    conversions BIGINT DEFAULT 0,
-    revenue DECIMAL(12, 2) DEFAULT 0,
-    roas DECIMAL(10, 4) DEFAULT 0,
-    cpc DECIMAL(10, 4) DEFAULT 0,
-    cpm DECIMAL(10, 4) DEFAULT 0,
-    ctr DECIMAL(10, 4) DEFAULT 0,
-    date DATE NOT NULL,
-    currency VARCHAR(10) DEFAULT 'TRY',
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL, -- email, whatsapp, instagram, telegram, vk, facebook, twitter, livechat
+    name VARCHAR(255) NOT NULL,
+    credentials JSONB DEFAULT '{}',
+    is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, platform, campaign_id, ad_set_id, date)
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_ad_spend_user_date ON ad_spend(user_id, date DESC);
-CREATE INDEX idx_ad_spend_user_platform ON ad_spend(user_id, platform);
+CREATE INDEX idx_channels_org ON channels(org_id);
 
--- Daily summary table (pre-aggregated metrics)
-CREATE TABLE IF NOT EXISTS daily_summaries (
+-- Contacts (customers / end-users)
+CREATE TABLE IF NOT EXISTS contacts (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    date DATE NOT NULL,
-    total_revenue DECIMAL(14, 2) DEFAULT 0,
-    total_orders INT DEFAULT 0,
-    total_ad_spend DECIMAL(14, 2) DEFAULT 0,
-    total_profit DECIMAL(14, 2) DEFAULT 0,
-    aov DECIMAL(12, 2) DEFAULT 0,
-    roas DECIMAL(10, 4) DEFAULT 0,
-    conversion_rate DECIMAL(10, 4) DEFAULT 0,
-    platform VARCHAR(50) DEFAULT 'all',
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    external_id VARCHAR(255),
+    channel_type VARCHAR(50),
+    name VARCHAR(255),
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    avatar_url TEXT,
+    metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, date, platform)
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_daily_summaries_user_date ON daily_summaries(user_id, date DESC);
+CREATE INDEX idx_contacts_org ON contacts(org_id);
+CREATE INDEX idx_contacts_external ON contacts(org_id, channel_type, external_id);
 
--- Attribution table (links ads to orders)
-CREATE TABLE IF NOT EXISTS attributions (
+-- Tags
+CREATE TABLE IF NOT EXISTS tags (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    order_id BIGINT REFERENCES orders(id),
-    ad_spend_id BIGINT REFERENCES ad_spend(id),
-    campaign_id VARCHAR(255),
-    ad_platform VARCHAR(50),
-    click_id VARCHAR(255),
-    utm_source VARCHAR(255),
-    utm_medium VARCHAR(255),
-    utm_campaign VARCHAR(255),
-    utm_content VARCHAR(255),
-    model VARCHAR(50) DEFAULT 'last_click',
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    color VARCHAR(7) DEFAULT '#6366f1',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(org_id, name)
+);
+
+-- Conversations
+CREATE TABLE IF NOT EXISTS conversations (
+    id BIGSERIAL PRIMARY KEY,
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    channel_id BIGINT REFERENCES channels(id),
+    contact_id BIGINT REFERENCES contacts(id),
+    assigned_to BIGINT REFERENCES users(id),
+    status VARCHAR(20) DEFAULT 'open', -- open, pending, resolved, closed
+    priority VARCHAR(20) DEFAULT 'normal', -- low, normal, high, urgent
+    subject VARCHAR(500),
+    last_message_at TIMESTAMPTZ,
+    first_response_at TIMESTAMPTZ,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_conversations_org_status ON conversations(org_id, status);
+CREATE INDEX idx_conversations_org_assigned ON conversations(org_id, assigned_to);
+CREATE INDEX idx_conversations_org_channel ON conversations(org_id, channel_id);
+CREATE INDEX idx_conversations_last_message ON conversations(org_id, last_message_at DESC);
+
+-- Conversation tags (many-to-many)
+CREATE TABLE IF NOT EXISTS conversation_tags (
+    conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    tag_id BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (conversation_id, tag_id)
+);
+
+-- Messages
+CREATE TABLE IF NOT EXISTS messages (
+    id BIGSERIAL PRIMARY KEY,
+    conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    sender_type VARCHAR(20) NOT NULL, -- contact, agent, bot, system
+    sender_id BIGINT,
+    content TEXT,
+    content_type VARCHAR(20) DEFAULT 'text', -- text, image, file, note
+    is_internal BOOLEAN DEFAULT false,
+    external_id VARCHAR(255),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_attributions_user ON attributions(user_id);
-CREATE INDEX idx_attributions_order ON attributions(order_id);
+CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at);
+
+-- Attachments
+CREATE TABLE IF NOT EXISTS attachments (
+    id BIGSERIAL PRIMARY KEY,
+    message_id BIGINT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    file_name VARCHAR(500),
+    file_url TEXT NOT NULL,
+    file_type VARCHAR(100),
+    file_size BIGINT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Canned responses
+CREATE TABLE IF NOT EXISTS canned_responses (
+    id BIGSERIAL PRIMARY KEY,
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    shortcut VARCHAR(100) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(org_id, shortcut)
+);
+
+-- Bot rules
+CREATE TABLE IF NOT EXISTS bot_rules (
+    id BIGSERIAL PRIMARY KEY,
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    keywords TEXT[] DEFAULT '{}',
+    match_type VARCHAR(20) DEFAULT 'contains', -- contains, exact, regex
+    response_template TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    priority INT DEFAULT 0,
+    channel_types TEXT[] DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_bot_rules_org ON bot_rules(org_id, is_active, priority DESC);
+
+-- Bot logs
+CREATE TABLE IF NOT EXISTS bot_logs (
+    id BIGSERIAL PRIMARY KEY,
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    rule_id BIGINT REFERENCES bot_rules(id) ON DELETE SET NULL,
+    conversation_id BIGINT REFERENCES conversations(id) ON DELETE SET NULL,
+    matched_keyword VARCHAR(255),
+    action VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_bot_logs_org ON bot_logs(org_id, created_at DESC);

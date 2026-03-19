@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AnalytiQ - E-Ticaret Analytics Platformu",
+  title: "Repliq - Customer Support Platform",
   description:
-    "Tüm pazaryerleri ve e-ticaret platformlarınızı tek panelden yönetin",
+    "Tum destek kanallarinizi tek panelden yonetin",
 };
 
 export default function RootLayout({

@@ -1,133 +1,151 @@
-export interface DashboardOverview {
-  total_revenue: number;
-  total_orders: number;
-  total_ad_spend: number;
-  total_profit: number;
-  aov: number;
-  roas: number;
-  revenue_by_day: DailyMetric[];
-  top_products: ProductMetric[];
-  platform_split: PlatformMetric[];
-  recent_orders: OrderSummary[];
-}
-
-export interface DailyMetric {
-  date: string;
-  revenue: number;
-  orders: number;
-  ad_spend: number;
-  profit: number;
-}
-
-export interface ProductMetric {
-  sku: string;
+export interface Organization {
+  id: number;
   name: string;
-  revenue: number;
-  quantity: number;
-  profit: number;
+  slug: string;
+  plan: string;
 }
 
-export interface PlatformMetric {
-  platform: string;
-  revenue: number;
-  orders: number;
-  share: number;
-}
-
-export interface OrderSummary {
+export interface User {
   id: number;
-  platform: string;
-  platform_order_id: string;
-  customer_name: string;
-  total_amount: number;
-  status: string;
-  order_date: string;
+  email: string;
+  full_name: string;
+  avatar_url?: string;
 }
 
-export interface OrderDetail {
+export interface OrgMember {
+  user_id: number;
+  email: string;
+  full_name: string;
+  avatar_url?: string;
+  role: string;
+}
+
+export interface Channel {
   id: number;
-  platform: string;
-  platform_order_id: string;
-  status: string;
-  customer_name: string;
-  customer_email: string;
-  city: string;
-  currency: string;
-  total_amount: number;
-  subtotal_amount: number;
-  shipping_amount: number;
-  discount_amount: number;
-  tax_amount: number;
-  commission_amount: number;
-  net_profit: number;
-  order_date: string;
-  items: OrderItem[];
-}
-
-export interface OrderItem {
-  product_name: string;
-  sku: string;
-  quantity: number;
-  unit_price: number;
-  total_price: number;
-  cost_price: number;
-  commission: number;
-}
-
-export interface Integration {
-  id: number;
-  platform: string;
-  platform_type: string;
-  status: string;
-  last_sync_at: string | null;
+  org_id: number;
+  type: string;
+  name: string;
+  is_active: boolean;
   created_at: string;
+  updated_at: string;
 }
 
-export interface AdPerformance {
-  summary: {
-    total_spend: number;
-    total_impressions: number;
-    total_clicks: number;
-    total_conversions: number;
-    total_revenue: number;
-    roas: number;
-    cpc: number;
-    ctr: number;
-  };
-  daily: Array<{
-    date: string;
-    spend: number;
-    impressions: number;
-    clicks: number;
-    conversions: number;
-    revenue: number;
-    roas: number;
-  }>;
-  campaigns: Array<{
-    campaign_id: string;
-    campaign_name: string;
-    platform: string;
-    spend: number;
-    impressions: number;
-    clicks: number;
-    conversions: number;
-    revenue: number;
-    roas: number;
-  }>;
+export interface Contact {
+  id: number;
+  org_id: number;
+  external_id: string;
+  channel_type: string;
+  name: string;
+  email: string;
+  phone: string;
+  avatar_url?: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface ProfitAnalysis {
-  revenue: number;
-  cogs: number;
-  gross_profit: number;
-  gross_margin: number;
-  commission: number;
-  ad_spend: number;
-  shipping_cost: number;
-  discount: number;
-  tax: number;
-  net_profit: number;
-  net_margin: number;
-  total_orders: number;
-  aov: number;
+export interface Conversation {
+  id: number;
+  org_id: number;
+  channel_id: number | null;
+  contact_id: number | null;
+  assigned_to: number | null;
+  status: "open" | "pending" | "resolved" | "closed";
+  priority: "low" | "normal" | "high" | "urgent";
+  subject: string;
+  last_message_at: string | null;
+  first_response_at: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+  contact?: Contact;
+  assigned_user?: User;
+  channel_type?: string;
+  last_message?: string;
+  tags?: Tag[];
+}
+
+export interface Message {
+  id: number;
+  conversation_id: number;
+  sender_type: "contact" | "agent" | "bot" | "system";
+  sender_id: number | null;
+  content: string;
+  content_type: "text" | "image" | "file" | "note";
+  is_internal: boolean;
+  external_id: string;
+  created_at: string;
+  sender_name?: string;
+  attachments?: Attachment[];
+}
+
+export interface Attachment {
+  id: number;
+  message_id: number;
+  file_name: string;
+  file_url: string;
+  file_type: string;
+  file_size: number;
+}
+
+export interface Tag {
+  id: number;
+  org_id: number;
+  name: string;
+  color: string;
+}
+
+export interface CannedResponse {
+  id: number;
+  org_id: number;
+  shortcut: string;
+  title: string;
+  content: string;
+}
+
+export interface BotRule {
+  id: number;
+  org_id: number;
+  name: string;
+  keywords: string[];
+  match_type: "contains" | "exact" | "regex";
+  response_template: string;
+  is_active: boolean;
+  priority: number;
+  channel_types: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BotLog {
+  id: number;
+  org_id: number;
+  rule_id: number | null;
+  conversation_id: number | null;
+  matched_keyword: string;
+  action: string;
+  created_at: string;
+  rule_name?: string;
+}
+
+export interface ReportOverview {
+  total_conversations: number;
+  open_conversations: number;
+  avg_response_time_minutes: number;
+  avg_resolution_time_minutes: number;
+  resolved_count: number;
+  daily_volume: { date: string; count: number }[];
+}
+
+export interface AgentReport {
+  user_id: number;
+  full_name: string;
+  conversation_count: number;
+  avg_response_time_minutes: number;
+  resolved_count: number;
+  resolution_rate: number;
+}
+
+export interface ChannelReport {
+  channel_type: string;
+  count: number;
 }

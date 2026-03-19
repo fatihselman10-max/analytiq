@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/analytiq/backend/internal/auth"
+	"github.com/repliq/backend/internal/auth"
 	"github.com/gin-gonic/gin"
 )
 
@@ -33,7 +33,29 @@ func AuthMiddleware(authService *auth.Service) gin.HandlerFunc {
 
 		c.Set("user_id", claims.UserID)
 		c.Set("email", claims.Email)
+		c.Set("org_id", claims.OrgID)
+		c.Set("role", claims.Role)
 		c.Next()
+	}
+}
+
+func RequireRole(roles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("role")
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+			c.Abort()
+			return
+		}
+		userRole := role.(string)
+		for _, r := range roles {
+			if r == userRole {
+				c.Next()
+				return
+			}
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
+		c.Abort()
 	}
 }
 

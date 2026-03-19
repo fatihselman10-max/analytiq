@@ -19,10 +19,10 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { data } = await authAPI.login(email, password);
-      login(data.token, data.user);
-      router.push("/dashboard");
+      login(data.token, data.user, data.organization, data.role);
+      router.push("/inbox");
     } catch {
-      setError("Geçersiz e-posta veya şifre");
+      setError("Gecersiz e-posta veya sifre");
     } finally {
       setLoading(false);
     }
@@ -32,10 +32,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-xl shadow-lg">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-primary-600">AnalytiQ</h1>
-          <p className="mt-2 text-gray-500">
-            E-Ticaret Analytics Platformu
-          </p>
+          <h1 className="text-3xl font-bold text-primary-600">Repliq</h1>
+          <p className="mt-2 text-gray-500">Customer Support Platform</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -61,7 +59,7 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              Şifre
+              Sifre
             </label>
             <input
               type="password"
@@ -77,16 +75,16 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full py-2 px-4 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
-            {loading ? "Giriş yapılıyor..." : "Giriş Yap"}
+            {loading ? "Giris yapiliyor..." : "Giris Yap"}
           </button>
 
           <p className="text-center text-sm text-gray-500">
-            Hesabınız yok mu?{" "}
+            Hesabiniz yok mu?{" "}
             <a
               href="/auth/register"
               className="text-primary-600 hover:underline"
             >
-              Kayıt Ol
+              Kayit Ol
             </a>
           </p>
         </form>

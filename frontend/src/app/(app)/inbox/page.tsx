@@ -32,7 +32,7 @@ export default function InboxPage() {
       try {
         setLoading(true);
         const res = await conversationsAPI.list();
-        setConversations(res.data);
+        setConversations(res.data?.conversations || res.data || []);
       } catch (err) {
         console.error("Failed to fetch conversations:", err);
       } finally {
@@ -48,7 +48,7 @@ export default function InboxPage() {
     const fetchMessages = async () => {
       try {
         const res = await messagesAPI.list(activeConversationId);
-        setMessages(activeConversationId, res.data);
+        setMessages(activeConversationId, res.data?.messages || res.data || []);
       } catch (err) {
         console.error("Failed to fetch messages:", err);
       }
@@ -92,7 +92,7 @@ export default function InboxPage() {
       if (!activeConversationId) return;
       try {
         const res = await messagesAPI.reply(activeConversationId, content);
-        addMessage(activeConversationId, res.data);
+        if (res.data) addMessage(activeConversationId, res.data);
       } catch (err) {
         console.error("Failed to send message:", err);
       }
@@ -105,7 +105,7 @@ export default function InboxPage() {
       if (!activeConversationId) return;
       try {
         const res = await messagesAPI.addNote(activeConversationId, content);
-        addMessage(activeConversationId, res.data);
+        if (res.data) addMessage(activeConversationId, res.data);
       } catch (err) {
         console.error("Failed to add note:", err);
       }

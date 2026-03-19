@@ -22,9 +22,9 @@ export default function ReportsPage() {
           reportsAPI.agents(),
           reportsAPI.channels(),
         ]);
-        setOverview(ovRes.data);
-        setAgents(agRes.data.agents || []);
-        setChannels(chRes.data.channels || []);
+        setOverview(ovRes.data || null);
+        setAgents(agRes.data?.agents || []);
+        setChannels(chRes.data?.channels || []);
       } catch (err) {
         console.error("Failed to load reports", err);
       } finally {

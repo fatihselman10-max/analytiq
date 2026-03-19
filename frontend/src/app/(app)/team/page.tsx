@@ -18,7 +18,7 @@ export default function TeamPage() {
   const loadMembers = async () => {
     try {
       const { data } = await teamAPI.listMembers();
-      setMembers(data.members || []);
+      setMembers(data?.members || []);
     } catch (err) {
       console.error(err);
     } finally {

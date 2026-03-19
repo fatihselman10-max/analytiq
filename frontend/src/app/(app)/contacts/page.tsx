@@ -25,7 +25,7 @@ export default function ContactsPage() {
   const loadContacts = async () => {
     try {
       const { data } = await contactsAPI.list({ search: search || undefined });
-      setContacts(data.contacts || []);
+      setContacts(data?.contacts || []);
     } catch (err) {
       console.error(err);
     } finally {

@@ -23,7 +23,7 @@ export default function BotPage() {
   const loadRules = async () => {
     try {
       const { data } = await botAPI.listRules();
-      setRules(data.rules || []);
+      setRules(data?.rules || []);
     } catch (err) {
       console.error(err);
     } finally {

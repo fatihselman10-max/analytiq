@@ -16,7 +16,7 @@ export default function BotLogsPage() {
     async function load() {
       try {
         const { data } = await botAPI.listLogs();
-        setLogs(data.logs || []);
+        setLogs(data?.logs || []);
       } catch (err) {
         console.error(err);
       } finally {

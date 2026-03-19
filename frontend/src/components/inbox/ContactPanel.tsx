@@ -50,8 +50,8 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
   const [showTagPicker, setShowTagPicker] = useState(false);
 
   useEffect(() => {
-    teamAPI.listMembers().then((res) => setMembers(res.data)).catch(() => {});
-    tagsAPI.list().then((res) => setAllTags(res.data)).catch(() => {});
+    teamAPI.listMembers().then((res) => setMembers(res.data?.members || [])).catch(() => {});
+    tagsAPI.list().then((res) => setAllTags(res.data?.tags || [])).catch(() => {});
   }, []);
 
   const contact = conversation.contact;

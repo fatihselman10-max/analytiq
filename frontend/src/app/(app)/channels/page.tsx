@@ -36,7 +36,7 @@ export default function ChannelsPage() {
   const loadChannels = async () => {
     try {
       const { data } = await channelsAPI.list();
-      setChannels(data.channels || []);
+      setChannels(data?.channels || []);
     } catch (err) {
       console.error(err);
     } finally {

@@ -158,18 +158,30 @@ func (s *Service) HandleEchoMessage(ctx context.Context, channelID int64, msg *I
 		return nil, fmt.Errorf("no open conversation for echo: %w", err)
 	}
 
-	// Save as agent message (skip if duplicate external_id)
+	// Skip if a recent agent message with same content exists (sent from Repliq)
+	var existingID int64
+	err = s.db.Pool.QueryRow(ctx,
+		`SELECT id FROM messages
+		 WHERE conversation_id = $1 AND sender_type = 'agent' AND content = $2
+		   AND created_at > NOW() - INTERVAL '30 seconds'
+		 LIMIT 1`,
+		conversationID, msg.Content,
+	).Scan(&existingID)
+	if err == nil {
+		// Already exists from Repliq send, skip
+		return nil, fmt.Errorf("echo: duplicate of recent agent message %d", existingID)
+	}
+
+	// Save as agent message
 	var messageID int64
 	err = s.db.Pool.QueryRow(ctx,
 		`INSERT INTO messages (conversation_id, sender_type, content, content_type, external_id)
 		 VALUES ($1, 'agent', $2, 'text', $3)
-		 ON CONFLICT DO NOTHING
 		 RETURNING id`,
 		conversationID, msg.Content, msg.ExternalID,
 	).Scan(&messageID)
 	if err != nil {
-		// Could be duplicate, just ignore
-		return nil, fmt.Errorf("echo message already exists or failed: %w", err)
+		return nil, fmt.Errorf("failed to save echo message: %w", err)
 	}
 
 	now := time.Now()

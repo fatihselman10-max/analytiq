@@ -186,12 +186,12 @@ export default function InboxPage() {
                   }`}
                 >
                   {activeConversation.status === "open"
-                    ? "Acik"
+                    ? "Açık"
                     : activeConversation.status === "pending"
                     ? "Beklemede"
                     : activeConversation.status === "resolved"
-                    ? "Cozuldu"
-                    : "Kapali"}
+                    ? "Çözüldü"
+                    : "Kapalı"}
                 </span>
               </div>
             </div>
@@ -207,8 +207,8 @@ export default function InboxPage() {
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center mb-4">
               <MessageSquare className="h-8 w-8 text-blue-400" />
             </div>
-            <p className="text-sm font-semibold text-gray-500">Bir konusma secin</p>
-            <p className="text-xs text-gray-400 mt-1">Sol panelden bir konusma secerek baslayabilirsiniz</p>
+            <p className="text-sm font-semibold text-gray-500">Bir konuşma seçin</p>
+            <p className="text-xs text-gray-400 mt-1">Sol panelden bir konuşma seçerek başlayabilirsiniz</p>
           </div>
         )}
       </div>

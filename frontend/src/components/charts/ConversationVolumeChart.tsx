@@ -18,7 +18,7 @@ export default function ConversationVolumeChart({ data }: Props) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-400">
-        Henuz veri yok
+        Henüz veri yok
       </div>
     );
   }
@@ -40,7 +40,7 @@ export default function ConversationVolumeChart({ data }: Props) {
             boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
           }}
         />
-        <Bar dataKey="count" fill="#2563eb" radius={[4, 4, 0, 0]} name="Gorusme" />
+        <Bar dataKey="count" fill="#2563eb" radius={[4, 4, 0, 0]} name="Görüşme" />
       </BarChart>
     </ResponsiveContainer>
   );

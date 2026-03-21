@@ -9,12 +9,7 @@ import { MessageSquare, Mail, Lock, User, Building2 } from "lucide-react";
 export default function RegisterPage() {
   const router = useRouter();
   const { login } = useAuthStore();
-  const [form, setForm] = useState({
-    email: "",
-    password: "",
-    full_name: "",
-    organization_name: "",
-  });
+  const [form, setForm] = useState({ email: "", password: "", full_name: "", organization_name: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -27,7 +22,7 @@ export default function RegisterPage() {
       login(data.token, data.user, data.organization, data.role);
       router.push("/inbox");
     } catch {
-      setError("Kayit olusturulamadi. E-posta zaten kayitli olabilir.");
+      setError("Kayıt oluşturulamadı. E-posta zaten kayıtlı olabilir.");
     } finally {
       setLoading(false);
     }
@@ -35,7 +30,6 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left Panel */}
       <div className="hidden lg:flex lg:w-1/2 auth-gradient relative overflow-hidden items-center justify-center p-12">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-72 h-72 rounded-full bg-white/20 blur-3xl" />
@@ -48,24 +42,17 @@ export default function RegisterPage() {
             </div>
             <span className="text-3xl font-bold">Repliq</span>
           </div>
-          <h2 className="text-4xl font-bold leading-tight mb-4">
-            Musteri desteginizi bir ust seviyeye tasiyin
-          </h2>
-          <p className="text-blue-100 text-lg leading-relaxed">
-            Ucretsiz baslayin, buyudukce olceklendirin. Tum kanallarinizi tek bir yerden yonetin.
-          </p>
+          <h2 className="text-4xl font-bold leading-tight mb-4">Müşteri desteğinizi bir üst seviyeye taşıyın</h2>
+          <p className="text-blue-100 text-lg leading-relaxed">Ücretsiz başlayın, büyüdükçe ölçeklendirin. Tüm kanallarınızı tek bir yerden yönetin.</p>
           <div className="mt-10 grid grid-cols-2 gap-3">
-            {["Sinirsiz konusma", "AI destekli bot", "Coklu kanal", "Takim yonetimi"].map((f) => (
+            {["Sınırsız konuşma", "AI destekli bot", "Çoklu kanal", "Takım yönetimi"].map((f) => (
               <div key={f} className="flex items-center gap-2 text-sm text-blue-100">
-                <div className="w-1.5 h-1.5 rounded-full bg-blue-300" />
-                {f}
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-300" />{f}
               </div>
             ))}
           </div>
         </div>
       </div>
-
-      {/* Right Panel */}
       <div className="flex-1 flex items-center justify-center p-8 mesh-bg">
         <div className="w-full max-w-md animate-slide-up">
           <div className="lg:hidden text-center mb-8">
@@ -76,30 +63,26 @@ export default function RegisterPage() {
               <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Repliq</span>
             </div>
           </div>
-
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900">Hesap Olusturun</h1>
-            <p className="mt-2 text-gray-500">Ucretsiz baslayin, kredi karti gerekmez</p>
+            <h1 className="text-2xl font-bold text-gray-900">Hesap Oluşturun</h1>
+            <p className="mt-2 text-gray-500">Ücretsiz başlayın, kredi kartı gerekmez</p>
           </div>
-
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 text-red-600 p-3.5 rounded-xl text-sm border border-red-100 animate-fade-in">{error}</div>
-            )}
+            {error && <div className="bg-red-50 text-red-600 p-3.5 rounded-xl text-sm border border-red-100 animate-fade-in">{error}</div>}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Ad Soyad</label>
               <div className="relative">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input type="text" required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl bg-white text-sm transition-all" placeholder="Adiniz Soyadiniz" />
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl bg-white text-sm transition-all" placeholder="Adınız Soyadınız" />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Sirket / Organizasyon Adi</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Şirket / Organizasyon Adı</label>
               <div className="relative">
                 <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input type="text" required value={form.organization_name} onChange={(e) => setForm({ ...form, organization_name: e.target.value })}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl bg-white text-sm transition-all" placeholder="Sirketinizin adi" />
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl bg-white text-sm transition-all" placeholder="Şirketinizin adı" />
               </div>
             </div>
             <div>
@@ -111,7 +94,7 @@ export default function RegisterPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Sifre</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Şifre</label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input type="password" required minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
@@ -119,11 +102,11 @@ export default function RegisterPage() {
               </div>
             </div>
             <button type="submit" disabled={loading} className="w-full py-2.5 px-4 btn-gradient disabled:opacity-50 text-sm">
-              {loading ? "Kayit olunuyor..." : "Ucretsiz Baslat"}
+              {loading ? "Kayıt olunuyor..." : "Ücretsiz Başlat"}
             </button>
             <p className="text-center text-sm text-gray-500">
-              Zaten hesabiniz var mi?{" "}
-              <a href="/auth/login" className="text-blue-600 font-medium hover:text-blue-700 transition-colors">Giris Yap</a>
+              Zaten hesabınız var mı?{" "}
+              <a href="/auth/login" className="text-blue-600 font-medium hover:text-blue-700 transition-colors">Giriş Yap</a>
             </p>
           </form>
         </div>

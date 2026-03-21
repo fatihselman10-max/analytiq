@@ -40,7 +40,7 @@ export default function BotLogsPage() {
         <Link href="/bot" className="p-2 hover:bg-gray-100 rounded-lg">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">Bot Log Kayitlari</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Bot Log Kayıtları</h1>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200">
@@ -49,9 +49,9 @@ export default function BotLogsPage() {
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="text-left py-3 px-4 font-medium text-gray-500">Kural</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Eslesen Kelime</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-500">Eşleşen Kelime</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-500">Aksiyon</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Gorusme</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-500">Görüşme</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-500">Zaman</th>
               </tr>
             </thead>
@@ -59,7 +59,7 @@ export default function BotLogsPage() {
               {logs.map((log) => (
                 <tr key={log.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="py-3 px-4 font-medium text-gray-900">
-                    {log.rule_name || "Silinmis Kural"}
+                    {log.rule_name || "Silinmiş Kural"}
                   </td>
                   <td className="py-3 px-4">
                     <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
@@ -81,7 +81,7 @@ export default function BotLogsPage() {
               {logs.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-gray-400">
-                    Henuz log kaydi yok
+                    Henüz log kaydı yok
                   </td>
                 </tr>
               )}

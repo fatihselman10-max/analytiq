@@ -17,8 +17,8 @@ function formatMessageDate(dateStr: string): string {
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  if (date.toDateString() === today.toDateString()) return "Bugun";
-  if (date.toDateString() === yesterday.toDateString()) return "Dun";
+  if (date.toDateString() === today.toDateString()) return "Bugün";
+  if (date.toDateString() === yesterday.toDateString()) return "Dün";
   return date.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
 }
 
@@ -32,7 +32,7 @@ export default function MessageThread({ messages }: MessageThreadProps) {
   if (messages.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-gray-300 text-sm">
-        Henuz mesaj yok
+        Henüz mesaj yok
       </div>
     );
   }
@@ -69,7 +69,7 @@ export default function MessageThread({ messages }: MessageThreadProps) {
               <div className="flex justify-start mb-3">
                 <div className="max-w-[70%]">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-xs font-medium text-gray-500">{msg.sender_name || "Musteri"}</span>
+                    <span className="text-xs font-medium text-gray-500">{msg.sender_name || "Müşteri"}</span>
                     <span className="text-[10px] text-gray-400">{formatMessageTime(msg.created_at)}</span>
                   </div>
                   <div className="bg-white rounded-2xl rounded-tl-md px-4 py-2.5 shadow-sm border border-gray-100">

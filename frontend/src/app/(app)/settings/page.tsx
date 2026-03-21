@@ -177,13 +177,13 @@ export default function SettingsPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {[
-                  { name: "Starter", price: "$29", features: ["5 kanal", "3 takim uyesi", "1.000 konusma/ay", "E-posta destek"] },
-                  { name: "Pro", price: "$79", features: ["Sinirsiz kanal", "10 takim uyesi", "10.000 konusma/ay", "AI Bot", "Oncelikli destek"], popular: true },
-                  { name: "Enterprise", price: "Ozel", features: ["Her sey dahil", "Sinirsiz uye", "Sinirsiz konusma", "SLA garantisi", "Ozel entegrasyon"] },
+                  { name: "Starter", price: "$29", features: ["5 kanal", "3 takım üyesi", "1.000 konuşma/ay", "E-posta destek"] },
+                  { name: "Pro", price: "$79", features: ["Sınırsız kanal", "10 takım üyesi", "10.000 konuşma/ay", "AI Bot", "Öncelikli destek"], popular: true },
+                  { name: "Enterprise", price: "Özel", features: ["Her sey dahil", "Sınırsız üye", "Sınırsız konuşma", "SLA garantisi", "Özel entegrasyon"] },
                 ].map((plan) => (
                   <div key={plan.name} className={`card p-5 ${plan.popular ? "ring-2 ring-blue-500 relative" : ""}`}>
                     {plan.popular && (
-                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-medium px-3 py-1 rounded-full">Populer</span>
+                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-medium px-3 py-1 rounded-full">Popüler</span>
                     )}
                     <h3 className="font-semibold text-gray-900">{plan.name}</h3>
                     <p className="text-2xl font-bold text-gray-900 mt-2">{plan.price}<span className="text-sm text-gray-400 font-normal">/ay</span></p>
@@ -197,7 +197,7 @@ export default function SettingsPage() {
                     </ul>
                     <button className={`w-full mt-4 py-2 text-sm rounded-xl font-medium transition-all ${
                       plan.popular ? "btn-gradient" : "border border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-                      {plan.popular ? "Yukselt" : "Sec"}
+                      {plan.popular ? "Yükselt" : "Seç"}
                     </button>
                   </div>
                 ))}

@@ -36,7 +36,7 @@ export default function MessageInput({ onSend, onNote }: MessageInputProps) {
         <button onClick={() => setIsNoteMode(false)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
             !isNoteMode ? "bg-blue-100 text-blue-700" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}>
-          <MessageSquare className="h-3.5 w-3.5" /> Yanit
+          <MessageSquare className="h-3.5 w-3.5" /> Yanıt
         </button>
         <button onClick={() => setIsNoteMode(true)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
@@ -48,7 +48,7 @@ export default function MessageInput({ onSend, onNote }: MessageInputProps) {
         <textarea ref={textareaRef} value={content}
           onChange={(e) => { setContent(e.target.value); adjustHeight(); }}
           onKeyDown={handleKeyDown}
-          placeholder={isNoteMode ? "Dahili not yaz... (sadece ekip gorebilir)" : "Mesajinizi yazin..."}
+          placeholder={isNoteMode ? "Dahili not yaz... (sadece ekip görebilir)" : "Mesajınızı yazın..."}
           rows={1}
           className={`flex-1 resize-none text-sm px-3.5 py-2.5 rounded-xl border focus:outline-none focus:ring-2 transition-all ${
             isNoteMode ? "border-amber-200 bg-amber-50 focus:ring-amber-300 placeholder-amber-400" : "border-gray-200 bg-gray-50 focus:bg-white focus:ring-blue-500/20 placeholder-gray-400"}`} />

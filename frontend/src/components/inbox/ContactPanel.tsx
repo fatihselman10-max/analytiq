@@ -31,16 +31,16 @@ const channelLabels: Record<string, { label: string; icon: React.ElementType }> 
 };
 
 const statusOptions = [
-  { value: "open", label: "Acik", className: "bg-green-100 text-green-700" },
+  { value: "open", label: "Açık", className: "bg-green-100 text-green-700" },
   { value: "pending", label: "Beklemede", className: "bg-yellow-100 text-yellow-700" },
-  { value: "resolved", label: "Cozuldu", className: "bg-blue-100 text-blue-700" },
-  { value: "closed", label: "Kapali", className: "bg-gray-100 text-gray-600" },
+  { value: "resolved", label: "Çözüldü", className: "bg-blue-100 text-blue-700" },
+  { value: "closed", label: "Kapalı", className: "bg-gray-100 text-gray-600" },
 ];
 
 const priorityOptions = [
-  { value: "low", label: "Dusuk", className: "bg-gray-100 text-gray-600" },
+  { value: "low", label: "Düşük", className: "bg-gray-100 text-gray-600" },
   { value: "normal", label: "Normal", className: "bg-blue-100 text-blue-700" },
-  { value: "high", label: "Yuksek", className: "bg-orange-100 text-orange-700" },
+  { value: "high", label: "Yüksek", className: "bg-orange-100 text-orange-700" },
   { value: "urgent", label: "Acil", className: "bg-red-100 text-red-700" },
 ];
 
@@ -173,7 +173,7 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
         {/* Priority */}
         <div>
           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5 block">
-            Oncelik
+            Öncelik
           </label>
           <div className="relative">
             <select
@@ -204,7 +204,7 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
               }
               className="w-full appearance-none px-3 py-2 pr-8 text-sm rounded-lg border border-gray-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
             >
-              <option value="">Atanmamis</option>
+              <option value="">Atanmamış</option>
               {members.map((m) => (
                 <option key={m.user_id} value={m.user_id}>
                   {m.full_name}
@@ -293,14 +293,14 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
         </h4>
         <dl className="space-y-2 text-xs">
           <div className="flex justify-between">
-            <dt className="text-gray-400">Olusturulma</dt>
+            <dt className="text-gray-400">Oluşturulma</dt>
             <dd className="text-gray-600">
               {new Date(conversation.created_at).toLocaleDateString("tr-TR")}
             </dd>
           </div>
           {conversation.first_response_at && (
             <div className="flex justify-between">
-              <dt className="text-gray-400">Ilk Yanit</dt>
+              <dt className="text-gray-400">İlk Yanıt</dt>
               <dd className="text-gray-600">
                 {new Date(conversation.first_response_at).toLocaleDateString("tr-TR")}
               </dd>
@@ -308,14 +308,14 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
           )}
           {conversation.resolved_at && (
             <div className="flex justify-between">
-              <dt className="text-gray-400">Cozum</dt>
+              <dt className="text-gray-400">Çözüm</dt>
               <dd className="text-gray-600">
                 {new Date(conversation.resolved_at).toLocaleDateString("tr-TR")}
               </dd>
             </div>
           )}
           <div className="flex justify-between">
-            <dt className="text-gray-400">Konusma ID</dt>
+            <dt className="text-gray-400">Konuşma ID</dt>
             <dd className="text-gray-600">#{conversation.id}</dd>
           </div>
         </dl>

@@ -48,7 +48,7 @@ export default function ContactsPage() {
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Kisiler</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Kişiler</h1>
       </div>
 
       <div className="relative">
@@ -56,7 +56,7 @@ export default function ContactsPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Kisi ara..."
+          placeholder="Kişi ara..."
           className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
         />
       </div>
@@ -66,7 +66,7 @@ export default function ContactsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-500">Kisi</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-500">Kişi</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-500">E-posta</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-500">Telefon</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-500">Kanal</th>
@@ -87,7 +87,7 @@ export default function ContactsPage() {
                         </span>
                       </div>
                       <span className="font-medium text-gray-900">
-                        {contact.name || "Isimsiz"}
+                        {contact.name || "İsimsiz"}
                       </span>
                     </div>
                   </td>
@@ -103,7 +103,7 @@ export default function ContactsPage() {
               {contacts.length === 0 && (
                 <tr>
                   <td colSpan={4} className="py-8 text-center text-gray-400">
-                    {search ? "Sonuc bulunamadi" : "Henuz kisi yok"}
+                    {search ? "Sonuç bulunamadı" : "Henüz kişi yok"}
                   </td>
                 </tr>
               )}
@@ -121,7 +121,7 @@ export default function ContactsPage() {
                 <UserCircle className="h-8 w-8 text-primary-600" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold">{selectedContact.name || "Isimsiz"}</h2>
+                <h2 className="text-lg font-semibold">{selectedContact.name || "İsimsiz"}</h2>
                 <p className="text-sm text-gray-500">
                   {CHANNEL_LABELS[selectedContact.channel_type] || selectedContact.channel_type}
                 </p>

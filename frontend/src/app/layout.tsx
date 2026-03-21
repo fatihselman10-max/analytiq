@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Repliq - Customer Support Platform",
   description:
-    "Tum destek kanallarinizi tek panelden yonetin",
+    "Tüm destek kanallarınızı tek panelden yönetin",
 };
 
 export default function RootLayout({

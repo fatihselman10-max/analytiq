@@ -31,7 +31,7 @@ export default function ChannelPieChart({ data }: Props) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-400">
-        Henuz veri yok
+        Henüz veri yok
       </div>
     );
   }

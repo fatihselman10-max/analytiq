@@ -1,13 +1,17 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/repliq/backend/internal/database"
 	"github.com/repliq/backend/internal/services/bot"
 	"github.com/repliq/backend/internal/services/channel"
+	"github.com/repliq/backend/internal/services/channel/instagram"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +28,42 @@ func NewWebhookHandler(db *database.DB, channelService *channel.Service, registr
 	return &WebhookHandler{db: db, channelService: channelService, registry: registry, botEngine: botEngine, hub: hub}
 }
 
+// loadProviderFromDB loads a channel provider with credentials from the database
+func (h *WebhookHandler) loadProviderFromDB(ctx context.Context, channelType string) (channel.Provider, int64, error) {
+	var channelID int64
+	var credsJSON []byte
+	err := h.db.Pool.QueryRow(ctx,
+		`SELECT id, credentials FROM channels WHERE type = $1 AND is_active = true LIMIT 1`,
+		channelType,
+	).Scan(&channelID, &credsJSON)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var creds map[string]string
+	if len(credsJSON) > 0 {
+		json.Unmarshal(credsJSON, &creds)
+	}
+	if creds == nil {
+		creds = make(map[string]string)
+	}
+
+	var provider channel.Provider
+	switch channelType {
+	case "instagram":
+		provider = instagram.NewInstagramProvider(creds)
+	default:
+		// Fallback to registry for other types
+		p, err := h.registry.Get(channelType)
+		if err != nil {
+			return nil, channelID, nil
+		}
+		return p, channelID, nil
+	}
+
+	return provider, channelID, nil
+}
+
 func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		body, err := io.ReadAll(c.Request.Body)
@@ -32,8 +72,17 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 			return
 		}
 
-		provider, err := h.registry.Get(channelType)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+
+		// Load provider with credentials from DB
+		provider, channelID, err := h.loadProviderFromDB(ctx, channelType)
 		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "No active channel found"})
+			return
+		}
+
+		if provider == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported channel"})
 			return
 		}
@@ -43,37 +92,22 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 			headers[key] = c.GetHeader(key)
 		}
 
-		msg, err := provider.ParseWebhook(c.Request.Context(), body, headers)
+		msg, err := provider.ParseWebhook(ctx, body, headers)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse webhook"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse webhook: " + err.Error()})
 			return
 		}
 
-		// Find channel by type (simplified - in production, match by credentials/account)
-		var channelID int64
-		err = h.db.Pool.QueryRow(c.Request.Context(),
-			`SELECT id FROM channels WHERE type = $1 AND is_active = true LIMIT 1`,
-			channelType,
-		).Scan(&channelID)
+		result, err := h.channelService.HandleIncomingMessage(ctx, channelID, msg)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "No active channel found"})
-			return
-		}
-
-		result, err := h.channelService.HandleIncomingMessage(c.Request.Context(), channelID, msg)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process message"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process message: " + err.Error()})
 			return
 		}
 
 		// Try bot processing
 		var chType string
-		h.db.Pool.QueryRow(c.Request.Context(),
-			`SELECT type FROM channels WHERE id = $1`, channelID,
-		).Scan(&chType)
-		response, matched, _ := h.botEngine.ProcessMessage(c.Request.Context(), result.OrgID, result.ConversationID, msg.Content, chType)
-		_ = response
-		_ = matched
+		h.db.Pool.QueryRow(ctx, `SELECT type FROM channels WHERE id = $1`, channelID).Scan(&chType)
+		h.botEngine.ProcessMessage(ctx, result.OrgID, result.ConversationID, msg.Content, chType)
 
 		// Broadcast via WebSocket
 		h.hub.BroadcastToOrg(result.OrgID, ws.Event{
@@ -92,13 +126,11 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 }
 
 func (h *WebhookHandler) VerifyWebhook(c *gin.Context) {
-	// Facebook/WhatsApp verification challenge
 	mode := c.Query("hub.mode")
 	token := c.Query("hub.verify_token")
 	challenge := c.Query("hub.challenge")
 
 	if mode == "subscribe" && token != "" {
-		// Verify token against stored channel credentials
 		c.String(http.StatusOK, challenge)
 		return
 	}
@@ -132,11 +164,8 @@ func (h *WebhookHandler) HandleLiveChatMessage(c *gin.Context) {
 		return
 	}
 
-	// Bot processing
 	var chType string
-	h.db.Pool.QueryRow(c.Request.Context(),
-		`SELECT type FROM channels WHERE id = $1`, req.ChannelID,
-	).Scan(&chType)
+	h.db.Pool.QueryRow(c.Request.Context(), `SELECT type FROM channels WHERE id = $1`, req.ChannelID).Scan(&chType)
 	h.botEngine.ProcessMessage(c.Request.Context(), result.OrgID, result.ConversationID, req.Content, chType)
 
 	h.hub.BroadcastToOrg(result.OrgID, ws.Event{

@@ -86,7 +86,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		req.OrganizationName, slug,
 	).Scan(&orgID, &orgPlan)
 	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "Organization slug already exists"})
+		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
+			c.JSON(http.StatusConflict, gin.H{"error": "Organization slug already exists"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create organization"})
+		}
 		return
 	}
 

@@ -41,7 +41,7 @@ export default function BotPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Bu kurali silmek istediginize emin misiniz?")) return;
+    if (!confirm("Bu kuralı silmek istediğinize emin misiniz?")) return;
     await botAPI.deleteRule(id);
     loadRules();
   };
@@ -96,14 +96,14 @@ export default function BotPage() {
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">AI Bot Kurallari</h1>
+        <h1 className="text-2xl font-bold text-gray-900">AI Bot Kuralları</h1>
         <div className="flex gap-3">
           <Link
             href="/bot/logs"
             className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             <Activity className="h-4 w-4" />
-            Log Kayitlari
+            Log Kayıtları
           </Link>
           <button
             onClick={openCreate}
@@ -118,7 +118,7 @@ export default function BotPage() {
       <div className="bg-white rounded-xl border border-gray-200">
         {rules.length === 0 ? (
           <div className="p-12 text-center text-gray-400">
-            Henuz bot kurali eklenmemis
+            Henüz bot kuralı eklenmemiş
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
@@ -141,7 +141,7 @@ export default function BotPage() {
                   <div className="flex items-center gap-2">
                     <h3 className="font-medium text-gray-900">{rule.name}</h3>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                      Oncelik: {rule.priority}
+                      Öncelik: {rule.priority}
                     </span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
                       {rule.match_type}
@@ -180,11 +180,11 @@ export default function BotPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-lg">
             <h2 className="text-lg font-semibold mb-4">
-              {editingRule ? "Kural Duzenle" : "Yeni Kural"}
+              {editingRule ? "Kural Düzenle" : "Yeni Kural"}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Kural Adi</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Kural Adı</label>
                 <input
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -194,7 +194,7 @@ export default function BotPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Anahtar Kelimeler (virgul ile ayirin)
+                  Anahtar Kelimeler (virgül ile ayırın)
                 </label>
                 <input
                   value={form.keywords}
@@ -205,19 +205,19 @@ export default function BotPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Eslesme Tipi</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Eşleşme Tipi</label>
                 <select
                   value={form.match_type}
                   onChange={(e) => setForm({ ...form, match_type: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 >
-                  <option value="contains">Icerir</option>
-                  <option value="exact">Tam Eslesme</option>
+                  <option value="contains">İçerir</option>
+                  <option value="exact">Tam Eşleşme</option>
                   <option value="regex">Regex</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Yanit Sablonu</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Yanıt Şablonu</label>
                 <textarea
                   value={form.response_template}
                   onChange={(e) => setForm({ ...form, response_template: e.target.value })}
@@ -230,7 +230,7 @@ export default function BotPage() {
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Oncelik</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Öncelik</label>
                 <input
                   type="number"
                   value={form.priority}
@@ -244,13 +244,13 @@ export default function BotPage() {
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
-                  Iptal
+                  İptal
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
                 >
-                  {editingRule ? "Guncelle" : "Olustur"}
+                  {editingRule ? "Güncelle" : "Oluştur"}
                 </button>
               </div>
             </form>

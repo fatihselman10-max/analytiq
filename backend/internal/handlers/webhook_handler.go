@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -42,11 +43,14 @@ func (h *WebhookHandler) loadProviderFromDB(ctx context.Context, channelType str
 
 	var creds map[string]string
 	if len(credsJSON) > 0 {
-		json.Unmarshal(credsJSON, &creds)
+		if err := json.Unmarshal(credsJSON, &creds); err != nil {
+			log.Printf("webhook: failed to unmarshal credentials for %s: %v (raw: %s)", channelType, err, string(credsJSON))
+		}
 	}
 	if creds == nil {
 		creds = make(map[string]string)
 	}
+	log.Printf("webhook: loaded %s provider with page_id=%s, has_token=%v", channelType, creds["page_id"], creds["access_token"] != "")
 
 	var provider channel.Provider
 	switch channelType {

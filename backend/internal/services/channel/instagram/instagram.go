@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/repliq/backend/internal/services/channel"
@@ -153,9 +154,12 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 	senderName := ""
 	avatarURL := ""
 	name, avatar, err := p.FetchUserProfile(ctx, messaging.Sender.ID)
-	if err == nil {
+	if err != nil {
+		log.Printf("instagram: failed to fetch profile for %s: %v", messaging.Sender.ID, err)
+	} else {
 		senderName = name
 		avatarURL = avatar
+		log.Printf("instagram: fetched profile for %s: name=%s, hasAvatar=%v", messaging.Sender.ID, name, avatar != "")
 	}
 
 	return &channel.IncomingMessage{

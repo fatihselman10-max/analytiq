@@ -144,6 +144,11 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 
 	messaging := payload.Entry[0].Messaging[0]
 
+	// Skip echo messages (sent by our own page)
+	if messaging.Sender.ID == p.pageID {
+		return nil, fmt.Errorf("instagram: skipping echo message from own page")
+	}
+
 	// Fetch sender profile from Graph API
 	senderName := ""
 	avatarURL := ""

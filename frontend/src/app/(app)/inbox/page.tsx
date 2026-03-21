@@ -25,34 +25,32 @@ export default function InboxPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Fetch conversations on mount
+  // Fetch conversations on mount + poll every 5s
   useEffect(() => {
     const fetchConversations = async () => {
       try {
-        setLoading(true);
         const res = await conversationsAPI.list();
         setConversations(res.data?.conversations || res.data || []);
-      } catch (err) {
-        console.error("Failed to fetch conversations:", err);
-      } finally {
-        setLoading(false);
-      }
+      } catch {}
     };
-    fetchConversations();
+    setLoading(true);
+    fetchConversations().finally(() => setLoading(false));
+    const interval = setInterval(fetchConversations, 5000);
+    return () => clearInterval(interval);
   }, [setConversations]);
 
-  // Fetch messages when active conversation changes
+  // Fetch messages when active conversation changes + poll every 3s
   useEffect(() => {
     if (!activeConversationId) return;
     const fetchMessages = async () => {
       try {
         const res = await messagesAPI.list(activeConversationId);
         setMessages(activeConversationId, res.data?.messages || res.data || []);
-      } catch (err) {
-        console.error("Failed to fetch messages:", err);
-      }
+      } catch {}
     };
     fetchMessages();
+    const interval = setInterval(fetchMessages, 3000);
+    return () => clearInterval(interval);
   }, [activeConversationId, setMessages]);
 
   // Filter conversations
@@ -101,10 +99,11 @@ export default function InboxPage() {
       if (!activeConversationId) return;
       try {
         await messagesAPI.reply(activeConversationId, content);
-        await refreshMessages(activeConversationId);
       } catch (err) {
         console.error("Failed to send message:", err);
       }
+      // Always refresh messages after attempt
+      await refreshMessages(activeConversationId);
     },
     [activeConversationId, refreshMessages]
   );
@@ -114,10 +113,10 @@ export default function InboxPage() {
       if (!activeConversationId) return;
       try {
         await messagesAPI.addNote(activeConversationId, content);
-        await refreshMessages(activeConversationId);
       } catch (err) {
         console.error("Failed to add note:", err);
       }
+      await refreshMessages(activeConversationId);
     },
     [activeConversationId, refreshMessages]
   );

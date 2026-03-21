@@ -6,6 +6,7 @@ type IncomingMessage struct {
 	ExternalID  string
 	SenderID    string
 	SenderName  string
+	AvatarURL   string
 	Content     string
 	ContentType string // text, image, file
 	Attachments []IncomingAttachment

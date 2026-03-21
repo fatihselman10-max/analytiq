@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"log"
 	"os"
 	"os/signal"
@@ -13,6 +15,7 @@ import (
 	"github.com/repliq/backend/internal/middleware"
 	"github.com/repliq/backend/internal/services/bot"
 	"github.com/repliq/backend/internal/services/channel"
+	"github.com/repliq/backend/internal/services/channel/instagram"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -33,6 +36,56 @@ func main() {
 
 	// Channel registry & service
 	registry := channel.NewRegistry()
+
+	// Register channel providers from DB
+	func() {
+		ctx := context.Background()
+		rows, err := db.Pool.Query(ctx,
+			`SELECT type, credentials FROM channels WHERE is_active = true AND credentials IS NOT NULL AND credentials != '' AND credentials != '{}'`)
+		if err != nil {
+			log.Printf("Warning: failed to load channels from DB: %v", err)
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var chType, creds string
+			if err := rows.Scan(&chType, &creds); err != nil {
+				continue
+			}
+			var config map[string]string
+			if err := json.Unmarshal([]byte(creds), &config); err != nil {
+				continue
+			}
+			switch chType {
+			case "instagram":
+				if config["access_token"] != "" {
+					registry.Register(instagram.NewInstagramProvider(config))
+					log.Printf("Registered Instagram provider from DB")
+				}
+			}
+		}
+	}()
+
+	// Fallback: register from env vars if not already registered
+	if _, err := registry.Get("instagram"); err != nil {
+		if token := cfg.InstagramToken; token != "" {
+			config := map[string]string{
+				"page_id":      os.Getenv("INSTAGRAM_PAGE_ID"),
+				"access_token": token,
+				"app_secret":   cfg.InstagramAppSecret,
+			}
+			registry.Register(instagram.NewInstagramProvider(config))
+			log.Printf("Registered Instagram provider from env vars")
+
+			// Also update DB channel credentials so everything stays in sync
+			ctx := context.Background()
+			credsJSON, _ := json.Marshal(config)
+			db.Pool.Exec(ctx,
+				`UPDATE channels SET credentials = $1, updated_at = NOW() WHERE type = 'instagram' AND is_active = true AND (credentials IS NULL OR credentials = '{}')`,
+				string(credsJSON))
+		}
+	}
+
 	channelService := channel.NewService(db, registry)
 
 	// Bot engine

@@ -40,11 +40,13 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 	// Find or create contact
 	var contactID int64
 	err = s.db.Pool.QueryRow(ctx,
-		`INSERT INTO contacts (org_id, external_id, channel_type, name)
-		 VALUES ($1, $2, $3, $4)
-		 ON CONFLICT (org_id, channel_type, external_id) DO UPDATE SET name = EXCLUDED.name
+		`INSERT INTO contacts (org_id, external_id, channel_type, name, avatar_url)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (org_id, channel_type, external_id) DO UPDATE
+		 SET name = CASE WHEN EXCLUDED.name != '' THEN EXCLUDED.name ELSE contacts.name END,
+		     avatar_url = CASE WHEN EXCLUDED.avatar_url != '' THEN EXCLUDED.avatar_url ELSE contacts.avatar_url END
 		 RETURNING id`,
-		orgID, msg.SenderID, channelType, msg.SenderName,
+		orgID, msg.SenderID, channelType, msg.SenderName, msg.AvatarURL,
 	).Scan(&contactID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to upsert contact: %w", err)

@@ -92,7 +92,21 @@ export default function InboxPage() {
       if (!activeConversationId) return;
       try {
         const res = await messagesAPI.reply(activeConversationId, content);
-        if (res.data) addMessage(activeConversationId, res.data);
+        const data = res.data;
+        // Backend returns {message_id}, construct full message for UI
+        const newMessage = {
+          id: data.message_id || data.id,
+          conversation_id: activeConversationId,
+          sender_type: "agent" as const,
+          sender_id: null,
+          content,
+          content_type: "text" as const,
+          is_internal: false,
+          external_id: "",
+          created_at: new Date().toISOString(),
+          sender_name: "",
+        };
+        addMessage(activeConversationId, newMessage);
       } catch (err) {
         console.error("Failed to send message:", err);
       }
@@ -105,7 +119,20 @@ export default function InboxPage() {
       if (!activeConversationId) return;
       try {
         const res = await messagesAPI.addNote(activeConversationId, content);
-        if (res.data) addMessage(activeConversationId, res.data);
+        const data = res.data;
+        const newNote = {
+          id: data.message_id || data.id,
+          conversation_id: activeConversationId,
+          sender_type: "agent" as const,
+          sender_id: null,
+          content,
+          content_type: "note" as const,
+          is_internal: true,
+          external_id: "",
+          created_at: new Date().toISOString(),
+          sender_name: "",
+        };
+        addMessage(activeConversationId, newNote);
       } catch (err) {
         console.error("Failed to add note:", err);
       }
@@ -155,11 +182,19 @@ export default function InboxPage() {
           <>
             {/* Thread Header */}
             <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-200 bg-white">
-              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                <span className="text-sm font-medium text-gray-600">
-                  {activeConversation.contact?.name?.charAt(0)?.toUpperCase() || "?"}
-                </span>
-              </div>
+              {activeConversation.contact?.avatar_url ? (
+                <img
+                  src={activeConversation.contact.avatar_url}
+                  alt={activeConversation.contact.name || ""}
+                  className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                  <span className="text-sm font-medium text-gray-600">
+                    {activeConversation.contact?.name?.charAt(0)?.toUpperCase() || "?"}
+                  </span>
+                </div>
+              )}
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold text-gray-900 truncate">
                   {activeConversation.subject || "Konu yok"}

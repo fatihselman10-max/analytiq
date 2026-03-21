@@ -123,11 +123,19 @@ export default function ConversationList({
               >
                 <div className="flex items-start gap-3">
                   {/* Avatar */}
-                  <div className="flex-shrink-0 w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center">
-                    <span className="text-sm font-medium text-gray-600">
-                      {conv.contact?.name?.charAt(0)?.toUpperCase() || "?"}
-                    </span>
-                  </div>
+                  {conv.contact?.avatar_url ? (
+                    <img
+                      src={conv.contact.avatar_url}
+                      alt={conv.contact.name || ""}
+                      className="flex-shrink-0 w-9 h-9 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex-shrink-0 w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center">
+                      <span className="text-sm font-medium text-gray-600">
+                        {conv.contact?.name?.charAt(0)?.toUpperCase() || "?"}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="flex-1 min-w-0">
                     {/* Top row: name + time */}

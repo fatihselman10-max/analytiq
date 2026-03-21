@@ -1,27 +1,33 @@
 package instagram
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 
 	"github.com/repliq/backend/internal/services/channel"
 )
+
+const graphAPIBase = "https://graph.instagram.com/v21.0"
 
 // Provider implements the channel.Provider interface for Instagram Messaging API.
 type Provider struct {
 	pageID      string
 	accessToken string
 	appSecret   string
+	httpClient  *http.Client
 }
 
 // NewInstagramProvider creates a new Instagram provider from the given config map.
-// Expected keys: "page_id", "access_token", "app_secret".
 func NewInstagramProvider(config map[string]string) *Provider {
 	return &Provider{
 		pageID:      config["page_id"],
 		accessToken: config["access_token"],
 		appSecret:   config["app_secret"],
+		httpClient:  &http.Client{},
 	}
 }
 
@@ -29,9 +35,81 @@ func (p *Provider) GetType() string {
 	return "instagram"
 }
 
+// SendMessage sends a text message to an Instagram user via the Graph API.
 func (p *Provider) SendMessage(ctx context.Context, contactExternalID string, content string, attachments []channel.IncomingAttachment) (string, error) {
-	externalID := fmt.Sprintf("ig_mid.%s_%s", contactExternalID, "stub-message-id")
-	return externalID, nil
+	payload := map[string]interface{}{
+		"recipient": map[string]string{
+			"id": contactExternalID,
+		},
+		"message": map[string]string{
+			"text": content,
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("instagram: failed to marshal message: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/me/messages?access_token=%s", graphAPIBase, p.accessToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("instagram: failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("instagram: failed to send message: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("instagram: Graph API error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		MessageID string `json:"message_id"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("instagram: failed to parse response: %w", err)
+	}
+
+	return result.MessageID, nil
+}
+
+// FetchUserProfile fetches the Instagram user's name and profile picture.
+func (p *Provider) FetchUserProfile(ctx context.Context, userID string) (name string, avatarURL string, err error) {
+	url := fmt.Sprintf("%s/%s?fields=name,profile_pic&access_token=%s", graphAPIBase, userID, p.accessToken)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("instagram: failed to create profile request: %w", err)
+	}
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("instagram: failed to fetch profile: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("instagram: profile API error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var profile struct {
+		Name       string `json:"name"`
+		ProfilePic string `json:"profile_pic"`
+	}
+	if err := json.Unmarshal(respBody, &profile); err != nil {
+		return "", "", fmt.Errorf("instagram: failed to parse profile: %w", err)
+	}
+
+	return profile.Name, profile.ProfilePic, nil
 }
 
 // webhookPayload represents a simplified Instagram Messaging webhook structure.
@@ -66,10 +144,20 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 
 	messaging := payload.Entry[0].Messaging[0]
 
+	// Fetch sender profile from Graph API
+	senderName := ""
+	avatarURL := ""
+	name, avatar, err := p.FetchUserProfile(ctx, messaging.Sender.ID)
+	if err == nil {
+		senderName = name
+		avatarURL = avatar
+	}
+
 	return &channel.IncomingMessage{
 		ExternalID:  messaging.Message.MID,
 		SenderID:    messaging.Sender.ID,
-		SenderName:  "",
+		SenderName:  senderName,
+		AvatarURL:   avatarURL,
 		Content:     messaging.Message.Text,
 		ContentType: "text",
 	}, nil

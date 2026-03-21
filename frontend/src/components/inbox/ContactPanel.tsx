@@ -122,11 +122,19 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
     <div className="flex flex-col h-full overflow-y-auto">
       {/* Contact Info */}
       <div className="p-5 border-b border-gray-200 text-center">
-        <div className="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center mx-auto mb-3">
-          <span className="text-2xl font-semibold text-primary-700">
-            {contact?.name?.charAt(0)?.toUpperCase() || "?"}
-          </span>
-        </div>
+        {contact?.avatar_url ? (
+          <img
+            src={contact.avatar_url}
+            alt={contact.name || ""}
+            className="w-16 h-16 rounded-full object-cover mx-auto mb-3"
+          />
+        ) : (
+          <div className="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center mx-auto mb-3">
+            <span className="text-2xl font-semibold text-primary-700">
+              {contact?.name?.charAt(0)?.toUpperCase() || "?"}
+            </span>
+          </div>
+        )}
         <h3 className="text-base font-semibold text-gray-900">
           {contact?.name || "Bilinmeyen"}
         </h3>

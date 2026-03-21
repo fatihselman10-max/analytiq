@@ -24,6 +24,7 @@ function formatMessageDate(dateStr: string): string {
 
 export default function MessageThread({ messages }: MessageThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  console.log("[REPLIQ] MessageThread rendering", messages.length, "messages");
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

@@ -44,10 +44,8 @@ func (h *WebhookHandler) loadProviderFromDB(ctx context.Context, channelType str
 
 	var creds map[string]string
 	if err := json.Unmarshal([]byte(credsStr), &creds); err != nil {
-		fmt.Printf("[WEBHOOK] failed to unmarshal credentials for %s: %v (raw: %s)\n", channelType, err, credsStr)
 		creds = make(map[string]string)
 	}
-	fmt.Printf("[WEBHOOK] loaded %s provider: page_id=%s, has_token=%v\n", channelType, creds["page_id"], creds["access_token"] != "")
 
 	var provider channel.Provider
 	switch channelType {
@@ -96,17 +94,6 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 		msg, err := provider.ParseWebhook(ctx, body, headers)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse webhook: " + err.Error()})
-			return
-		}
-
-		// Debug: return parsed message info
-		if c.Query("debug") == "1" {
-			c.JSON(http.StatusOK, gin.H{
-				"parsed_sender_name": msg.SenderName,
-				"parsed_avatar":     msg.AvatarURL != "",
-				"parsed_sender_id":  msg.SenderID,
-				"parsed_content":    msg.Content,
-			})
 			return
 		}
 

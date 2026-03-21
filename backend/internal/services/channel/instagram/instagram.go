@@ -152,14 +152,10 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 	// Fetch sender profile from Graph API
 	senderName := ""
 	avatarURL := ""
-	fmt.Printf("[INSTAGRAM] fetching profile for sender %s (pageID=%s, hasToken=%v)\n", messaging.Sender.ID, p.pageID, p.accessToken != "")
 	name, avatar, err := p.FetchUserProfile(ctx, messaging.Sender.ID)
-	if err != nil {
-		fmt.Printf("[INSTAGRAM] profile fetch FAILED for %s: %v\n", messaging.Sender.ID, err)
-	} else {
+	if err == nil {
 		senderName = name
 		avatarURL = avatar
-		fmt.Printf("[INSTAGRAM] profile OK for %s: name=%s, hasAvatar=%v\n", messaging.Sender.ID, name, avatar != "")
 	}
 
 	return &channel.IncomingMessage{

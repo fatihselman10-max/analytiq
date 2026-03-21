@@ -18,7 +18,6 @@ export default function InboxPage() {
     setConversations,
     setActiveConversation,
     setMessages,
-    addMessage,
     updateConversation,
   } = useConversationsStore();
 
@@ -87,57 +86,40 @@ export default function InboxPage() {
     ? messages[activeConversationId] || []
     : [];
 
+  const refreshMessages = useCallback(
+    async (convId: number) => {
+      try {
+        const res = await messagesAPI.list(convId);
+        setMessages(convId, res.data?.messages || res.data || []);
+      } catch {}
+    },
+    [setMessages]
+  );
+
   const handleSend = useCallback(
     async (content: string) => {
       if (!activeConversationId) return;
       try {
-        const res = await messagesAPI.reply(activeConversationId, content);
-        const data = res.data;
-        // Backend returns {message_id}, construct full message for UI
-        const newMessage = {
-          id: data.message_id || data.id,
-          conversation_id: activeConversationId,
-          sender_type: "agent" as const,
-          sender_id: null,
-          content,
-          content_type: "text" as const,
-          is_internal: false,
-          external_id: "",
-          created_at: new Date().toISOString(),
-          sender_name: "",
-        };
-        addMessage(activeConversationId, newMessage);
+        await messagesAPI.reply(activeConversationId, content);
+        await refreshMessages(activeConversationId);
       } catch (err) {
         console.error("Failed to send message:", err);
       }
     },
-    [activeConversationId, addMessage]
+    [activeConversationId, refreshMessages]
   );
 
   const handleNote = useCallback(
     async (content: string) => {
       if (!activeConversationId) return;
       try {
-        const res = await messagesAPI.addNote(activeConversationId, content);
-        const data = res.data;
-        const newNote = {
-          id: data.message_id || data.id,
-          conversation_id: activeConversationId,
-          sender_type: "agent" as const,
-          sender_id: null,
-          content,
-          content_type: "note" as const,
-          is_internal: true,
-          external_id: "",
-          created_at: new Date().toISOString(),
-          sender_name: "",
-        };
-        addMessage(activeConversationId, newNote);
+        await messagesAPI.addNote(activeConversationId, content);
+        await refreshMessages(activeConversationId);
       } catch (err) {
         console.error("Failed to add note:", err);
       }
     },
-    [activeConversationId, addMessage]
+    [activeConversationId, refreshMessages]
   );
 
   const handleUpdate = useCallback(

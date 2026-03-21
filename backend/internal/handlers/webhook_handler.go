@@ -97,6 +97,28 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 			return
 		}
 
+		if msg.IsEcho {
+			// Echo message: sent by our page, save as agent message in existing conversation
+			result, err := h.channelService.HandleEchoMessage(ctx, channelID, msg)
+			if err != nil {
+				// No matching conversation found is OK - just ignore
+				c.JSON(http.StatusOK, gin.H{"status": "ok", "echo": "skipped"})
+				return
+			}
+
+			h.hub.BroadcastToOrg(result.OrgID, ws.Event{
+				Type: "new_message",
+				Data: map[string]interface{}{
+					"conversation_id": result.ConversationID,
+					"message_id":      result.MessageID,
+					"sender_type":     "agent",
+					"content":         msg.Content,
+				},
+			})
+			c.JSON(http.StatusOK, gin.H{"status": "ok", "echo": "saved"})
+			return
+		}
+
 		result, err := h.channelService.HandleIncomingMessage(ctx, channelID, msg)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process message: " + err.Error()})

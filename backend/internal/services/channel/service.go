@@ -123,6 +123,71 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 	}, nil
 }
 
+// HandleEchoMessage saves a message sent by our own page as an agent message
+// in the correct customer conversation.
+func (s *Service) HandleEchoMessage(ctx context.Context, channelID int64, msg *IncomingMessage) (*HandleResult, error) {
+	var orgID int64
+	var channelType string
+	err := s.db.Pool.QueryRow(ctx,
+		`SELECT org_id, type FROM channels WHERE id = $1 AND is_active = true`,
+		channelID,
+	).Scan(&orgID, &channelType)
+	if err != nil {
+		return nil, fmt.Errorf("channel not found: %w", err)
+	}
+
+	// Find the customer contact by recipient ID (the person we sent the message TO)
+	var contactID int64
+	err = s.db.Pool.QueryRow(ctx,
+		`SELECT id FROM contacts WHERE org_id = $1 AND channel_type = $2 AND external_id = $3`,
+		orgID, channelType, msg.RecipientID,
+	).Scan(&contactID)
+	if err != nil {
+		return nil, fmt.Errorf("contact not found for echo: %w", err)
+	}
+
+	// Find the latest open/pending conversation for this contact
+	var conversationID int64
+	err = s.db.Pool.QueryRow(ctx,
+		`SELECT id FROM conversations
+		 WHERE org_id = $1 AND contact_id = $2 AND channel_id = $3 AND status IN ('open', 'pending')
+		 ORDER BY last_message_at DESC LIMIT 1`,
+		orgID, contactID, channelID,
+	).Scan(&conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("no open conversation for echo: %w", err)
+	}
+
+	// Save as agent message (skip if duplicate external_id)
+	var messageID int64
+	err = s.db.Pool.QueryRow(ctx,
+		`INSERT INTO messages (conversation_id, sender_type, content, content_type, external_id)
+		 VALUES ($1, 'agent', $2, 'text', $3)
+		 ON CONFLICT DO NOTHING
+		 RETURNING id`,
+		conversationID, msg.Content, msg.ExternalID,
+	).Scan(&messageID)
+	if err != nil {
+		// Could be duplicate, just ignore
+		return nil, fmt.Errorf("echo message already exists or failed: %w", err)
+	}
+
+	now := time.Now()
+	s.db.Pool.Exec(ctx,
+		`UPDATE conversations SET last_message_at = $1, updated_at = $1,
+		 first_response_at = COALESCE(first_response_at, $1)
+		 WHERE id = $2`,
+		now, conversationID,
+	)
+
+	return &HandleResult{
+		ConversationID: conversationID,
+		MessageID:      messageID,
+		ContactID:      contactID,
+		OrgID:          orgID,
+	}, nil
+}
+
 func (s *Service) SendReply(ctx context.Context, conversationID int64, senderID int64, content string) (int64, error) {
 	// Get conversation details
 	var channelID int64

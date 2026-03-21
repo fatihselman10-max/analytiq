@@ -5,10 +5,12 @@ import "context"
 type IncomingMessage struct {
 	ExternalID  string
 	SenderID    string
+	RecipientID string // the other party (used for echo messages to find customer)
 	SenderName  string
 	AvatarURL   string
 	Content     string
 	ContentType string // text, image, file
+	IsEcho      bool   // true if sent by our own page (not a customer message)
 	Attachments []IncomingAttachment
 }
 

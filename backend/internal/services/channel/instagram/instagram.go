@@ -82,7 +82,7 @@ func (p *Provider) SendMessage(ctx context.Context, contactExternalID string, co
 
 // FetchUserProfile fetches the Instagram user's name and profile picture.
 func (p *Provider) FetchUserProfile(ctx context.Context, userID string) (name string, avatarURL string, err error) {
-	url := fmt.Sprintf("%s/%s?fields=name,profile_pic&access_token=%s", graphAPIBase, userID, p.accessToken)
+	url := fmt.Sprintf("%s/%s?fields=username,name,profile_pic&access_token=%s", graphAPIBase, userID, p.accessToken)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -103,13 +103,19 @@ func (p *Provider) FetchUserProfile(ctx context.Context, userID string) (name st
 
 	var profile struct {
 		Name       string `json:"name"`
+		Username   string `json:"username"`
 		ProfilePic string `json:"profile_pic"`
 	}
 	if err := json.Unmarshal(respBody, &profile); err != nil {
 		return "", "", fmt.Errorf("instagram: failed to parse profile: %w", err)
 	}
 
-	return profile.Name, profile.ProfilePic, nil
+	displayName := profile.Username
+	if displayName == "" {
+		displayName = profile.Name
+	}
+
+	return displayName, profile.ProfilePic, nil
 }
 
 // webhookPayload represents a simplified Instagram Messaging webhook structure.
@@ -144,27 +150,29 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 
 	messaging := payload.Entry[0].Messaging[0]
 
-	// Skip echo messages (sent by our own page)
-	if messaging.Sender.ID == p.pageID {
-		return nil, fmt.Errorf("instagram: skipping echo message from own page")
-	}
+	// Check if this is an echo (sent by our own page)
+	isEcho := messaging.Sender.ID == p.pageID
 
-	// Fetch sender profile from Graph API
 	senderName := ""
 	avatarURL := ""
-	name, avatar, err := p.FetchUserProfile(ctx, messaging.Sender.ID)
-	if err == nil {
-		senderName = name
-		avatarURL = avatar
+	if !isEcho {
+		// Fetch sender profile from Graph API for customer messages
+		name, avatar, err := p.FetchUserProfile(ctx, messaging.Sender.ID)
+		if err == nil {
+			senderName = name
+			avatarURL = avatar
+		}
 	}
 
 	return &channel.IncomingMessage{
 		ExternalID:  messaging.Message.MID,
 		SenderID:    messaging.Sender.ID,
+		RecipientID: messaging.Recipient.ID,
 		SenderName:  senderName,
 		AvatarURL:   avatarURL,
 		Content:     messaging.Message.Text,
 		ContentType: "text",
+		IsEcho:      isEcho,
 	}, nil
 }
 

@@ -3,35 +3,109 @@
 import { useState, useEffect } from "react";
 import { channelsAPI } from "@/lib/api";
 import { Channel } from "@/types";
-import { Plus, Trash2, Radio } from "lucide-react";
+import { Plus, Trash2, Settings, Check, Copy, ExternalLink, X, Zap } from "lucide-react";
 
-const CHANNEL_TYPES = [
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "instagram", label: "Instagram" },
-  { value: "telegram", label: "Telegram" },
-  { value: "facebook", label: "Facebook Messenger" },
-  { value: "twitter", label: "Twitter/X" },
-  { value: "vk", label: "VK" },
-  { value: "email", label: "E-posta" },
-  { value: "livechat", label: "LiveChat" },
+const WEBHOOK_BASE = "https://repliq-production-e4aa.up.railway.app/api/v1/webhooks";
+
+interface ChannelConfig {
+  type: string;
+  label: string;
+  emoji: string;
+  color: string;
+  bgColor: string;
+  description: string;
+  fields: { key: string; label: string; placeholder: string; type?: string; help?: string }[];
+  hasWebhook: boolean;
+}
+
+const CHANNEL_CONFIGS: ChannelConfig[] = [
+  {
+    type: "whatsapp", label: "WhatsApp", emoji: "💬", color: "text-green-600", bgColor: "bg-green-50",
+    description: "WhatsApp Business API ile musteri mesajlarini alin",
+    fields: [
+      { key: "token", label: "Access Token", placeholder: "EAAxxxxxxx...", help: "Meta Business Suite > WhatsApp > API Setup" },
+      { key: "phone_id", label: "Phone Number ID", placeholder: "1234567890", help: "WhatsApp Business hesabinizdaki telefon ID" },
+      { key: "verify_token", label: "Verify Token", placeholder: "my-verify-token", help: "Webhook dogrulama icin ozel bir token belirleyin" },
+    ],
+    hasWebhook: true,
+  },
+  {
+    type: "instagram", label: "Instagram", emoji: "📸", color: "text-pink-600", bgColor: "bg-pink-50",
+    description: "Instagram Direct mesajlarini yanitlayin",
+    fields: [
+      { key: "token", label: "Access Token", placeholder: "IGQVxxxxxxx...", help: "Meta Developer Portal > Instagram Basic Display API" },
+      { key: "app_secret", label: "App Secret", placeholder: "xxxxxxxxxxxxxxx", help: "Meta App Dashboard > Settings > Basic > App Secret" },
+    ],
+    hasWebhook: true,
+  },
+  {
+    type: "telegram", label: "Telegram", emoji: "✈️", color: "text-blue-500", bgColor: "bg-blue-50",
+    description: "Telegram bot ile musteri destegi verin",
+    fields: [
+      { key: "bot_token", label: "Bot Token", placeholder: "123456:ABC-DEF1234...", help: "@BotFather ile bot olusturun ve token alin" },
+    ],
+    hasWebhook: true,
+  },
+  {
+    type: "facebook", label: "Facebook Messenger", emoji: "📘", color: "text-blue-600", bgColor: "bg-blue-50",
+    description: "Facebook sayfa mesajlarini yonetin",
+    fields: [
+      { key: "page_token", label: "Page Access Token", placeholder: "EAAxxxxxxx...", help: "Meta Business Suite > Sayfa Ayarlari > Mesajlar" },
+      { key: "app_secret", label: "App Secret", placeholder: "xxxxxxxxxxxxxxx", help: "Meta App Dashboard > Settings > Basic" },
+    ],
+    hasWebhook: true,
+  },
+  {
+    type: "twitter", label: "Twitter / X", emoji: "🐦", color: "text-sky-500", bgColor: "bg-sky-50",
+    description: "Twitter DM mesajlarini yanitlayin",
+    fields: [
+      { key: "api_key", label: "API Key", placeholder: "xxxxxxxxxxxxxxx", help: "Twitter Developer Portal > Keys and tokens" },
+      { key: "api_secret", label: "API Secret", placeholder: "xxxxxxxxxxxxxxx", help: "Twitter Developer Portal > Keys and tokens" },
+      { key: "bearer_token", label: "Bearer Token", placeholder: "AAAAAAAAAAAAAAAAAAAAAxxxxxxx", help: "Twitter Developer Portal > Bearer Token" },
+    ],
+    hasWebhook: true,
+  },
+  {
+    type: "vk", label: "VK", emoji: "🔵", color: "text-blue-600", bgColor: "bg-blue-50",
+    description: "VK topluluk mesajlarini yonetin",
+    fields: [
+      { key: "access_token", label: "Access Token", placeholder: "vk1.a.xxxxxxx", help: "VK Community Settings > API Usage > Access Token" },
+      { key: "group_id", label: "Group ID", placeholder: "123456789", help: "VK topluluk sayfanizin ID numarasi" },
+      { key: "secret_key", label: "Secret Key", placeholder: "xxxxxxxxxxxxxxx", help: "Callback API > Secret Key" },
+    ],
+    hasWebhook: true,
+  },
+  {
+    type: "email", label: "E-posta", emoji: "📧", color: "text-gray-600", bgColor: "bg-gray-50",
+    description: "Destek e-postalarinizi bu panelden yonetin",
+    fields: [
+      { key: "smtp_host", label: "SMTP Host", placeholder: "smtp.gmail.com" },
+      { key: "smtp_port", label: "SMTP Port", placeholder: "587", type: "number" },
+      { key: "smtp_user", label: "SMTP Kullanici", placeholder: "destek@sirket.com" },
+      { key: "smtp_password", label: "SMTP Sifre", placeholder: "••••••••", type: "password" },
+      { key: "imap_host", label: "IMAP Host", placeholder: "imap.gmail.com" },
+      { key: "imap_port", label: "IMAP Port", placeholder: "993", type: "number" },
+      { key: "imap_user", label: "IMAP Kullanici", placeholder: "destek@sirket.com" },
+      { key: "imap_password", label: "IMAP Sifre", placeholder: "••••••••", type: "password" },
+    ],
+    hasWebhook: false,
+  },
+  {
+    type: "livechat", label: "LiveChat", emoji: "💜", color: "text-purple-600", bgColor: "bg-purple-50",
+    description: "Web sitenize canli destek widgeti ekleyin",
+    fields: [],
+    hasWebhook: true,
+  },
 ];
-
-const CHANNEL_COLORS: Record<string, string> = {
-  whatsapp: "bg-green-100 text-green-700",
-  instagram: "bg-pink-100 text-pink-700",
-  telegram: "bg-blue-100 text-blue-700",
-  facebook: "bg-indigo-100 text-indigo-700",
-  twitter: "bg-sky-100 text-sky-700",
-  vk: "bg-blue-100 text-blue-700",
-  email: "bg-gray-100 text-gray-700",
-  livechat: "bg-purple-100 text-purple-700",
-};
 
 export default function ChannelsPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ type: "livechat", name: "" });
+  const [selectedConfig, setSelectedConfig] = useState<ChannelConfig | null>(null);
+  const [credentials, setCredentials] = useState<Record<string, string>>({});
+  const [channelName, setChannelName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const loadChannels = async () => {
     try {
@@ -44,15 +118,41 @@ export default function ChannelsPage() {
     }
   };
 
-  useEffect(() => {
-    loadChannels();
-  }, []);
+  useEffect(() => { loadChannels(); }, []);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const getConnectedChannel = (type: string) => channels.find((c) => c.type === type);
+
+  const openConfig = (config: ChannelConfig) => {
+    const existing = getConnectedChannel(config.type);
+    setSelectedConfig(config);
+    setChannelName(existing?.name || `${config.label} Kanal`);
+    setCredentials({});
+    setCopied(false);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    await channelsAPI.create({ type: form.type, name: form.name });
-    setShowModal(false);
-    setForm({ type: "livechat", name: "" });
+    if (!selectedConfig) return;
+    setSaving(true);
+    try {
+      const existing = getConnectedChannel(selectedConfig.type);
+      if (existing) {
+        await channelsAPI.update(existing.id, { name: channelName, credentials });
+      } else {
+        await channelsAPI.create({ type: selectedConfig.type, name: channelName, credentials });
+      }
+      setSelectedConfig(null);
+      loadChannels();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDisconnect = async (id: number) => {
+    if (!confirm("Bu kanali kaldirmak istediginize emin misiniz?")) return;
+    await channelsAPI.delete(id);
     loadChannels();
   };
 
@@ -61,131 +161,166 @@ export default function ChannelsPage() {
     loadChannels();
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Bu kanali silmek istediginize emin misiniz?")) return;
-    await channelsAPI.delete(id);
-    loadChannels();
+  const copyWebhook = (type: string) => {
+    navigator.clipboard.writeText(`${WEBHOOK_BASE}/${type}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-8 space-y-8 animate-fade-in">
+      <div>
         <h1 className="text-2xl font-bold text-gray-900">Kanallar</h1>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-        >
-          <Plus className="h-4 w-4" />
-          Kanal Ekle
-        </button>
+        <p className="text-gray-500 mt-1">Sosyal medya ve mesajlasma kanallarinizi baglayarak mesajlari tek panelden yonetin</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {channels.map((channel) => (
-          <div
-            key={channel.id}
-            className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-3"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${CHANNEL_COLORS[channel.type] || "bg-gray-100"}`}>
-                  <Radio className="h-5 w-5" />
+      {/* Channel Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {CHANNEL_CONFIGS.map((config) => {
+          const connected = getConnectedChannel(config.type);
+          return (
+            <div key={config.type} className="card card-hover p-5 flex flex-col gap-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-11 h-11 rounded-xl ${config.bgColor} flex items-center justify-center text-xl`}>
+                    {config.emoji}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 text-sm">{config.label}</h3>
+                    <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{config.description}</p>
+                  </div>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between mt-auto pt-2 border-t border-gray-50">
+                {connected ? (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-2 h-2 rounded-full ${connected.is_active ? "bg-green-500" : "bg-gray-300"}`} />
+                      <span className={`text-xs font-medium ${connected.is_active ? "text-green-600" : "text-gray-400"}`}>
+                        {connected.is_active ? "Bagli" : "Pasif"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => handleToggle(connected)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${connected.is_active ? "bg-green-500" : "bg-gray-300"}`}>
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm ${connected.is_active ? "translate-x-4" : "translate-x-0.5"}`} />
+                      </button>
+                      <button onClick={() => openConfig(config)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
+                        <Settings className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button onClick={() => openConfig(config)}
+                    className="w-full py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all flex items-center justify-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5" />
+                    Bagla
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Connection Modal */}
+      {selectedConfig && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-up">
+            {/* Modal Header */}
+            <div className={`p-6 border-b border-gray-100 flex items-center gap-3`}>
+              <div className={`w-10 h-10 rounded-xl ${selectedConfig.bgColor} flex items-center justify-center text-lg`}>
+                {selectedConfig.emoji}
+              </div>
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-gray-900">{selectedConfig.label}</h2>
+                <p className="text-xs text-gray-400">{selectedConfig.description}</p>
+              </div>
+              <button onClick={() => setSelectedConfig(null)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSave} className="p-6 space-y-4">
+              {/* Channel Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Kanal Adi</label>
+                <input value={channelName} onChange={(e) => setChannelName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm" required placeholder="Ornegin: Destek WhatsApp" />
+              </div>
+
+              {/* Webhook URL */}
+              {selectedConfig.hasWebhook && (
                 <div>
-                  <h3 className="font-medium text-gray-900">{channel.name}</h3>
-                  <p className="text-xs text-gray-500 capitalize">{channel.type}</p>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Webhook URL</label>
+                  <div className="flex items-center gap-2">
+                    <input value={`${WEBHOOK_BASE}/${selectedConfig.type}`} readOnly
+                      className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 text-gray-600 font-mono text-xs" />
+                    <button type="button" onClick={() => copyWebhook(selectedConfig.type)}
+                      className={`p-2.5 rounded-xl transition-all ${copied ? "bg-green-50 text-green-600" : "bg-gray-50 text-gray-400 hover:text-gray-600 hover:bg-gray-100"}`}>
+                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1.5">Bu URL&apos;yi {selectedConfig.label} webhook ayarlariniza yapiştirin</p>
                 </div>
-              </div>
-              <button
-                onClick={() => handleDelete(channel.id)}
-                className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <span
-                className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                  channel.is_active
-                    ? "bg-green-50 text-green-700"
-                    : "bg-gray-100 text-gray-500"
-                }`}
-              >
-                {channel.is_active ? "Aktif" : "Pasif"}
-              </span>
-              <button
-                onClick={() => handleToggle(channel)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  channel.is_active ? "bg-primary-600" : "bg-gray-300"
-                }`}
-              >
-                <span
-                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                    channel.is_active ? "translate-x-4.5" : "translate-x-0.5"
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-        ))}
-        {channels.length === 0 && (
-          <div className="col-span-full bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
-            Henuz kanal eklenmemis
-          </div>
-        )}
-      </div>
+              )}
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h2 className="text-lg font-semibold mb-4">Yeni Kanal Ekle</h2>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Kanal Tipi</label>
-                <select
-                  value={form.type}
-                  onChange={(e) => setForm({ ...form, type: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                >
-                  {CHANNEL_TYPES.map((ct) => (
-                    <option key={ct.value} value={ct.value}>
-                      {ct.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Kanal Adi</label>
-                <input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  placeholder="Ornegin: Destek WhatsApp"
-                  required
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Iptal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-                >
-                  Ekle
-                </button>
+              {/* LiveChat embed info */}
+              {selectedConfig.type === "livechat" && (
+                <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                  <p className="text-sm text-purple-800 font-medium mb-2">Widget Entegrasyonu</p>
+                  <p className="text-xs text-purple-600 mb-3">Asagidaki kodu web sitenizin {"<body>"} etiketinin sonuna ekleyin:</p>
+                  <pre className="bg-white rounded-lg p-3 text-xs text-gray-700 overflow-x-auto border border-purple-100">
+{`<script src="https://repliq-mu.vercel.app/widget.js"
+  data-org="YOUR_ORG_SLUG">
+</script>`}
+                  </pre>
+                </div>
+              )}
+
+              {/* Credential Fields */}
+              {selectedConfig.fields.map((field) => (
+                <div key={field.key}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{field.label}</label>
+                  <input
+                    type={field.type || "text"}
+                    value={credentials[field.key] || ""}
+                    onChange={(e) => setCredentials({ ...credentials, [field.key]: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm"
+                    placeholder={field.placeholder}
+                  />
+                  {field.help && <p className="text-xs text-gray-400 mt-1">{field.help}</p>}
+                </div>
+              ))}
+
+              {/* Actions */}
+              <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                {getConnectedChannel(selectedConfig.type) && (
+                  <button type="button"
+                    onClick={() => { handleDisconnect(getConnectedChannel(selectedConfig.type)!.id); setSelectedConfig(null); }}
+                    className="text-sm text-red-500 hover:text-red-700 font-medium transition-colors">
+                    Baglantivi Kes
+                  </button>
+                )}
+                <div className="flex items-center gap-3 ml-auto">
+                  <button type="button" onClick={() => setSelectedConfig(null)}
+                    className="px-4 py-2.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 transition-all font-medium text-gray-600">
+                    Iptal
+                  </button>
+                  <button type="submit" disabled={saving}
+                    className="px-5 py-2.5 text-sm btn-gradient disabled:opacity-50">
+                    {saving ? "Kaydediliyor..." : getConnectedChannel(selectedConfig.type) ? "Guncelle" : "Bagla"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

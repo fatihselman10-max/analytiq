@@ -123,11 +123,13 @@ export default function InboxPage() {
   return (
     <div className="flex h-screen">
       {/* Left Panel - Conversation List */}
-      <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200">
-          <Inbox className="h-5 w-5 text-primary-600" />
-          <h1 className="text-base font-semibold text-gray-900">Gelen Kutusu</h1>
-          <span className="ml-auto text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+      <div className="w-80 border-r border-gray-100 bg-white flex flex-col">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+          <div className="p-1.5 rounded-lg bg-blue-50">
+            <Inbox className="h-4 w-4 text-blue-600" />
+          </div>
+          <h1 className="text-sm font-semibold text-gray-900">Gelen Kutusu</h1>
+          <span className="ml-auto text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg">
             {filteredConversations.length}
           </span>
         </div>
@@ -154,9 +156,9 @@ export default function InboxPage() {
         {activeConversation ? (
           <>
             {/* Thread Header */}
-            <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-200 bg-white">
-              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                <span className="text-sm font-medium text-gray-600">
+            <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-100 bg-white">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center flex-shrink-0">
+                <span className="text-sm font-semibold text-blue-600">
                   {activeConversation.contact?.name?.charAt(0)?.toUpperCase() || "?"}
                 </span>
               </div>
@@ -201,19 +203,19 @@ export default function InboxPage() {
             <MessageInput onSend={handleSend} onNote={handleNote} />
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-            <MessageSquare className="h-12 w-12 mb-3 text-gray-300" />
-            <p className="text-sm font-medium">Bir konusma secin</p>
-            <p className="text-xs text-gray-400 mt-1">
-              Sol panelden bir konusma secin
-            </p>
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-300">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center mb-4">
+              <MessageSquare className="h-8 w-8 text-blue-400" />
+            </div>
+            <p className="text-sm font-semibold text-gray-500">Bir konusma secin</p>
+            <p className="text-xs text-gray-400 mt-1">Sol panelden bir konusma secerek baslayabilirsiniz</p>
           </div>
         )}
       </div>
 
       {/* Right Panel - Contact Panel */}
       {activeConversation && (
-        <div className="w-80 border-l border-gray-200 bg-white flex flex-col">
+        <div className="w-80 border-l border-gray-100 bg-white flex flex-col">
           <ContactPanel
             conversation={activeConversation}
             onUpdate={handleUpdate}

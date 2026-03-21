@@ -13,7 +13,6 @@ import {
   Settings,
   LogOut,
   MessageSquare,
-  Tag,
 } from "lucide-react";
 
 const navItems = [
@@ -31,43 +30,63 @@ export default function Sidebar() {
   const { user, organization, logout } = useAuthStore();
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 min-h-screen flex flex-col">
-      <div className="p-6 border-b border-gray-200">
-        <Link href="/inbox" className="flex items-center gap-2">
-          <MessageSquare className="h-8 w-8 text-primary-600" />
-          <span className="text-xl font-bold text-gray-900">Repliq</span>
+    <aside className="w-64 bg-white border-r border-gray-100 min-h-screen flex flex-col">
+      {/* Logo */}
+      <div className="px-6 py-5">
+        <Link href="/inbox" className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-600/20">
+            <MessageSquare className="h-5 w-5 text-white" />
+          </div>
+          <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+            Repliq
+          </span>
         </Link>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      {/* Navigation */}
+      <nav className="flex-1 px-3 mt-2 space-y-0.5">
         {navItems.map((item) => {
           const isActive = pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group ${
                 isActive
-                  ? "bg-primary-50 text-primary-700"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  ? "bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-sm"
+                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
               }`}
             >
-              <item.icon className="h-5 w-5" />
+              <div
+                className={`p-1.5 rounded-lg transition-colors ${
+                  isActive
+                    ? "bg-blue-100"
+                    : "bg-transparent group-hover:bg-gray-100"
+                }`}
+              >
+                <item.icon className={`h-4 w-4 ${isActive ? "text-blue-600" : ""}`} />
+              </div>
               {item.label}
+              {isActive && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />
+              )}
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-gray-200">
+      {/* User */}
+      <div className="p-3 mt-auto">
         {organization && (
-          <div className="px-3 py-1 mb-2">
-            <p className="text-xs text-gray-400 uppercase tracking-wider">{organization.name}</p>
+          <div className="px-3 py-1.5 mb-2">
+            <p className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
+              {organization.name}
+            </p>
           </div>
         )}
-        <div className="flex items-center gap-3 px-3 py-2">
-          <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
-            <span className="text-primary-700 text-sm font-medium">
+        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50/80">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-sm">
+            <span className="text-white text-sm font-semibold">
               {user?.full_name?.charAt(0) || "U"}
             </span>
           </div>
@@ -75,11 +94,11 @@ export default function Sidebar() {
             <p className="text-sm font-medium text-gray-900 truncate">
               {user?.full_name}
             </p>
-            <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+            <p className="text-xs text-gray-400 truncate">{user?.email}</p>
           </div>
           <button
             onClick={logout}
-            className="text-gray-400 hover:text-red-500 transition-colors"
+            className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
           >
             <LogOut className="h-4 w-4" />
           </button>

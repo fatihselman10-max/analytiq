@@ -3,8 +3,8 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -32,25 +32,22 @@ func NewWebhookHandler(db *database.DB, channelService *channel.Service, registr
 // loadProviderFromDB loads a channel provider with credentials from the database
 func (h *WebhookHandler) loadProviderFromDB(ctx context.Context, channelType string) (channel.Provider, int64, error) {
 	var channelID int64
-	var credsJSON []byte
+	var credsStr string
 	err := h.db.Pool.QueryRow(ctx,
-		`SELECT id, credentials FROM channels WHERE type = $1 AND is_active = true LIMIT 1`,
+		`SELECT id, COALESCE(credentials::text, '{}') FROM channels WHERE type = $1 AND is_active = true LIMIT 1`,
 		channelType,
-	).Scan(&channelID, &credsJSON)
+	).Scan(&channelID, &credsStr)
 	if err != nil {
+		fmt.Printf("[WEBHOOK] failed to load channel %s: %v\n", channelType, err)
 		return nil, 0, err
 	}
 
 	var creds map[string]string
-	if len(credsJSON) > 0 {
-		if err := json.Unmarshal(credsJSON, &creds); err != nil {
-			log.Printf("webhook: failed to unmarshal credentials for %s: %v (raw: %s)", channelType, err, string(credsJSON))
-		}
-	}
-	if creds == nil {
+	if err := json.Unmarshal([]byte(credsStr), &creds); err != nil {
+		fmt.Printf("[WEBHOOK] failed to unmarshal credentials for %s: %v (raw: %s)\n", channelType, err, credsStr)
 		creds = make(map[string]string)
 	}
-	log.Printf("webhook: loaded %s provider with page_id=%s, has_token=%v", channelType, creds["page_id"], creds["access_token"] != "")
+	fmt.Printf("[WEBHOOK] loaded %s provider: page_id=%s, has_token=%v\n", channelType, creds["page_id"], creds["access_token"] != "")
 
 	var provider channel.Provider
 	switch channelType {

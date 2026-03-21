@@ -46,7 +46,7 @@ func (h *MessageHandler) List(c *gin.Context) {
 
 	rows, err := h.db.Pool.Query(ctx,
 		`SELECT m.id, m.conversation_id, m.sender_type, m.sender_id, m.content,
-		        m.content_type, m.is_internal, m.external_id, m.created_at,
+		        m.content_type, m.is_internal, COALESCE(m.external_id, ''), m.created_at,
 		        COALESCE(u.full_name, co.name, '') AS sender_name
 		 FROM messages m
 		 LEFT JOIN users u ON m.sender_type IN ('agent', 'bot') AND u.id = m.sender_id

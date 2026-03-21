@@ -89,11 +89,8 @@ export default function InboxPage() {
       try {
         const res = await messagesAPI.list(convId);
         const msgs = res.data?.messages || res.data || [];
-        console.log("[REPLIQ] messages for conv", convId, "count:", msgs.length, "last:", msgs[msgs.length - 1]);
         setMessages(convId, msgs);
-      } catch (err) {
-        console.error("[REPLIQ] refreshMessages error:", err);
-      }
+      } catch {}
     },
     [setMessages]
   );

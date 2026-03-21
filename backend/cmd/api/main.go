@@ -13,6 +13,7 @@ import (
 	"github.com/repliq/backend/internal/middleware"
 	"github.com/repliq/backend/internal/services/bot"
 	"github.com/repliq/backend/internal/services/channel"
+	igprovider "github.com/repliq/backend/internal/services/channel/instagram"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -33,6 +34,9 @@ func main() {
 
 	// Channel registry & service
 	registry := channel.NewRegistry()
+	registry.RegisterFactory("instagram", func(config map[string]string) channel.Provider {
+		return igprovider.NewInstagramProvider(config)
+	})
 	channelService := channel.NewService(db, registry)
 
 	// Bot engine

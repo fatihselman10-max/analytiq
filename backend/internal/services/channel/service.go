@@ -2,6 +2,7 @@ package channel
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -125,24 +126,31 @@ func (s *Service) SendReply(ctx context.Context, conversationID int64, senderID 
 	var channelID int64
 	var contactExternalID string
 	var channelType string
+	var credsJSON []byte
 	err := s.db.Pool.QueryRow(ctx,
-		`SELECT c.channel_id, co.external_id, ch.type
+		`SELECT c.channel_id, co.external_id, ch.type, ch.credentials
 		 FROM conversations c
 		 JOIN contacts co ON co.id = c.contact_id
 		 JOIN channels ch ON ch.id = c.channel_id
 		 WHERE c.id = $1`,
 		conversationID,
-	).Scan(&channelID, &contactExternalID, &channelType)
+	).Scan(&channelID, &contactExternalID, &channelType, &credsJSON)
 	if err != nil {
 		return 0, fmt.Errorf("conversation not found: %w", err)
 	}
 
-	// Send via channel provider
-	provider, err := s.registry.Get(channelType)
-	if err == nil && channelType != "livechat" {
-		_, err = provider.SendMessage(ctx, contactExternalID, content, nil)
-		if err != nil {
-			return 0, fmt.Errorf("failed to send message via %s: %w", channelType, err)
+	// Send via channel provider (load credentials from DB)
+	if channelType != "livechat" {
+		var creds map[string]string
+		if len(credsJSON) > 0 {
+			json.Unmarshal(credsJSON, &creds)
+		}
+		provider := s.registry.CreateProvider(channelType, creds)
+		if provider != nil {
+			_, err = provider.SendMessage(ctx, contactExternalID, content, nil)
+			if err != nil {
+				return 0, fmt.Errorf("failed to send message via %s: %w", channelType, err)
+			}
 		}
 	}
 

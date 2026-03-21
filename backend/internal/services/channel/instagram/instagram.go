@@ -1,22 +1,22 @@
 package instagram
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 
 	"github.com/repliq/backend/internal/services/channel"
 )
 
-// Provider implements the channel.Provider interface for Instagram Messaging API.
 type Provider struct {
 	pageID      string
 	accessToken string
 	appSecret   string
 }
 
-// NewInstagramProvider creates a new Instagram provider from the given config map.
-// Expected keys: "page_id", "access_token", "app_secret".
 func NewInstagramProvider(config map[string]string) *Provider {
 	return &Provider{
 		pageID:      config["page_id"],
@@ -30,11 +30,55 @@ func (p *Provider) GetType() string {
 }
 
 func (p *Provider) SendMessage(ctx context.Context, contactExternalID string, content string, attachments []channel.IncomingAttachment) (string, error) {
-	externalID := fmt.Sprintf("ig_mid.%s_%s", contactExternalID, "stub-message-id")
-	return externalID, nil
+	if p.accessToken == "" {
+		return "", fmt.Errorf("instagram: access token not configured")
+	}
+
+	// Instagram Graph API - Send Message
+	url := fmt.Sprintf("https://graph.instagram.com/v21.0/me/messages?access_token=%s", p.accessToken)
+
+	payload := map[string]interface{}{
+		"recipient": map[string]string{
+			"id": contactExternalID,
+		},
+		"message": map[string]string{
+			"text": content,
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("instagram: failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("instagram: failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("instagram: failed to send message: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("instagram: API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		MessageID string `json:"message_id"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("instagram: failed to parse response: %w", err)
+	}
+
+	return result.MessageID, nil
 }
 
-// webhookPayload represents a simplified Instagram Messaging webhook structure.
 type webhookPayload struct {
 	Entry []struct {
 		ID        string `json:"id"`
@@ -76,7 +120,7 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 }
 
 func (p *Provider) ValidateCredentials(ctx context.Context, creds map[string]string) error {
-	required := []string{"page_id", "access_token"}
+	required := []string{"access_token"}
 	for _, key := range required {
 		if creds[key] == "" {
 			return fmt.Errorf("instagram: missing required credential: %s", key)

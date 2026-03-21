@@ -193,15 +193,15 @@ func (s *Service) SendReply(ctx context.Context, conversationID int64, senderID 
 	var channelID int64
 	var contactExternalID string
 	var channelType string
-	var credsJSON []byte
+	var credsStr string
 	err := s.db.Pool.QueryRow(ctx,
-		`SELECT c.channel_id, co.external_id, ch.type, ch.credentials
+		`SELECT c.channel_id, co.external_id, ch.type, COALESCE(ch.credentials::text, '{}')
 		 FROM conversations c
 		 JOIN contacts co ON co.id = c.contact_id
 		 JOIN channels ch ON ch.id = c.channel_id
 		 WHERE c.id = $1`,
 		conversationID,
-	).Scan(&channelID, &contactExternalID, &channelType, &credsJSON)
+	).Scan(&channelID, &contactExternalID, &channelType, &credsStr)
 	if err != nil {
 		return 0, fmt.Errorf("conversation not found: %w", err)
 	}
@@ -209,9 +209,7 @@ func (s *Service) SendReply(ctx context.Context, conversationID int64, senderID 
 	// Send via channel provider (load credentials from DB)
 	if channelType != "livechat" {
 		var creds map[string]string
-		if len(credsJSON) > 0 {
-			json.Unmarshal(credsJSON, &creds)
-		}
+		json.Unmarshal([]byte(credsStr), &creds)
 		provider := s.registry.CreateProvider(channelType, creds)
 		if provider != nil {
 			_, err = provider.SendMessage(ctx, contactExternalID, content, nil)

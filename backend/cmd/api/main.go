@@ -36,6 +36,9 @@ func main() {
 
 	// Channel registry & service
 	registry := channel.NewRegistry()
+	registry.RegisterFactory("instagram", func(config map[string]string) channel.Provider {
+		return instagram.NewInstagramProvider(config)
+	})
 
 	// Register channel providers from DB
 	func() {

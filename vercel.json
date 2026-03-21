@@ -12,5 +12,16 @@
       "source": "/ws",
       "destination": "https://repliq-production-e4aa.up.railway.app/ws"
     }
-  ]
+  ],
+  "experimentalServices": {
+    "frontend": {
+      "entrypoint": "frontend",
+      "routePrefix": "/",
+      "framework": "nextjs"
+    },
+    "backend": {
+      "entrypoint": "backend",
+      "routePrefix": "/_/backend"
+    }
+  }
 }

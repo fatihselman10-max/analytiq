@@ -99,6 +99,17 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 			return
 		}
 
+		// Debug: return parsed message info
+		if c.Query("debug") == "1" {
+			c.JSON(http.StatusOK, gin.H{
+				"parsed_sender_name": msg.SenderName,
+				"parsed_avatar":     msg.AvatarURL != "",
+				"parsed_sender_id":  msg.SenderID,
+				"parsed_content":    msg.Content,
+			})
+			return
+		}
+
 		result, err := h.channelService.HandleIncomingMessage(ctx, channelID, msg)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process message: " + err.Error()})

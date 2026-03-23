@@ -9,6 +9,7 @@ import {
   Phone,
   Globe,
   Circle,
+  Layers,
 } from "lucide-react";
 
 interface ConversationListProps {
@@ -17,15 +18,24 @@ interface ConversationListProps {
   onSelect: (id: number) => void;
   statusFilter: string;
   onStatusFilter: (status: string) => void;
+  channelFilter: string;
+  onChannelFilter: (channel: string) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
 }
 
 const statusTabs = [
-  { key: "all", label: "Tumu" },
-  { key: "open", label: "Acik" },
+  { key: "all", label: "Tümü" },
+  { key: "open", label: "Açık" },
   { key: "pending", label: "Beklemede" },
-  { key: "resolved", label: "Cozuldu" },
+  { key: "resolved", label: "Çözüldü" },
+];
+
+const channelTabs = [
+  { key: "all", label: "Tümü", icon: Layers },
+  { key: "instagram", label: "Instagram", icon: Instagram },
+  { key: "email", label: "E-posta", icon: Mail },
+  { key: "whatsapp", label: "WhatsApp", icon: MessageCircle },
 ];
 
 const channelIcon: Record<string, React.ElementType> = {
@@ -38,9 +48,9 @@ const channelIcon: Record<string, React.ElementType> = {
 
 const priorityConfig: Record<string, { label: string; className: string }> = {
   urgent: { label: "Acil", className: "bg-red-100 text-red-700" },
-  high: { label: "Yuksek", className: "bg-orange-100 text-orange-700" },
+  high: { label: "Yüksek", className: "bg-orange-100 text-orange-700" },
   normal: { label: "Normal", className: "bg-blue-100 text-blue-700" },
-  low: { label: "Dusuk", className: "bg-gray-100 text-gray-600" },
+  low: { label: "Düşük", className: "bg-gray-100 text-gray-600" },
 };
 
 function formatTime(dateStr: string | null): string {
@@ -49,7 +59,7 @@ function formatTime(dateStr: string | null): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "simdi";
+  if (diffMins < 1) return "şimdi";
   if (diffMins < 60) return `${diffMins}dk`;
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}sa`;
@@ -64,6 +74,8 @@ export default function ConversationList({
   onSelect,
   statusFilter,
   onStatusFilter,
+  channelFilter,
+  onChannelFilter,
   searchQuery,
   onSearchChange,
 }: ConversationListProps) {
@@ -75,12 +87,33 @@ export default function ConversationList({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Konusmalarda ara..."
+            placeholder="Konuşmalarda ara..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
           />
         </div>
+      </div>
+
+      {/* Channel Filter */}
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 overflow-x-auto">
+        {channelTabs.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => onChannelFilter(tab.key)}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all whitespace-nowrap ${
+                channelFilter === tab.key
+                  ? "bg-primary-50 text-primary-700 ring-1 ring-primary-200"
+                  : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Status Tabs */}
@@ -105,7 +138,7 @@ export default function ConversationList({
         {conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
             <MessageCircle className="h-10 w-10 text-gray-300 mb-3" />
-            <p className="text-sm text-gray-500">Konusma bulunamadi</p>
+            <p className="text-sm text-gray-500">Konuşma bulunamadı</p>
           </div>
         ) : (
           conversations.map((conv) => {

@@ -32,6 +32,7 @@ type Config struct {
 	IMAPPort           string
 	IMAPUser           string
 	IMAPPassword       string
+	AnthropicAPIKey    string
 }
 
 func Load() *Config {
@@ -62,6 +63,7 @@ func Load() *Config {
 		IMAPPort:            getEnv("IMAP_PORT", "993"),
 		IMAPUser:            os.Getenv("IMAP_USER"),
 		IMAPPassword:        os.Getenv("IMAP_PASSWORD"),
+		AnthropicAPIKey:     os.Getenv("ANTHROPIC_API_KEY"),
 	}
 }
 

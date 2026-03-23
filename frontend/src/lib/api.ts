@@ -88,9 +88,22 @@ export const contactsAPI = {
 
 // Reports
 export const reportsAPI = {
-  overview: () => api.get("/reports/overview"),
-  agents: () => api.get("/reports/agents"),
-  channels: () => api.get("/reports/channels"),
+  overview: (period?: string, channel?: string) => api.get("/reports/overview", { params: { period, channel } }),
+  agents: (period?: string, channel?: string) => api.get("/reports/agents", { params: { period, channel } }),
+  channels: (period?: string) => api.get("/reports/channels", { params: { period } }),
+  messages: (period?: string, channel?: string) => api.get("/reports/messages", { params: { period, channel } }),
+};
+
+// AI Bot
+export const aiBotAPI = {
+  getConfig: () => api.get("/ai-bot/config"),
+  saveConfig: (data: {
+    brand_name: string; brand_description: string; brand_tone: string;
+    products_services: string; faq: string; policies: string;
+    greeting_message: string; fallback_message: string; custom_instructions: string;
+  }) => api.post("/ai-bot/config", data),
+  toggle: () => api.patch("/ai-bot/toggle"),
+  getUsage: () => api.get("/ai-bot/usage"),
 };
 
 // Bot

@@ -7,8 +7,9 @@ import ConversationList from "@/components/inbox/ConversationList";
 import MessageThread from "@/components/inbox/MessageThread";
 import MessageInput from "@/components/inbox/MessageInput";
 import ContactPanel from "@/components/inbox/ContactPanel";
-import { Inbox, MessageSquare } from "lucide-react";
+import { Inbox, MessageSquare, ArrowLeft, User } from "lucide-react";
 import { Conversation } from "@/types";
+import { useToast } from "@/components/ui/Toast";
 
 export default function InboxPage() {
   const {
@@ -22,8 +23,11 @@ export default function InboxPage() {
   } = useConversationsStore();
 
   const [statusFilter, setStatusFilter] = useState("all");
+  const [channelFilter, setChannelFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showContactPanel, setShowContactPanel] = useState(false);
+  const { toast } = useToast();
 
   // Fetch conversations on mount + poll every 5s
   useEffect(() => {
@@ -61,6 +65,10 @@ export default function InboxPage() {
       filtered = filtered.filter((c) => c.status === statusFilter);
     }
 
+    if (channelFilter !== "all") {
+      filtered = filtered.filter((c) => c.channel_type === channelFilter);
+    }
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
@@ -73,7 +81,7 @@ export default function InboxPage() {
     }
 
     return filtered;
-  }, [conversations, statusFilter, searchQuery]);
+  }, [conversations, statusFilter, channelFilter, searchQuery]);
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeConversationId) || null,
@@ -100,10 +108,10 @@ export default function InboxPage() {
       if (!activeConversationId) return;
       try {
         await messagesAPI.reply(activeConversationId, content);
-      } catch (err) {
-        console.error("Failed to send message:", err);
+      } catch {
+        toast("Mesaj gönderilemedi", "error");
+        return;
       }
-      // Always refresh messages after attempt
       await refreshMessages(activeConversationId);
     },
     [activeConversationId, refreshMessages]
@@ -114,8 +122,9 @@ export default function InboxPage() {
       if (!activeConversationId) return;
       try {
         await messagesAPI.addNote(activeConversationId, content);
-      } catch (err) {
-        console.error("Failed to add note:", err);
+      } catch {
+        toast("Not eklenemedi", "error");
+        return;
       }
       await refreshMessages(activeConversationId);
     },
@@ -129,10 +138,23 @@ export default function InboxPage() {
     [updateConversation]
   );
 
+  const handleMobileBack = () => {
+    setActiveConversation(0);
+    setShowContactPanel(false);
+  };
+
+  const handleMobileSelect = (id: number) => {
+    setActiveConversation(id);
+    setShowContactPanel(false);
+  };
+
+  // Mobile: show list or thread based on activeConversationId
+  const showMobileThread = activeConversationId && activeConversation;
+
   return (
-    <div className="flex h-screen">
+    <div className="flex h-[calc(100vh-3rem)] lg:h-screen">
       {/* Left Panel - Conversation List */}
-      <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
+      <div className={`${showMobileThread ? "hidden lg:flex" : "flex"} w-full lg:w-80 border-r border-gray-200 bg-white flex-col`}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200">
           <Inbox className="h-5 w-5 text-primary-600" />
           <h1 className="text-base font-semibold text-gray-900">Gelen Kutusu</h1>
@@ -149,9 +171,11 @@ export default function InboxPage() {
           <ConversationList
             conversations={filteredConversations}
             activeId={activeConversationId}
-            onSelect={setActiveConversation}
+            onSelect={handleMobileSelect}
             statusFilter={statusFilter}
             onStatusFilter={setStatusFilter}
+            channelFilter={channelFilter}
+            onChannelFilter={setChannelFilter}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
           />
@@ -159,11 +183,15 @@ export default function InboxPage() {
       </div>
 
       {/* Center Panel - Message Thread */}
-      <div className="flex-1 flex flex-col bg-white min-w-0">
+      <div className={`${showMobileThread ? "flex" : "hidden lg:flex"} flex-1 flex-col bg-white min-w-0`}>
         {activeConversation ? (
           <>
             {/* Thread Header */}
-            <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-200 bg-white">
+            <div className="flex items-center gap-3 px-4 lg:px-6 py-3 border-b border-gray-200 bg-white">
+              {/* Mobile back button */}
+              <button onClick={handleMobileBack} className="lg:hidden p-1 -ml-1 text-gray-500 hover:text-gray-900">
+                <ArrowLeft className="h-5 w-5" />
+              </button>
               {activeConversation.contact?.avatar_url ? (
                 <img
                   src={activeConversation.contact.avatar_url}
@@ -177,18 +205,15 @@ export default function InboxPage() {
                   </span>
                 </div>
               )}
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <h2 className="text-sm font-semibold text-gray-900 truncate">
-                  {activeConversation.subject || "Konu yok"}
+                  {activeConversation.contact?.name || "Bilinmeyen"}
                 </h2>
                 <p className="text-xs text-gray-500 truncate">
-                  {activeConversation.contact?.name || "Bilinmeyen"}{" "}
-                  {activeConversation.contact?.email
-                    ? `- ${activeConversation.contact.email}`
-                    : ""}
+                  {activeConversation.subject || "Konu yok"}
                 </p>
               </div>
-              <div className="ml-auto flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <span
                   className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
                     activeConversation.status === "open"
@@ -201,13 +226,20 @@ export default function InboxPage() {
                   }`}
                 >
                   {activeConversation.status === "open"
-                    ? "Acik"
+                    ? "Açık"
                     : activeConversation.status === "pending"
                     ? "Beklemede"
                     : activeConversation.status === "resolved"
-                    ? "Cozuldu"
-                    : "Kapali"}
+                    ? "Çözüldü"
+                    : "Kapalı"}
                 </span>
+                {/* Mobile contact info toggle */}
+                <button
+                  onClick={() => setShowContactPanel(!showContactPanel)}
+                  className="lg:hidden p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                >
+                  <User className="h-4 w-4" />
+                </button>
               </div>
             </div>
 
@@ -215,27 +247,50 @@ export default function InboxPage() {
             <MessageThread messages={activeMessages} />
 
             {/* Input */}
-            <MessageInput onSend={handleSend} onNote={handleNote} />
+            <div className="mb-14 lg:mb-0">
+              <MessageInput onSend={handleSend} onNote={handleNote} />
+            </div>
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
             <MessageSquare className="h-12 w-12 mb-3 text-gray-300" />
-            <p className="text-sm font-medium">Bir konusma secin</p>
+            <p className="text-sm font-medium">Bir konuşma seçin</p>
             <p className="text-xs text-gray-400 mt-1">
-              Sol panelden bir konusma secin
+              Sol panelden bir konuşma seçin
             </p>
           </div>
         )}
       </div>
 
-      {/* Right Panel - Contact Panel */}
+      {/* Right Panel - Contact Panel (Desktop: always visible, Mobile: overlay) */}
       {activeConversation && (
-        <div className="w-80 border-l border-gray-200 bg-white flex flex-col">
-          <ContactPanel
-            conversation={activeConversation}
-            onUpdate={handleUpdate}
-          />
-        </div>
+        <>
+          {/* Desktop */}
+          <div className="hidden lg:flex w-80 border-l border-gray-200 bg-white flex-col">
+            <ContactPanel
+              conversation={activeConversation}
+              onUpdate={handleUpdate}
+            />
+          </div>
+          {/* Mobile overlay */}
+          {showContactPanel && (
+            <>
+              <div className="lg:hidden fixed inset-0 z-30 bg-black/30" onClick={() => setShowContactPanel(false)} />
+              <div className="lg:hidden fixed right-0 top-12 bottom-14 z-40 w-80 max-w-[85vw] bg-white border-l border-gray-200 shadow-xl overflow-y-auto">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                  <h3 className="text-sm font-semibold text-gray-900">Müşteri Bilgileri</h3>
+                  <button onClick={() => setShowContactPanel(false)} className="p-1 text-gray-400 hover:text-gray-700">
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                </div>
+                <ContactPanel
+                  conversation={activeConversation}
+                  onUpdate={handleUpdate}
+                />
+              </div>
+            </>
+          )}
+        </>
       )}
     </div>
   );

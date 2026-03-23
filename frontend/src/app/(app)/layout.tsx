@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useWebSocket } from "@/lib/websocket";
 import Sidebar from "@/components/layout/Sidebar";
+import { ToastProvider } from "@/components/ui/Toast";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -31,9 +32,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <Sidebar />
-      <main className="flex-1 overflow-auto">{children}</main>
-    </div>
+    <ToastProvider>
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar />
+        <main className="flex-1 overflow-auto pt-12 pb-16 lg:pt-0 lg:pb-0">{children}</main>
+      </div>
+    </ToastProvider>
   );
 }

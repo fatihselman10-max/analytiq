@@ -22,11 +22,12 @@ type WebhookHandler struct {
 	channelService *channel.Service
 	registry       *channel.Registry
 	botEngine      *bot.Engine
+	aiBot          *bot.AIBot
 	hub            *ws.Hub
 }
 
-func NewWebhookHandler(db *database.DB, channelService *channel.Service, registry *channel.Registry, botEngine *bot.Engine, hub *ws.Hub) *WebhookHandler {
-	return &WebhookHandler{db: db, channelService: channelService, registry: registry, botEngine: botEngine, hub: hub}
+func NewWebhookHandler(db *database.DB, channelService *channel.Service, registry *channel.Registry, botEngine *bot.Engine, aiBot *bot.AIBot, hub *ws.Hub) *WebhookHandler {
+	return &WebhookHandler{db: db, channelService: channelService, registry: registry, botEngine: botEngine, aiBot: aiBot, hub: hub}
 }
 
 // loadProviderFromDB loads a channel provider with credentials from the database
@@ -125,10 +126,13 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 			return
 		}
 
-		// Try bot processing
+		// Try keyword bot first, then AI bot
 		var chType string
 		h.db.Pool.QueryRow(ctx, `SELECT type FROM channels WHERE id = $1`, channelID).Scan(&chType)
-		h.botEngine.ProcessMessage(ctx, result.OrgID, result.ConversationID, msg.Content, chType)
+		_, matched, _ := h.botEngine.ProcessMessage(ctx, result.OrgID, result.ConversationID, msg.Content, chType)
+		if !matched && h.aiBot != nil {
+			h.aiBot.ProcessMessage(ctx, result.OrgID, result.ConversationID, msg.Content, chType)
+		}
 
 		// Broadcast via WebSocket
 		h.hub.BroadcastToOrg(result.OrgID, ws.Event{
@@ -187,7 +191,10 @@ func (h *WebhookHandler) HandleLiveChatMessage(c *gin.Context) {
 
 	var chType string
 	h.db.Pool.QueryRow(c.Request.Context(), `SELECT type FROM channels WHERE id = $1`, req.ChannelID).Scan(&chType)
-	h.botEngine.ProcessMessage(c.Request.Context(), result.OrgID, result.ConversationID, req.Content, chType)
+	_, lcMatched, _ := h.botEngine.ProcessMessage(c.Request.Context(), result.OrgID, result.ConversationID, req.Content, chType)
+	if !lcMatched && h.aiBot != nil {
+		h.aiBot.ProcessMessage(c.Request.Context(), result.OrgID, result.ConversationID, req.Content, chType)
+	}
 
 	h.hub.BroadcastToOrg(result.OrgID, ws.Event{
 		Type: "new_message",

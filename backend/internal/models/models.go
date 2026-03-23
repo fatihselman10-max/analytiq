@@ -176,3 +176,23 @@ type ChannelReport struct {
 	ChannelType string `json:"channel_type"`
 	Count       int    `json:"count"`
 }
+
+type MessageAnalytics struct {
+	TotalMessages    int              `json:"total_messages"`
+	CustomerMessages int              `json:"customer_messages"`
+	AgentMessages    int              `json:"agent_messages"`
+	BotMessages      int              `json:"bot_messages"`
+	Keywords         []KeywordCount   `json:"keywords"`
+	HourlyVolume     []HourlyVolume   `json:"hourly_volume"`
+	DailyMessages    []DailyVolume    `json:"daily_messages"`
+}
+
+type KeywordCount struct {
+	Word  string `json:"word"`
+	Count int    `json:"count"`
+}
+
+type HourlyVolume struct {
+	Hour  int `json:"hour"`
+	Count int `json:"count"`
+}

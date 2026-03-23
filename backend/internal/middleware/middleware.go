@@ -3,6 +3,8 @@ package middleware
 import (
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/repliq/backend/internal/auth"
 	"github.com/gin-gonic/gin"
@@ -59,10 +61,20 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 	}
 }
 
+var allowedOrigins = map[string]bool{
+	"https://repliqsupport.com":     true,
+	"https://www.repliqsupport.com": true,
+	"https://repliq-mu.vercel.app":  true,
+	"http://localhost:3000":          true,
+}
+
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		origin := c.GetHeader("Origin")
+		if allowedOrigins[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 
@@ -70,6 +82,53 @@ func CORSMiddleware() gin.HandlerFunc {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
+		c.Next()
+	}
+}
+
+func SecurityHeaders() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("X-Content-Type-Options", "nosniff")
+		c.Writer.Header().Set("X-Frame-Options", "DENY")
+		c.Writer.Header().Set("X-XSS-Protection", "1; mode=block")
+		c.Writer.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Writer.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		c.Next()
+	}
+}
+
+func RateLimiter() gin.HandlerFunc {
+	type client struct {
+		count    int
+		resetAt  int64
+	}
+	clients := make(map[string]*client)
+	var mu sync.Mutex
+	const (
+		maxRequests = 60
+		windowSecs  = 60
+	)
+
+	return func(c *gin.Context) {
+		ip := c.ClientIP()
+		now := time.Now().Unix()
+
+		mu.Lock()
+		cl, exists := clients[ip]
+		if !exists || now >= cl.resetAt {
+			clients[ip] = &client{count: 1, resetAt: now + windowSecs}
+			mu.Unlock()
+			c.Next()
+			return
+		}
+		cl.count++
+		if cl.count > maxRequests {
+			mu.Unlock()
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Rate limit exceeded"})
+			c.Abort()
+			return
+		}
+		mu.Unlock()
 		c.Next()
 	}
 }

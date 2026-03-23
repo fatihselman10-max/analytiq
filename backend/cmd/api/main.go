@@ -15,6 +15,7 @@ import (
 	"github.com/repliq/backend/internal/middleware"
 	"github.com/repliq/backend/internal/services/bot"
 	"github.com/repliq/backend/internal/services/channel"
+	"github.com/repliq/backend/internal/services/channel/email"
 	"github.com/repliq/backend/internal/services/channel/instagram"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
@@ -39,12 +40,15 @@ func main() {
 	registry.RegisterFactory("instagram", func(config map[string]string) channel.Provider {
 		return instagram.NewInstagramProvider(config)
 	})
+	registry.RegisterFactory("email", func(config map[string]string) channel.Provider {
+		return email.NewEmailProvider(config)
+	})
 
 	// Register channel providers from DB
 	func() {
 		ctx := context.Background()
 		rows, err := db.Pool.Query(ctx,
-			`SELECT type, credentials FROM channels WHERE is_active = true AND credentials IS NOT NULL AND credentials != '' AND credentials != '{}'`)
+			`SELECT type, COALESCE(credentials::text, '{}') FROM channels WHERE is_active = true AND credentials IS NOT NULL AND credentials::text != '{}' AND credentials::text != 'null'`)
 		if err != nil {
 			log.Printf("Warning: failed to load channels from DB: %v", err)
 			return
@@ -91,8 +95,39 @@ func main() {
 
 	channelService := channel.NewService(db, registry)
 
+	// Start IMAP poller for email channels
+	func() {
+		ctx := context.Background()
+		rows, err := db.Pool.Query(ctx,
+			`SELECT id, COALESCE(credentials::text, '{}') FROM channels WHERE type = 'email' AND is_active = true AND credentials IS NOT NULL AND credentials::text != '{}' AND credentials::text != 'null'`)
+		if err != nil {
+			log.Printf("Warning: failed to load email channels: %v", err)
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var chID int64
+			var credsStr string
+			if err := rows.Scan(&chID, &credsStr); err != nil {
+				continue
+			}
+			var creds map[string]string
+			if err := json.Unmarshal([]byte(credsStr), &creds); err != nil {
+				continue
+			}
+			if creds["imap_host"] != "" && creds["smtp_user"] != "" {
+				poller := email.NewIMAPPoller(db, channelService, chID, creds)
+				go poller.Start()
+				log.Printf("Started IMAP poller for email channel %d (%s)", chID, creds["smtp_user"])
+			}
+		}
+	}()
+
 	// Bot engine
 	botEngine := bot.NewEngine(db)
+
+	// AI Bot
+	aiBot := bot.NewAIBot(db, cfg.AnthropicAPIKey)
 
 	// WebSocket hub
 	hub := ws.NewHub()
@@ -102,11 +137,12 @@ func main() {
 	authHandler := handlers.NewAuthHandler(db, authService)
 	conversationHandler := handlers.NewConversationHandler(db)
 	messageHandler := handlers.NewMessageHandler(db, channelService, hub)
-	webhookHandler := handlers.NewWebhookHandler(db, channelService, registry, botEngine, hub)
+	webhookHandler := handlers.NewWebhookHandler(db, channelService, registry, botEngine, aiBot, hub)
 	channelHandler := handlers.NewChannelHandler(db)
 	contactHandler := handlers.NewContactHandler(db)
 	reportHandler := handlers.NewReportHandler(db)
 	botHandler := handlers.NewBotHandler(db)
+	aiBotHandler := handlers.NewAIBotHandler(db)
 	teamHandler := handlers.NewTeamHandler(db)
 	cannedHandler := handlers.NewCannedHandler(db)
 	tagHandler := handlers.NewTagHandler(db)
@@ -114,7 +150,9 @@ func main() {
 
 	// Router
 	r := gin.Default()
+	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORSMiddleware())
+	r.Use(middleware.RateLimiter())
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
@@ -139,6 +177,7 @@ func main() {
 		webhooks.GET("/facebook", webhookHandler.VerifyWebhook)
 		webhooks.POST("/twitter", webhookHandler.HandleWebhook("twitter"))
 		webhooks.POST("/vk", webhookHandler.HandleWebhook("vk"))
+		webhooks.POST("/email", webhookHandler.HandleWebhook("email"))
 		webhooks.POST("/livechat", webhookHandler.HandleLiveChatMessage)
 	}
 
@@ -177,6 +216,13 @@ func main() {
 		api.GET("/reports/overview", reportHandler.Overview)
 		api.GET("/reports/agents", reportHandler.Agents)
 		api.GET("/reports/channels", reportHandler.Channels)
+		api.GET("/reports/messages", reportHandler.MessageAnalytics)
+
+		// AI Bot
+		api.GET("/ai-bot/config", aiBotHandler.GetConfig)
+		api.POST("/ai-bot/config", aiBotHandler.SaveConfig)
+		api.PATCH("/ai-bot/toggle", aiBotHandler.Toggle)
+		api.GET("/ai-bot/usage", aiBotHandler.GetUsage)
 
 		// Bot
 		api.GET("/bot/rules", botHandler.ListRules)

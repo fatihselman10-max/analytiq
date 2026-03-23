@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { reportsAPI } from "@/lib/api";
-import { ReportOverview, AgentReport, ChannelReport } from "@/types";
+import { ReportOverview, AgentReport, ChannelReport, MessageAnalytics } from "@/types";
 import StatCard from "@/components/ui/StatCard";
 import ConversationVolumeChart from "@/components/charts/ConversationVolumeChart";
 import ChannelPieChart from "@/components/charts/ChannelPieChart";
@@ -11,67 +11,67 @@ import {
   MessageCircle,
   Clock,
   CheckCircle,
-  AlertTriangle,
-  ThumbsDown,
-  HelpCircle,
-  TrendingUp,
+  Users,
+  Bot,
+  Calendar,
   BarChart3,
+  TrendingUp,
+  Inbox,
+  Instagram,
+  Mail,
+  Layers,
 } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
-const SAMPLE_TOPICS = [
-  { topic: "Kargo Gecikmesi", count: 142, trend: "+12%", sentiment: "negative", icon: AlertTriangle },
-  { topic: "Ürün İadesi", count: 98, trend: "+5%", sentiment: "negative", icon: ThumbsDown },
-  { topic: "Fiyat Bilgisi", count: 87, trend: "-3%", sentiment: "neutral", icon: HelpCircle },
-  { topic: "Ödeme Sorunu", count: 64, trend: "+8%", sentiment: "negative", icon: AlertTriangle },
-  { topic: "Ürün Bilgisi", count: 56, trend: "+2%", sentiment: "neutral", icon: HelpCircle },
-  { topic: "Teşekkür / Memnuniyet", count: 45, trend: "+15%", sentiment: "positive", icon: TrendingUp },
+const PERIODS = [
+  { value: "7d", label: "Son 7 Gün" },
+  { value: "30d", label: "Son 30 Gün" },
+  { value: "90d", label: "Son 90 Gün" },
+  { value: "all", label: "Tüm Zamanlar" },
 ];
-
-const SAMPLE_KEYWORDS = [
-  { word: "kargo", count: 234 },
-  { word: "iade", count: 187 },
-  { word: "fiyat", count: 156 },
-  { word: "teslim", count: 134 },
-  { word: "ödeme", count: 112 },
-  { word: "bozuk", count: 89 },
-  { word: "geç", count: 78 },
-  { word: "değişim", count: 67 },
-  { word: "indirim", count: 56 },
-  { word: "teşekkür", count: 45 },
-];
-
-const sentimentColors = {
-  positive: "bg-green-50 text-green-700 border-green-100",
-  negative: "bg-red-50 text-red-700 border-red-100",
-  neutral: "bg-gray-50 text-gray-600 border-gray-100",
-};
 
 export default function ReportsPage() {
   const [overview, setOverview] = useState<ReportOverview | null>(null);
   const [agents, setAgents] = useState<AgentReport[]>([]);
   const [channels, setChannels] = useState<ChannelReport[]>([]);
+  const [msgAnalytics, setMsgAnalytics] = useState<MessageAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "analysis">("overview");
+  const [period, setPeriod] = useState("30d");
+  const [channelFilter, setChannelFilter] = useState("all");
+
+  const loadData = useCallback(async (p: string, ch: string) => {
+    setLoading(true);
+    const chParam = ch === "all" ? undefined : ch;
+    try {
+      const [ovRes, agRes, chRes, msgRes] = await Promise.all([
+        reportsAPI.overview(p, chParam),
+        reportsAPI.agents(p, chParam),
+        reportsAPI.channels(p),
+        reportsAPI.messages(p, chParam),
+      ]);
+      setOverview(ovRes.data || null);
+      setAgents(agRes.data?.agents || []);
+      setChannels(chRes.data?.channels || []);
+      setMsgAnalytics(msgRes.data || null);
+    } catch (err) {
+      console.error("Failed to load reports", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [ovRes, agRes, chRes] = await Promise.all([
-          reportsAPI.overview(),
-          reportsAPI.agents(),
-          reportsAPI.channels(),
-        ]);
-        setOverview(ovRes.data || null);
-        setAgents(agRes.data?.agents || []);
-        setChannels(chRes.data?.channels || []);
-      } catch (err) {
-        console.error("Failed to load reports", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
+    loadData(period, channelFilter);
+  }, [period, channelFilter, loadData]);
 
   if (loading) {
     return (
@@ -81,42 +81,103 @@ export default function ReportsPage() {
     );
   }
 
+  const totalMsgs = msgAnalytics?.total_messages || 0;
+  const customerMsgs = msgAnalytics?.customer_messages || 0;
+  const agentMsgs = msgAnalytics?.agent_messages || 0;
+  const botMsgs = msgAnalytics?.bot_messages || 0;
+
   return (
-    <div className="p-8 space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Raporlar</h1>
-        <div className="flex bg-gray-100 rounded-xl p-1">
-          <button
-            onClick={() => setActiveTab("overview")}
-            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all ${
-              activeTab === "overview" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            Genel Bakış
-          </button>
-          <button
-            onClick={() => setActiveTab("analysis")}
-            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all ${
-              activeTab === "analysis" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            Müşteri Analizi
-          </button>
+    <div className="p-4 lg:p-8 space-y-4 lg:space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <h1 className="text-xl lg:text-2xl font-bold text-gray-900">Raporlar</h1>
+        <div className="flex items-center gap-2 lg:gap-3 flex-wrap">
+          {/* Kanal Filtresi */}
+          <div className="flex items-center bg-gray-100 rounded-xl p-1">
+            {[
+              { value: "all", label: "Tümü", icon: Layers },
+              { value: "instagram", label: "Instagram", icon: Instagram },
+              { value: "email", label: "E-posta", icon: Mail },
+            ].map((ch) => {
+              const Icon = ch.icon;
+              return (
+                <button
+                  key={ch.value}
+                  onClick={() => setChannelFilter(ch.value)}
+                  className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                    channelFilter === ch.value
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {ch.label}
+                </button>
+              );
+            })}
+          </div>
+          {/* Tarih Seçici */}
+          <div className="flex items-center bg-gray-100 rounded-xl p-1">
+            <Calendar className="h-4 w-4 text-gray-400 ml-2 mr-1" />
+            {PERIODS.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => setPeriod(p.value)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                  period === p.value
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {/* Sekme Seçici */}
+          <div className="flex bg-gray-100 rounded-xl p-1">
+            <button
+              onClick={() => setActiveTab("overview")}
+              className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all ${
+                activeTab === "overview" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Genel Bakış
+            </button>
+            <button
+              onClick={() => setActiveTab("analysis")}
+              className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all ${
+                activeTab === "analysis" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Mesaj Analizi
+            </button>
+          </div>
         </div>
       </div>
 
       {activeTab === "overview" && (
         <>
-          {/* KPI Cards */}
+          {/* KPI Kartları */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard title="Toplam Görüşme" value={String(overview?.total_conversations || 0)} icon={MessageSquare} />
-            <StatCard title="Açık Görüşme" value={String(overview?.open_conversations || 0)} icon={MessageCircle}
-              changeType={overview?.open_conversations ? "negative" : "neutral"} />
+            <StatCard
+              title="Açık Görüşme"
+              value={String(overview?.open_conversations || 0)}
+              icon={MessageCircle}
+              change={overview?.total_conversations ? `%${((overview.open_conversations / overview.total_conversations) * 100).toFixed(0)}` : undefined}
+              changeType={overview?.open_conversations ? "negative" : "neutral"}
+            />
             <StatCard title="Ort. Yanıt Süresi" value={`${(overview?.avg_response_time_minutes || 0).toFixed(1)} dk`} icon={Clock} />
-            <StatCard title="Ort. Çözüm Süresi" value={`${(overview?.avg_resolution_time_minutes || 0).toFixed(1)} dk`} icon={CheckCircle} />
+            <StatCard
+              title="Çözüldü"
+              value={String(overview?.resolved_count || 0)}
+              icon={CheckCircle}
+              change={overview?.total_conversations ? `%${((overview.resolved_count / overview.total_conversations) * 100).toFixed(0)} çözüm oranı` : undefined}
+              changeType="positive"
+            />
           </div>
 
-          {/* Charts */}
+          {/* Grafikler */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="card p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Günlük Görüşme Hacmi</h3>
@@ -128,7 +189,7 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {/* Agent Table */}
+          {/* Temsilci Tablosu */}
           <div className="card p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Temsilci Performansı</h3>
             <div className="overflow-x-auto">
@@ -168,90 +229,134 @@ export default function ReportsPage() {
 
       {activeTab === "analysis" && (
         <>
-          {/* Sentiment Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="card p-5 border-l-4 border-l-red-400">
-              <p className="text-sm text-gray-500 font-medium">Olumsuz Mesajlar</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">%38</p>
-              <p className="text-xs text-red-500 mt-1">Şikâyet ve sorun bildirimleri</p>
+          {/* Mesaj İstatistik Kartları */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard title="Toplam Mesaj" value={String(totalMsgs)} icon={Inbox} />
+            <StatCard
+              title="Müşteri Mesajları"
+              value={String(customerMsgs)}
+              icon={Users}
+              change={totalMsgs > 0 ? `%${((customerMsgs / totalMsgs) * 100).toFixed(0)}` : undefined}
+              changeType="neutral"
+            />
+            <StatCard
+              title="Temsilci Mesajları"
+              value={String(agentMsgs)}
+              icon={MessageSquare}
+              change={totalMsgs > 0 ? `%${((agentMsgs / totalMsgs) * 100).toFixed(0)}` : undefined}
+              changeType="positive"
+            />
+            <StatCard
+              title="Bot Mesajları"
+              value={String(botMsgs)}
+              icon={Bot}
+              change={totalMsgs > 0 ? `%${((botMsgs / totalMsgs) * 100).toFixed(0)}` : undefined}
+              changeType="neutral"
+            />
+          </div>
+
+          {/* Grafik Satırı */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Saatlik Dağılım */}
+            <div className="card p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Clock className="h-5 w-5 text-blue-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Saatlik Dağılım</h3>
+              </div>
+              <p className="text-sm text-gray-500 mb-4">Müşterilerinizin en çok mesaj gönderdiği saatler</p>
+              {(msgAnalytics?.hourly_volume || []).length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={fillHourlyData(msgAnalytics?.hourly_volume || [])}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="hour" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}:00`} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip
+                      labelFormatter={(v) => `${v}:00 - ${v}:59`}
+                      contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}
+                    />
+                    <Bar dataKey="count" fill="#7c3aed" radius={[3, 3, 0, 0]} name="Mesaj" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[250px] text-gray-400">Henüz veri yok</div>
+              )}
             </div>
-            <div className="card p-5 border-l-4 border-l-gray-400">
-              <p className="text-sm text-gray-500 font-medium">Nötr Mesajlar</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">%47</p>
-              <p className="text-xs text-gray-500 mt-1">Bilgi talebi ve sorular</p>
-            </div>
-            <div className="card p-5 border-l-4 border-l-green-400">
-              <p className="text-sm text-gray-500 font-medium">Olumlu Mesajlar</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">%15</p>
-              <p className="text-xs text-green-500 mt-1">Teşekkür ve memnuniyet</p>
+
+            {/* Günlük Mesaj Trendi */}
+            <div className="card p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <TrendingUp className="h-5 w-5 text-green-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Günlük Mesaj Trendi</h3>
+              </div>
+              <p className="text-sm text-gray-500 mb-4">Gelen ve giden mesaj hacmi</p>
+              {(msgAnalytics?.daily_messages || []).length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={msgAnalytics?.daily_messages || []}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }} />
+                    <Bar dataKey="count" fill="#059669" radius={[3, 3, 0, 0]} name="Mesaj" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[250px] text-gray-400">Henüz veri yok</div>
+              )}
             </div>
           </div>
 
-          {/* Topic Analysis */}
+          {/* Kelime Bulutu */}
           <div className="card p-6">
-            <div className="flex items-center gap-2 mb-5">
+            <div className="flex items-center gap-2 mb-2">
               <BarChart3 className="h-5 w-5 text-blue-600" />
-              <h3 className="text-lg font-semibold text-gray-900">Konu Analizi</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Sık Kullanılan Kelimeler</h3>
             </div>
-            <p className="text-sm text-gray-500 mb-4">Müşterilerinizin en çok iletişime geçtiği konular ve şikâyet başlıkları</p>
-            <div className="space-y-3">
-              {SAMPLE_TOPICS.map((t) => {
-                const maxCount = SAMPLE_TOPICS[0].count;
-                const Icon = t.icon;
-                return (
-                  <div key={t.topic} className="flex items-center gap-4">
-                    <div className={`p-2 rounded-xl ${sentimentColors[t.sentiment as keyof typeof sentimentColors]} border`}>
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-gray-900">{t.topic}</span>
-                        <div className="flex items-center gap-3">
-                          <span className={`text-xs font-medium ${
-                            t.trend.startsWith("+") && t.sentiment === "negative" ? "text-red-500" : t.trend.startsWith("-") ? "text-green-500" : "text-gray-400"
-                          }`}>{t.trend}</span>
-                          <span className="text-sm font-semibold text-gray-700 w-10 text-right">{t.count}</span>
-                        </div>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-1.5">
-                        <div className={`h-1.5 rounded-full transition-all ${
-                          t.sentiment === "negative" ? "bg-red-400" : t.sentiment === "positive" ? "bg-green-400" : "bg-gray-400"
-                        }`} style={{ width: `${(t.count / maxCount) * 100}%` }} />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Keyword Cloud */}
-          <div className="card p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Sık Kullanılan Kelimeler</h3>
-            <p className="text-sm text-gray-500 mb-4">Müşteri mesajlarında en çok geçen anahtar kelimeler</p>
-            <div className="flex flex-wrap gap-2">
-              {SAMPLE_KEYWORDS.map((kw) => {
-                const maxC = SAMPLE_KEYWORDS[0].count;
-                const size = 0.7 + (kw.count / maxC) * 0.6;
-                const opacity = 0.5 + (kw.count / maxC) * 0.5;
-                return (
-                  <span key={kw.word}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-100 transition-all hover:shadow-sm cursor-default"
-                    style={{ fontSize: `${size}rem`, opacity }}>
-                    <span className="text-blue-700 font-medium">{kw.word}</span>
-                    <span className="text-blue-400 text-xs font-normal">({kw.count})</span>
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="card p-5 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100">
-            <p className="text-sm text-blue-800 font-medium">Bu veriler örnek olarak gösterilmektedir</p>
-            <p className="text-xs text-blue-600 mt-1">Kanallarınızı bağladıktan sonra gerçek müşteri mesajlarından otomatik analiz yapılacaktır.</p>
+            <p className="text-sm text-gray-500 mb-5">Müşteri mesajlarında en çok geçen anahtar kelimeler</p>
+            {(msgAnalytics?.keywords || []).length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {msgAnalytics!.keywords.map((kw, i) => {
+                  const maxC = msgAnalytics!.keywords[0].count;
+                  const ratio = kw.count / maxC;
+                  const size = 0.75 + ratio * 0.55;
+                  const colors = [
+                    "bg-blue-50 border-blue-100 text-blue-700",
+                    "bg-violet-50 border-violet-100 text-violet-700",
+                    "bg-emerald-50 border-emerald-100 text-emerald-700",
+                    "bg-amber-50 border-amber-100 text-amber-700",
+                    "bg-rose-50 border-rose-100 text-rose-700",
+                  ];
+                  const color = colors[i % colors.length];
+                  return (
+                    <span
+                      key={kw.word}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all hover:shadow-sm cursor-default ${color}`}
+                      style={{ fontSize: `${size}rem`, opacity: 0.6 + ratio * 0.4 }}
+                    >
+                      <span className="font-medium">{kw.word}</span>
+                      <span className="text-xs font-normal opacity-60">({kw.count})</span>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-400">
+                <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>Henüz yeterli mesaj verisi yok</p>
+                <p className="text-xs mt-1">Müşterilerinizden mesaj geldikçe burada analiz görüntülenecek</p>
+              </div>
+            )}
           </div>
         </>
       )}
     </div>
   );
+}
+
+// Eksik saatleri (0-23) 0 ile doldur
+function fillHourlyData(data: { hour: number; count: number }[]) {
+  const map = new Map(data.map((d) => [d.hour, d.count]));
+  return Array.from({ length: 24 }, (_, i) => ({
+    hour: i,
+    count: map.get(i) || 0,
+  }));
 }

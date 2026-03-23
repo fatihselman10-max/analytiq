@@ -1,7 +1,15 @@
 "use client";
 
-import { useState, useRef, useCallback, KeyboardEvent } from "react";
-import { Send, StickyNote, MessageSquare } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react";
+import { Send, StickyNote, MessageSquare, Zap } from "lucide-react";
+import { cannedAPI } from "@/lib/api";
+
+interface CannedResponse {
+  id: number;
+  shortcut: string;
+  title: string;
+  content: string;
+}
 
 interface MessageInputProps {
   onSend: (content: string) => void;
@@ -11,7 +19,45 @@ interface MessageInputProps {
 export default function MessageInput({ onSend, onNote }: MessageInputProps) {
   const [content, setContent] = useState("");
   const [isNoteMode, setIsNoteMode] = useState(false);
+  const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
+  const [showCanned, setShowCanned] = useState(false);
+  const [cannedFilter, setCannedFilter] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const cannedRef = useRef<HTMLDivElement>(null);
+
+  // Load canned responses once
+  useEffect(() => {
+    cannedAPI.list().then((res) => {
+      setCannedResponses(res.data?.canned_responses || res.data || []);
+    }).catch(() => {});
+  }, []);
+
+  // Close canned panel on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (cannedRef.current && !cannedRef.current.contains(e.target as Node)) {
+        setShowCanned(false);
+      }
+    };
+    if (showCanned) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showCanned]);
+
+  // Detect / shortcut trigger
+  useEffect(() => {
+    if (content.startsWith("/") && !isNoteMode) {
+      setCannedFilter(content.slice(1).toLowerCase());
+      if (cannedResponses.length > 0) setShowCanned(true);
+    } else {
+      setShowCanned(false);
+    }
+  }, [content, isNoteMode, cannedResponses.length]);
+
+  const filteredCanned = cannedResponses.filter(
+    (cr) =>
+      cr.shortcut.toLowerCase().includes(cannedFilter) ||
+      cr.title.toLowerCase().includes(cannedFilter)
+  );
 
   const adjustHeight = useCallback(() => {
     const textarea = textareaRef.current;
@@ -23,15 +69,46 @@ export default function MessageInput({ onSend, onNote }: MessageInputProps) {
     if (!trimmed) return;
     if (isNoteMode) { onNote(trimmed); } else { onSend(trimmed); }
     setContent("");
+    setShowCanned(false);
     if (textareaRef.current) { textareaRef.current.style.height = "auto"; }
   }, [content, isNoteMode, onSend, onNote]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
+    if (e.key === "Escape") { setShowCanned(false); }
+  };
+
+  const selectCanned = (cr: CannedResponse) => {
+    setContent(cr.content);
+    setShowCanned(false);
+    textareaRef.current?.focus();
   };
 
   return (
-    <div className={`border-t ${isNoteMode ? "border-amber-200 bg-amber-50/50" : "border-gray-100 bg-white"}`}>
+    <div className={`border-t relative ${isNoteMode ? "border-amber-200 bg-amber-50/50" : "border-gray-100 bg-white"}`}>
+      {/* Canned responses popup */}
+      {showCanned && filteredCanned.length > 0 && (
+        <div ref={cannedRef} className="absolute bottom-full left-0 right-0 mx-4 mb-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto z-10">
+          <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+            <Zap className="h-3.5 w-3.5 text-amber-500" />
+            <span className="text-xs font-medium text-gray-500">Hazır Yanıtlar</span>
+          </div>
+          {filteredCanned.map((cr) => (
+            <button
+              key={cr.id}
+              onClick={() => selectCanned(cr)}
+              className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">/{cr.shortcut}</span>
+                <span className="text-xs font-medium text-gray-700">{cr.title}</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5 truncate">{cr.content}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center gap-1 px-4 pt-3 pb-1">
         <button onClick={() => setIsNoteMode(false)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
@@ -43,12 +120,21 @@ export default function MessageInput({ onSend, onNote }: MessageInputProps) {
             isNoteMode ? "bg-amber-200 text-amber-800" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}>
           <StickyNote className="h-3.5 w-3.5" /> Dahili Not
         </button>
+        {!isNoteMode && cannedResponses.length > 0 && (
+          <button
+            onClick={() => { setShowCanned(!showCanned); setCannedFilter(""); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              showCanned ? "bg-amber-100 text-amber-700" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+          >
+            <Zap className="h-3.5 w-3.5" /> Hazır Yanıt
+          </button>
+        )}
       </div>
       <div className="flex items-end gap-2 px-4 pb-3 pt-1">
         <textarea ref={textareaRef} value={content}
           onChange={(e) => { setContent(e.target.value); adjustHeight(); }}
           onKeyDown={handleKeyDown}
-          placeholder={isNoteMode ? "Dahili not yaz... (sadece ekip görebilir)" : "Mesajınızı yazın..."}
+          placeholder={isNoteMode ? "Dahili not yaz... (sadece ekip görebilir)" : "Mesajınızı yazın... ( / ile hazır yanıt)"}
           rows={1}
           className={`flex-1 resize-none text-sm px-3.5 py-2.5 rounded-xl border focus:outline-none focus:ring-2 transition-all ${
             isNoteMode ? "border-amber-200 bg-amber-50 focus:ring-amber-300 placeholder-amber-400" : "border-gray-200 bg-gray-50 focus:bg-white focus:ring-blue-500/20 placeholder-gray-400"}`} />

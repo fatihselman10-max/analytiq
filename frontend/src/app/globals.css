@@ -60,3 +60,27 @@ body {
 input:focus, select:focus, textarea:focus {
   @apply outline-none ring-2 ring-blue-500/30 border-blue-400;
 }
+
+/* Mobile safe area for bottom nav */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Toast animation */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-in.slide-in-from-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+/* Prevent rubber band scroll on mobile */
+@media (max-width: 1023px) {
+  html, body {
+    overflow: hidden;
+    height: 100%;
+    position: fixed;
+    width: 100%;
+  }
+}

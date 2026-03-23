@@ -149,3 +149,13 @@ export interface ChannelReport {
   channel_type: string;
   count: number;
 }
+
+export interface MessageAnalytics {
+  total_messages: number;
+  customer_messages: number;
+  agent_messages: number;
+  bot_messages: number;
+  keywords: { word: string; count: number }[];
+  hourly_volume: { hour: number; count: number }[];
+  daily_messages: { date: string; count: number }[];
+}

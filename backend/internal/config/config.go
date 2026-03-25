@@ -33,6 +33,10 @@ type Config struct {
 	IMAPUser           string
 	IMAPPassword       string
 	AnthropicAPIKey    string
+
+	// Shopify
+	ShopifyStoreDomain string
+	ShopifyAccessToken string
 }
 
 func Load() *Config {
@@ -64,6 +68,9 @@ func Load() *Config {
 		IMAPUser:            os.Getenv("IMAP_USER"),
 		IMAPPassword:        os.Getenv("IMAP_PASSWORD"),
 		AnthropicAPIKey:     os.Getenv("ANTHROPIC_API_KEY"),
+
+		ShopifyStoreDomain: os.Getenv("SHOPIFY_STORE_DOMAIN"),
+		ShopifyAccessToken: os.Getenv("SHOPIFY_ACCESS_TOKEN"),
 	}
 }
 

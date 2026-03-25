@@ -26,6 +26,7 @@ Originally named "analytiq" (repo name kept). Primary brand using it: **lessandr
 - **Instagram:** n8n webhook -> Repliq webhook + Notion. Instagram Graph API v21.0 for replies. Page ID: 17841463378386414
 - **Email:** destek@lessandromance.com via Hostnet (SMTP: smtp.hostnet.nl:587, IMAP: imap.hostnet.nl:993). Polls INBOX every 30s.
 - **Oplog:** Order status queries via Oplog API (backend/internal/services/bot/oplog.go). AI bot can look up shipment status for customers.
+- **Shopify:** LessandRomance Shopify store integration (backend/internal/services/bot/shopify.go). Store: 2a4c1b-c4.myshopify.com. AI bot queries Shopify for order details, product info, and preorder status. Most products sold via Stoq preorder app (14-21 day delivery). Bot analyzes both Shopify (order/product data) and Oplog (warehouse/shipping) together.
 
 ## Features
 - Multi-channel inbox with channel/status filters, search, bulk actions
@@ -65,6 +66,7 @@ Originally named "analytiq" (repo name kept). Primary brand using it: **lessandr
 ## Environment Variables (Railway)
 - ANTHROPIC_API_KEY (for AI bot)
 - OPLOG_TENANT_ID, OPLOG_TOKEN (for order status queries)
+- SHOPIFY_STORE_DOMAIN, SHOPIFY_ACCESS_TOKEN (for Shopify integration)
 - Standard DB vars: DATABASE_URL, REDIS_URL
 
 ## User Preferences
@@ -76,5 +78,5 @@ Originally named "analytiq" (repo name kept). Primary brand using it: **lessandr
 ## Known Issues / Next Steps
 - WebSocket connection failing (400) - using polling workaround
 - AI Bot test mode needed (preview responses without sending to real channels)
-- E-commerce integration planned (Shopify/WooCommerce for order status)
+- Shopify integration DONE - AI bot reads order/product/preorder data from Shopify + Oplog
 - Stripe payment integration (last priority)

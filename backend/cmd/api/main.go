@@ -126,8 +126,11 @@ func main() {
 	// Bot engine
 	botEngine := bot.NewEngine(db)
 
-	// AI Bot
+	// AI Bot (with Oplog + Shopify integration)
 	aiBot := bot.NewAIBot(db, cfg.AnthropicAPIKey)
+	if cfg.ShopifyStoreDomain != "" && cfg.ShopifyAccessToken != "" {
+		log.Printf("Shopify integration enabled for %s", cfg.ShopifyStoreDomain)
+	}
 
 	// WebSocket hub
 	hub := ws.NewHub()

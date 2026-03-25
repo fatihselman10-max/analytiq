@@ -15,13 +15,14 @@ import (
 )
 
 type AIBot struct {
-	db     *database.DB
-	apiKey string
-	oplog  *OplogClient
+	db      *database.DB
+	apiKey  string
+	oplog   *OplogClient
+	shopify *ShopifyClient
 }
 
 func NewAIBot(db *database.DB, apiKey string) *AIBot {
-	return &AIBot{db: db, apiKey: apiKey, oplog: NewOplogClient()}
+	return &AIBot{db: db, apiKey: apiKey, oplog: NewOplogClient(), shopify: NewShopifyClient()}
 }
 
 type AIBotConfig struct {
@@ -92,28 +93,69 @@ func (ai *AIBot) ProcessMessage(ctx context.Context, orgID int64, conversationID
 	// Build system prompt from brand config
 	systemPrompt := ai.buildSystemPrompt(config)
 
-	// Check for order numbers and fetch from Oplog
-	if ai.oplog.IsConfigured() {
-		orderNums := ExtractOrderNumbers(customerMessage)
-		if len(orderNums) > 0 {
-			log.Printf("[AI Bot] Detected order numbers in message: %v", orderNums)
+	// Check for order numbers and fetch from both Shopify and Oplog
+	orderNums := ExtractOrderNumbers(customerMessage)
+	if len(orderNums) > 0 {
+		log.Printf("[AI Bot] Detected order numbers in message: %v", orderNums)
+	}
+	for _, num := range orderNums {
+		var oplogOrder *OplogOrder
+		var shopifyOrder *ShopifyOrder
+
+		// Fetch from Shopify
+		if ai.shopify.IsConfigured() {
+			so, err := ai.shopify.LookupOrderByNumber(ctx, num)
+			if err != nil {
+				log.Printf("[AI Bot] Shopify lookup error for #%s: %v", num, err)
+			} else if so != nil {
+				log.Printf("[AI Bot] Shopify found order #%s → financial: %s, fulfillment: %s", num, so.FinancialStatus, so.FulfillmentStatus)
+				shopifyOrder = so
+			}
 		}
-		for _, num := range orderNums {
-			order, err := ai.oplog.LookupOrder(ctx, num)
+
+		// Fetch from Oplog
+		if ai.oplog.IsConfigured() {
+			oo, err := ai.oplog.LookupOrder(ctx, num)
 			if err != nil {
 				log.Printf("[AI Bot] Oplog lookup error for #%s: %v", num, err)
-				continue
-			}
-			if order != nil {
-				log.Printf("[AI Bot] Oplog found order #%s → state: %s", num, order.State)
-				systemPrompt += "\n\n" + FormatOrderContext(order)
-			} else {
-				log.Printf("[AI Bot] Oplog order #%s not found", num)
-				systemPrompt += fmt.Sprintf("\n\nSİPARİŞ #%s: Bu sipariş henüz depoya iletilmemiş veya işlem aşamasında. Müşteriye siparişinin ekibimiz tarafından kontrol edilip en kısa sürede dönüş yapılacağını bildir. Temsilciye aktarıldığını söyle.", num)
+			} else if oo != nil {
+				log.Printf("[AI Bot] Oplog found order #%s → state: %s", num, oo.State)
+				oplogOrder = oo
 			}
 		}
-	} else {
-		log.Printf("[AI Bot] Oplog not configured (missing env vars)")
+
+		// Combine both sources
+		combined := CombineOrderContext(oplogOrder, shopifyOrder)
+		if combined != "" {
+			systemPrompt += "\n\n" + combined
+		} else {
+			log.Printf("[AI Bot] Order #%s not found in any system", num)
+			systemPrompt += fmt.Sprintf("\n\nSİPARİŞ #%s: Bu sipariş henüz sistemde bulunamadı. Müşteriye siparişinin ekibimiz tarafından kontrol edilip en kısa sürede dönüş yapılacağını bildir.", num)
+		}
+	}
+
+	// Check for product-related questions and fetch from Shopify
+	if ai.shopify.IsConfigured() && len(orderNums) == 0 {
+		productQuery := ExtractProductQuery(customerMessage)
+		if productQuery != "" {
+			products, err := ai.shopify.SearchProducts(ctx, productQuery)
+			if err != nil {
+				log.Printf("[AI Bot] Shopify product search error: %v", err)
+			} else if len(products) > 0 {
+				log.Printf("[AI Bot] Shopify found %d products for query '%s'", len(products), productQuery)
+				systemPrompt += "\n\n" + FormatShopifyProductContext(products)
+			}
+		} else {
+			// Generic preorder info for product questions
+			msg := strings.ToLower(customerMessage)
+			preorderKeywords := []string{"pre-order", "preorder", "ön sipariş", "ne zaman gelir", "kaç gün", "kac gun", "teslimat süresi", "teslimat suresi"}
+			for _, kw := range preorderKeywords {
+				if strings.Contains(msg, kw) {
+					systemPrompt += "\n\nPRE-ORDER BİLGİSİ: LessandRomance ürünlerinin çoğu pre-order (ön sipariş) sistemiyle satılır. Teslimat süresi sipariş tarihinden itibaren 14-21 iş günüdür. Ürünler özel olarak hazırlanıp kargoya verilir."
+					break
+				}
+			}
+		}
 	}
 
 	// Build messages array
@@ -204,6 +246,8 @@ Marka: %s
 5. Sipariş numarası yoksa sadece numara iste.
 6. Sipariş bilgisi varsa durumu ve kargo bilgisini yaz.
 7. Sipariş bulunamadıysa: "Ekibimize ilettim, kontrol edip dönüş yapacaklar."
+8. Pre-order ürünler için teslimat süresi 14-21 iş günüdür. Stok sorulursa "ön sipariş ile satılıyor" de.
+9. Shopify ve Oplog verisi birlikte verilirse ikisini analiz et: Shopify sipariş detayı, Oplog kargo/depo durumu.
 
 ÖRNEKLER:
 "siparisim nerede" + bilgi var → "Siparişiniz 20 Mart'ta kargoya verildi. Takip no: 903421767."
@@ -212,7 +256,9 @@ Marka: %s
 "iade istiyorum" → "14 gün içinde iade yapılabilir. info@lessandromance.com adresine sipariş numaranızı yazın."
 "merhaba" → "Merhaba, nasıl yardımcı olabilirim?"
 "isbirligi" → "info@lessandromance.com adresine yazabilirsiniz."
-bulunamayan sipariş → "Ekibimize ilettim, kontrol edip dönüş yapacaklar."`
+bulunamayan sipariş → "Ekibimize ilettim, kontrol edip dönüş yapacaklar."
+"stokta var mı" → "Bu ürün ön sipariş ile satılıyor. Sipariş verdikten sonra 14-21 iş günü içinde teslim edilir."
+"ne zaman gelir" + preorder → "Pre-order ürünler sipariş tarihinden itibaren 14-21 iş günü içinde kargoya verilir."`
 
 	return prompt
 }

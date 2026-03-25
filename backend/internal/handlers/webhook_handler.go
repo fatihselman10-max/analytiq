@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/repliq/backend/internal/database"
@@ -72,7 +73,7 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
 		defer cancel()
 
 		// Load provider with credentials from DB
@@ -126,13 +127,61 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 			return
 		}
 
-		// Try keyword bot first, then AI bot
+		// Check business hours - send auto-reply if outside
 		var chType string
 		h.db.Pool.QueryRow(ctx, `SELECT type FROM channels WHERE id = $1`, channelID).Scan(&chType)
+
+		outside, awayMsg := IsOutsideBusinessHours(h.db, ctx, result.OrgID)
+		if outside && awayMsg != "" && result.IsNew {
+			// Save away message as bot message
+			h.db.Pool.Exec(ctx,
+				`INSERT INTO messages (conversation_id, sender_type, content, content_type)
+				 VALUES ($1, 'bot', $2, 'text')`,
+				result.ConversationID, awayMsg)
+			// Try to send via channel provider
+			if provider != nil {
+				provider.SendMessage(ctx, msg.SenderID, awayMsg, nil)
+			}
+		}
+
+		// Try keyword bot first, then AI bot
 		_, matched, _ := h.botEngine.ProcessMessage(ctx, result.OrgID, result.ConversationID, msg.Content, chType)
 		if !matched && h.aiBot != nil {
-			h.aiBot.ProcessMessage(ctx, result.OrgID, result.ConversationID, msg.Content, chType)
+			// Check if AI bot is in test mode (only respond to specific senders)
+			var testSenderIDs string
+			h.db.Pool.QueryRow(ctx,
+				`SELECT COALESCE(test_sender_ids, '') FROM ai_bot_config WHERE org_id = $1`, result.OrgID,
+			).Scan(&testSenderIDs)
+
+			aiAllowed := true
+			if testSenderIDs != "" {
+				aiAllowed = false
+				for _, id := range splitAndTrim(testSenderIDs) {
+					if id == msg.SenderID || id == msg.SenderName {
+						aiAllowed = true
+						break
+					}
+				}
+				if !aiAllowed {
+					fmt.Printf("[AI Bot] Skipping - sender %s (%s) not in test list\n", msg.SenderID, msg.SenderName)
+				}
+			}
+
+			if aiAllowed {
+				aiResp, aiResponded, _ := h.aiBot.ProcessMessage(ctx, result.OrgID, result.ConversationID, msg.Content, chType)
+				if aiResponded && provider != nil {
+					provider.SendMessage(ctx, msg.SenderID, aiResp, nil)
+				}
+			}
 		}
+
+		// Run automations
+		triggerType := "message_received"
+		if result.IsNew {
+			triggerType = "new_conversation"
+		}
+		go RunAutomations(h.db, context.Background(), result.OrgID, triggerType,
+			result.ConversationID, chType, msg.Content, "normal", "open")
 
 		// Broadcast via WebSocket
 		h.hub.BroadcastToOrg(result.OrgID, ws.Event{
@@ -148,6 +197,18 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	}
+}
+
+func splitAndTrim(s string) []string {
+	parts := strings.Split(s, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 func (h *WebhookHandler) VerifyWebhook(c *gin.Context) {

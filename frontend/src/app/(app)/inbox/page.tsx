@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useConversationsStore } from "@/store/conversations";
-import { conversationsAPI, messagesAPI } from "@/lib/api";
+import { conversationsAPI, messagesAPI, slaAPI } from "@/lib/api";
 import ConversationList from "@/components/inbox/ConversationList";
 import MessageThread from "@/components/inbox/MessageThread";
 import MessageInput from "@/components/inbox/MessageInput";
@@ -27,6 +27,7 @@ export default function InboxPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [showContactPanel, setShowContactPanel] = useState(false);
+  const [slaStatuses, setSlaStatuses] = useState<Record<number, { response_breached: boolean; resolution_breached: boolean; response_elapsed: number; response_target: number }>>({});
   const { toast } = useToast();
 
   // Fetch conversations on mount + poll every 5s
@@ -40,6 +41,12 @@ export default function InboxPage() {
     setLoading(true);
     fetchConversations().finally(() => setLoading(false));
     const interval = setInterval(fetchConversations, 5000);
+
+    // Fetch SLA statuses
+    slaAPI.getStatuses().then(({ data }) => {
+      if (data.enabled && data.sla_statuses) setSlaStatuses(data.sla_statuses);
+    }).catch(() => {});
+
     return () => clearInterval(interval);
   }, [setConversations]);
 
@@ -154,10 +161,10 @@ export default function InboxPage() {
   return (
     <div className="flex h-[calc(100vh-3rem)] lg:h-screen">
       {/* Left Panel - Conversation List */}
-      <div className={`${showMobileThread ? "hidden lg:flex" : "flex"} w-full lg:w-80 border-r border-gray-200 bg-white flex-col`}>
+      <div className={`${showMobileThread ? "hidden lg:flex" : "flex"} w-full lg:w-80 border-r border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-col`}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200">
           <Inbox className="h-5 w-5 text-primary-600" />
-          <h1 className="text-base font-semibold text-gray-900">Gelen Kutusu</h1>
+          <h1 className="text-base font-semibold text-gray-900 dark:text-white">Gelen Kutusu</h1>
           <span className="ml-auto text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
             {filteredConversations.length}
           </span>
@@ -178,16 +185,23 @@ export default function InboxPage() {
             onChannelFilter={setChannelFilter}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
+            slaStatuses={slaStatuses}
+            onRefresh={async () => {
+              try {
+                const res = await conversationsAPI.list();
+                setConversations(res.data?.conversations || res.data || []);
+              } catch {}
+            }}
           />
         )}
       </div>
 
       {/* Center Panel - Message Thread */}
-      <div className={`${showMobileThread ? "flex" : "hidden lg:flex"} flex-1 flex-col bg-white min-w-0`}>
+      <div className={`${showMobileThread ? "flex" : "hidden lg:flex"} flex-1 flex-col bg-white dark:bg-slate-900 min-w-0`}>
         {activeConversation ? (
           <>
             {/* Thread Header */}
-            <div className="flex items-center gap-3 px-4 lg:px-6 py-3 border-b border-gray-200 bg-white">
+            <div className="flex items-center gap-3 px-4 lg:px-6 py-3 border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900">
               {/* Mobile back button */}
               <button onClick={handleMobileBack} className="lg:hidden p-1 -ml-1 text-gray-500 hover:text-gray-900">
                 <ArrowLeft className="h-5 w-5" />
@@ -266,7 +280,7 @@ export default function InboxPage() {
       {activeConversation && (
         <>
           {/* Desktop */}
-          <div className="hidden lg:flex w-80 border-l border-gray-200 bg-white flex-col">
+          <div className="hidden lg:flex w-80 border-l border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-col">
             <ContactPanel
               conversation={activeConversation}
               onUpdate={handleUpdate}

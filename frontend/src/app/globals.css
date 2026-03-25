@@ -7,6 +7,11 @@
   --foreground: #0f172a;
 }
 
+.dark {
+  --background: #0f172a;
+  --foreground: #e2e8f0;
+}
+
 body {
   color: var(--foreground);
   background: var(--background);
@@ -25,6 +30,9 @@ body {
   background: #cbd5e1;
   border-radius: 3px;
 }
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
@@ -41,6 +49,9 @@ body {
     radial-gradient(at 80% 70%, rgba(99, 102, 241, 0.06) 0px, transparent 50%),
     radial-gradient(at 50% 50%, rgba(37, 99, 235, 0.04) 0px, transparent 70%);
 }
+.dark .mesh-bg {
+  background-color: #0f172a;
+}
 
 /* Gradient button */
 .btn-gradient {
@@ -50,16 +61,49 @@ body {
 
 /* Card style */
 .card {
-  @apply bg-white rounded-2xl border border-gray-100 shadow-sm transition-all duration-200;
+  @apply bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm transition-all duration-200;
 }
 .card-hover:hover {
-  @apply shadow-md border-gray-200;
+  @apply shadow-md border-gray-200 dark:border-slate-600;
 }
 
 /* Focus ring */
 input:focus, select:focus, textarea:focus {
   @apply outline-none ring-2 ring-blue-500/30 border-blue-400;
 }
+
+/* Dark mode overrides for common patterns */
+.dark input, .dark select, .dark textarea {
+  @apply bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500;
+}
+.dark input:focus, .dark select:focus, .dark textarea:focus {
+  @apply bg-slate-700 border-blue-500 ring-blue-500/20;
+}
+
+/* Dark mode text overrides */
+.dark h1, .dark h2, .dark h3 {
+  @apply text-white;
+}
+.dark p {
+  color: #94a3b8;
+}
+.dark .text-gray-900 { color: #f1f5f9; }
+.dark .text-gray-800 { color: #e2e8f0; }
+.dark .text-gray-700 { color: #cbd5e1; }
+.dark .text-gray-600 { color: #94a3b8; }
+.dark .text-gray-500 { color: #64748b; }
+.dark .bg-gray-50 { background-color: #1e293b; }
+.dark .bg-gray-100 { background-color: #1e293b; }
+.dark .bg-white { background-color: #0f172a; }
+.dark .border-gray-200 { border-color: #334155; }
+.dark .border-gray-100 { border-color: #1e293b; }
+.dark .hover\:bg-gray-50:hover { background-color: #1e293b; }
+.dark .hover\:bg-gray-100:hover { background-color: #334155; }
+.dark .bg-blue-50 { background-color: rgba(59,130,246,0.1); }
+.dark .bg-green-50 { background-color: rgba(34,197,94,0.1); }
+.dark .bg-red-50 { background-color: rgba(239,68,68,0.1); }
+.dark .bg-yellow-50 { background-color: rgba(234,179,8,0.1); }
+.dark .bg-orange-50 { background-color: rgba(249,115,22,0.1); }
 
 /* Mobile safe area for bottom nav */
 .safe-area-bottom {
@@ -75,12 +119,59 @@ input:focus, select:focus, textarea:focus {
   animation: slide-in-right 0.3s ease-out;
 }
 
-/* Prevent rubber band scroll on mobile */
+/* Prevent rubber band scroll on mobile - only for app pages */
 @media (max-width: 1023px) {
-  html, body {
+  body.app-shell {
     overflow: hidden;
     height: 100%;
     position: fixed;
     width: 100%;
   }
+}
+
+/* Landing page styles */
+.landing-gradient {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+}
+
+.hero-glow {
+  background: radial-gradient(ellipse 80% 60% at 50% -20%, rgba(59, 130, 246, 0.3) 0%, transparent 70%);
+}
+
+.feature-card {
+  @apply bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6
+    hover:bg-white/10 hover:border-white/20 transition-all duration-300;
+}
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-xl border border-gray-200/50 rounded-2xl shadow-xl;
+}
+
+.text-gradient {
+  @apply bg-gradient-to-r from-blue-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 4s ease-in-out infinite;
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
 }

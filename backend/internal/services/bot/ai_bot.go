@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/repliq/backend/internal/database"
@@ -16,10 +17,11 @@ import (
 type AIBot struct {
 	db     *database.DB
 	apiKey string
+	oplog  *OplogClient
 }
 
 func NewAIBot(db *database.DB, apiKey string) *AIBot {
-	return &AIBot{db: db, apiKey: apiKey}
+	return &AIBot{db: db, apiKey: apiKey, oplog: NewOplogClient()}
 }
 
 type AIBotConfig struct {
@@ -90,6 +92,30 @@ func (ai *AIBot) ProcessMessage(ctx context.Context, orgID int64, conversationID
 	// Build system prompt from brand config
 	systemPrompt := ai.buildSystemPrompt(config)
 
+	// Check for order numbers and fetch from Oplog
+	if ai.oplog.IsConfigured() {
+		orderNums := ExtractOrderNumbers(customerMessage)
+		if len(orderNums) > 0 {
+			log.Printf("[AI Bot] Detected order numbers in message: %v", orderNums)
+		}
+		for _, num := range orderNums {
+			order, err := ai.oplog.LookupOrder(ctx, num)
+			if err != nil {
+				log.Printf("[AI Bot] Oplog lookup error for #%s: %v", num, err)
+				continue
+			}
+			if order != nil {
+				log.Printf("[AI Bot] Oplog found order #%s → state: %s", num, order.State)
+				systemPrompt += "\n\n" + FormatOrderContext(order)
+			} else {
+				log.Printf("[AI Bot] Oplog order #%s not found", num)
+				systemPrompt += fmt.Sprintf("\n\nSİPARİŞ #%s: Bu sipariş henüz depoya iletilmemiş veya işlem aşamasında. Müşteriye siparişinin ekibimiz tarafından kontrol edilip en kısa sürede dönüş yapılacağını bildir. Temsilciye aktarıldığını söyle.", num)
+			}
+		}
+	} else {
+		log.Printf("[AI Bot] Oplog not configured (missing env vars)")
+	}
+
 	// Build messages array
 	var messages []claudeMessage
 	for _, h := range history {
@@ -142,45 +168,51 @@ func (ai *AIBot) getConfig(ctx context.Context, orgID int64) (*AIBotConfig, erro
 }
 
 func (ai *AIBot) buildSystemPrompt(config *AIBotConfig) string {
-	prompt := fmt.Sprintf(`Sen "%s" markasının müşteri destek asistanısın. Müşterilere yardımcı, nazik ve profesyonel bir şekilde yanıt veriyorsun.
+	prompt := fmt.Sprintf(`Sen %s müşteri destek temsilcisisin. Sadece 1-2 cümle yaz, kesinlikle daha fazla değil. Aşağıdaki örnekler gibi kısa ve düz yaz:
 
-MARKA BİLGİLERİ:
-%s
+Müşteri: "siparişim nerede" → Sen: "Sipariş numaranızı paylaşır mısınız?"
+Müşteri: "merhaba" → Sen: "Merhaba, nasıl yardımcı olabilirim?"
+Müşteri: "iade istiyorum" → Sen: "info@lessandromance.com adresine sipariş numaranızı yazın, ekip süreci başlatacak."
+
+Bu örneklerdeki kısalığı ve tonu koru. Daha uzun veya duygusal yazma.
+
+Marka: %s
 
 `, config.BrandName, config.BrandDescription)
 
 	if config.ProductsServices != "" {
-		prompt += fmt.Sprintf("ÜRÜN VE HİZMETLER:\n%s\n\n", config.ProductsServices)
+		prompt += fmt.Sprintf("Ürünler:\n%s\n\n", config.ProductsServices)
 	}
 
 	if config.FAQ != "" {
-		prompt += fmt.Sprintf("SIK SORULAN SORULAR:\n%s\n\n", config.FAQ)
+		prompt += fmt.Sprintf("SSS:\n%s\n\n", config.FAQ)
 	}
 
 	if config.Policies != "" {
-		prompt += fmt.Sprintf("POLİTİKALAR (İade, Kargo, vb.):\n%s\n\n", config.Policies)
-	}
-
-	toneMap := map[string]string{
-		"professional": "Profesyonel ve resmi bir dil kullan.",
-		"friendly":     "Samimi ve sıcak bir dil kullan, emoji kullanabilirsin.",
-		"casual":       "Günlük ve rahat bir dil kullan.",
-		"formal":       "Çok resmi ve kurumsal bir dil kullan.",
-	}
-	if tone, ok := toneMap[config.BrandTone]; ok {
-		prompt += "ÜSLUP: " + tone + "\n\n"
+		prompt += fmt.Sprintf("Politikalar:\n%s\n\n", config.Policies)
 	}
 
 	if config.CustomInstructions != "" {
-		prompt += fmt.Sprintf("EK TALİMATLAR:\n%s\n\n", config.CustomInstructions)
+		prompt += config.CustomInstructions + "\n\n"
 	}
 
 	prompt += `KURALLAR:
-- Kısa ve öz cevaplar ver, müşteriyi sıkmadan.
-- Bilmediğin bir konu sorulursa "Bu konuda size yardımcı olabilecek bir temsilcimize bağlanmanızı öneriyorum" de.
-- Asla uydurma bilgi verme.
-- Müşterinin dilinde (Türkçe/İngilizce) yanıt ver.
-- Fiyat veya stok bilgisi sorulduğunda, eğer bilgin yoksa yönlendirme yap.`
+1. Maksimum 2 cümle. Cümlelerini tam bitir.
+2. Düz metin. Formatlama yok, emoji yok, liste yok.
+3. YASAK kelimeler: haklısınız, üzgünüm, hayal kırıcı, endişelenmeyin, kesinlikle, mutlaka, tabii ki, hoş geldiniz, normal değil.
+4. Yorum yapma, değerlendirme yapma. Sadece bilgi ver veya yönlendir.
+5. Sipariş numarası yoksa sadece numara iste.
+6. Sipariş bilgisi varsa durumu ve kargo bilgisini yaz.
+7. Sipariş bulunamadıysa: "Ekibimize ilettim, kontrol edip dönüş yapacaklar."
+
+ÖRNEKLER:
+"siparisim nerede" + bilgi var → "Siparişiniz 20 Mart'ta kargoya verildi. Takip no: 903421767."
+"kargom gelmedi" + no yok → "Sipariş numaranızı paylaşır mısınız?"
+"20 gun oldu gelmedi" → "Sipariş numaranızı paylaşır mısınız, durumunu kontrol edeyim."
+"iade istiyorum" → "14 gün içinde iade yapılabilir. info@lessandromance.com adresine sipariş numaranızı yazın."
+"merhaba" → "Merhaba, nasıl yardımcı olabilirim?"
+"isbirligi" → "info@lessandromance.com adresine yazabilirsiniz."
+bulunamayan sipariş → "Ekibimize ilettim, kontrol edip dönüş yapacaklar."`
 
 	return prompt
 }
@@ -223,7 +255,7 @@ func (ai *AIBot) getConversationHistory(ctx context.Context, conversationID int6
 func (ai *AIBot) callClaude(ctx context.Context, systemPrompt string, messages []claudeMessage) (string, int, error) {
 	reqBody := claudeRequest{
 		Model:     "claude-haiku-4-5-20251001",
-		MaxTokens: 300,
+		MaxTokens: 120,
 		System:    systemPrompt,
 		Messages:  messages,
 	}
@@ -268,7 +300,28 @@ func (ai *AIBot) callClaude(ctx context.Context, systemPrompt string, messages [
 	}
 
 	totalTokens := claudeResp.Usage.InputTokens + claudeResp.Usage.OutputTokens
-	return claudeResp.Content[0].Text, totalTokens, nil
+	text := trimToLastSentence(claudeResp.Content[0].Text)
+	return text, totalTokens, nil
+}
+
+// trimToLastSentence cuts off any incomplete sentence at the end.
+func trimToLastSentence(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	// If already ends with sentence-ending punctuation, return as-is
+	last := s[len(s)-1]
+	if last == '.' || last == '?' || last == '!' {
+		return s
+	}
+	// Find the last sentence-ending punctuation
+	lastDot := strings.LastIndexAny(s, ".?!")
+	if lastDot > 0 {
+		return strings.TrimSpace(s[:lastDot+1])
+	}
+	// No sentence ending found, return as-is
+	return s
 }
 
 func (ai *AIBot) insertBotMessage(ctx context.Context, conversationID int64, content string) {

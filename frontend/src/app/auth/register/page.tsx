@@ -20,7 +20,7 @@ export default function RegisterPage() {
     try {
       const { data } = await authAPI.register(form);
       login(data.token, data.user, data.organization, data.role);
-      router.push("/inbox");
+      router.push("/onboarding");
     } catch {
       setError("Kayıt oluşturulamadı. E-posta zaten kayıtlı olabilir.");
     } finally {

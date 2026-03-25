@@ -148,6 +148,126 @@ type BotLog struct {
 	RuleName string `json:"rule_name,omitempty"`
 }
 
+// Business Hours
+type BusinessHours struct {
+	ID             int64     `json:"id" db:"id"`
+	OrgID          int64     `json:"org_id" db:"org_id"`
+	IsEnabled      bool      `json:"is_enabled" db:"is_enabled"`
+	Timezone       string    `json:"timezone" db:"timezone"`
+	Schedule       string    `json:"schedule" db:"schedule"`
+	AwayMessage    string    `json:"away_message" db:"away_message"`
+	WelcomeMessage string    `json:"welcome_message" db:"welcome_message"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type DaySchedule struct {
+	Enabled bool   `json:"enabled"`
+	Start   string `json:"start"`
+	End     string `json:"end"`
+}
+
+// SLA Policy
+type SLAPolicy struct {
+	ID                   int64     `json:"id" db:"id"`
+	OrgID                int64     `json:"org_id" db:"org_id"`
+	IsEnabled            bool      `json:"is_enabled" db:"is_enabled"`
+	FirstResponseUrgent  int       `json:"first_response_urgent" db:"first_response_urgent"`
+	FirstResponseHigh    int       `json:"first_response_high" db:"first_response_high"`
+	FirstResponseNormal  int       `json:"first_response_normal" db:"first_response_normal"`
+	FirstResponseLow     int       `json:"first_response_low" db:"first_response_low"`
+	ResolutionUrgent     int       `json:"resolution_urgent" db:"resolution_urgent"`
+	ResolutionHigh       int       `json:"resolution_high" db:"resolution_high"`
+	ResolutionNormal     int       `json:"resolution_normal" db:"resolution_normal"`
+	ResolutionLow        int       `json:"resolution_low" db:"resolution_low"`
+	BusinessHoursOnly    bool      `json:"business_hours_only" db:"business_hours_only"`
+	CreatedAt            time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type SLAStatus struct {
+	ResponseTarget  int     `json:"response_target_minutes"`
+	ResponseElapsed float64 `json:"response_elapsed_minutes"`
+	ResponseBreached bool   `json:"response_breached"`
+	ResolutionTarget  int     `json:"resolution_target_minutes"`
+	ResolutionElapsed float64 `json:"resolution_elapsed_minutes"`
+	ResolutionBreached bool   `json:"resolution_breached"`
+}
+
+// CSAT
+type CSATConfig struct {
+	ID               int64     `json:"id" db:"id"`
+	OrgID            int64     `json:"org_id" db:"org_id"`
+	IsEnabled        bool      `json:"is_enabled" db:"is_enabled"`
+	Question         string    `json:"question" db:"question"`
+	ThankYouMessage  string    `json:"thank_you_message" db:"thank_you_message"`
+	SendDelayMinutes int       `json:"send_delay_minutes" db:"send_delay_minutes"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type CSATResponse struct {
+	ID             int64     `json:"id" db:"id"`
+	OrgID          int64     `json:"org_id" db:"org_id"`
+	ConversationID *int64    `json:"conversation_id" db:"conversation_id"`
+	ContactID      *int64    `json:"contact_id" db:"contact_id"`
+	AgentID        *int64    `json:"agent_id" db:"agent_id"`
+	Rating         int       `json:"rating" db:"rating"`
+	Comment        string    `json:"comment" db:"comment"`
+	ChannelType    string    `json:"channel_type" db:"channel_type"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+
+	// Joined
+	ContactName string `json:"contact_name,omitempty"`
+	AgentName   string `json:"agent_name,omitempty"`
+}
+
+// Automation
+type Automation struct {
+	ID             int64      `json:"id" db:"id"`
+	OrgID          int64      `json:"org_id" db:"org_id"`
+	Name           string     `json:"name" db:"name"`
+	IsActive       bool       `json:"is_active" db:"is_active"`
+	TriggerType    string     `json:"trigger_type" db:"trigger_type"`
+	Conditions     string     `json:"conditions" db:"conditions"`
+	Actions        string     `json:"actions" db:"actions"`
+	ExecutionCount int        `json:"execution_count" db:"execution_count"`
+	LastExecutedAt *time.Time `json:"last_executed_at" db:"last_executed_at"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// Knowledge Base
+type KBCategory struct {
+	ID          int64     `json:"id" db:"id"`
+	OrgID       int64     `json:"org_id" db:"org_id"`
+	Name        string    `json:"name" db:"name"`
+	Description string    `json:"description" db:"description"`
+	Icon        string    `json:"icon" db:"icon"`
+	SortOrder   int       `json:"sort_order" db:"sort_order"`
+	IsPublished bool      `json:"is_published" db:"is_published"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	ArticleCount int      `json:"article_count,omitempty"`
+}
+
+type KBArticle struct {
+	ID              int64     `json:"id" db:"id"`
+	OrgID           int64     `json:"org_id" db:"org_id"`
+	CategoryID      *int64    `json:"category_id" db:"category_id"`
+	Title           string    `json:"title" db:"title"`
+	Slug            string    `json:"slug" db:"slug"`
+	Content         string    `json:"content" db:"content"`
+	Status          string    `json:"status" db:"status"`
+	ViewCount       int       `json:"view_count" db:"view_count"`
+	HelpfulCount    int       `json:"helpful_count" db:"helpful_count"`
+	NotHelpfulCount int       `json:"not_helpful_count" db:"not_helpful_count"`
+	AuthorID        *int64    `json:"author_id" db:"author_id"`
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
+	CategoryName    string    `json:"category_name,omitempty"`
+	AuthorName      string    `json:"author_name,omitempty"`
+}
+
 // Report types
 type ReportOverview struct {
 	TotalConversations int     `json:"total_conversations"`

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
+import { useThemeStore } from "@/store/theme";
 import { useWebSocket } from "@/lib/websocket";
 import Sidebar from "@/components/layout/Sidebar";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -11,9 +12,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { token, isAuthenticated, loadFromStorage } = useAuthStore();
 
+  const { loadFromStorage: loadTheme } = useThemeStore();
+
   useEffect(() => {
     loadFromStorage();
-  }, [loadFromStorage]);
+    loadTheme();
+  }, [loadFromStorage, loadTheme]);
 
   useEffect(() => {
     if (!isAuthenticated && !localStorage.getItem("token")) {
@@ -22,6 +26,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, router]);
 
   useWebSocket(token);
+
+  useEffect(() => {
+    document.body.classList.add("app-shell");
+    return () => document.body.classList.remove("app-shell");
+  }, []);
 
   if (!isAuthenticated) {
     return (
@@ -33,7 +42,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastProvider>
-      <div className="flex min-h-screen bg-gray-50">
+      <div className="flex min-h-screen bg-gray-50 dark:bg-slate-900">
         <Sidebar />
         <main className="flex-1 overflow-auto pt-12 pb-16 lg:pt-0 lg:pb-0">{children}</main>
       </div>

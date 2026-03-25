@@ -52,6 +52,8 @@ export const conversationsAPI = {
     api.patch(`/conversations/${id}`, data),
   assign: (id: number, userId: number) =>
     api.post(`/conversations/${id}/assign`, { user_id: userId }),
+  bulkUpdate: (ids: number[], updates: { status?: string; priority?: string; assigned_to?: number }) =>
+    api.post("/conversations/bulk", { ids, ...updates }),
   addTag: (id: number, tagId: number) =>
     api.post(`/conversations/${id}/tags`, { tag_id: tagId }),
   removeTag: (id: number, tagId: number) =>
@@ -150,6 +152,81 @@ export const cannedAPI = {
   update: (id: number, data: { shortcut?: string; title?: string; content?: string }) =>
     api.put(`/canned-responses/${id}`, data),
   delete: (id: number) => api.delete(`/canned-responses/${id}`),
+};
+
+// Business Hours
+export const businessHoursAPI = {
+  get: () => api.get("/business-hours"),
+  save: (data: {
+    is_enabled: boolean;
+    timezone: string;
+    schedule: Record<string, { enabled: boolean; start: string; end: string }>;
+    away_message: string;
+    welcome_message: string;
+  }) => api.post("/business-hours", data),
+  toggle: () => api.patch("/business-hours/toggle"),
+};
+
+// SLA
+export const slaAPI = {
+  getPolicy: () => api.get("/sla/policy"),
+  savePolicy: (data: {
+    is_enabled: boolean;
+    first_response_urgent: number;
+    first_response_high: number;
+    first_response_normal: number;
+    first_response_low: number;
+    resolution_urgent: number;
+    resolution_high: number;
+    resolution_normal: number;
+    resolution_low: number;
+    business_hours_only: boolean;
+  }) => api.post("/sla/policy", data),
+  getStatuses: () => api.get("/sla/statuses"),
+};
+
+// CSAT
+export const csatAPI = {
+  getConfig: () => api.get("/csat/config"),
+  saveConfig: (data: {
+    is_enabled: boolean;
+    question: string;
+    thank_you_message: string;
+    send_delay_minutes: number;
+  }) => api.post("/csat/config", data),
+  getResponses: (period?: string) => api.get("/csat/responses", { params: { period } }),
+};
+
+// Automations
+export const automationsAPI = {
+  list: () => api.get("/automations"),
+  create: (data: {
+    name: string;
+    trigger_type: string;
+    conditions: { field: string; operator: string; value: string }[];
+    actions: { type: string; value: string }[];
+  }) => api.post("/automations", data),
+  update: (id: number, data: {
+    name: string;
+    trigger_type: string;
+    conditions: { field: string; operator: string; value: string }[];
+    actions: { type: string; value: string }[];
+  }) => api.put(`/automations/${id}`, data),
+  delete: (id: number) => api.delete(`/automations/${id}`),
+  toggle: (id: number) => api.patch(`/automations/${id}/toggle`),
+};
+
+// Knowledge Base
+export const kbAPI = {
+  listCategories: () => api.get("/kb/categories"),
+  createCategory: (data: { name: string; description?: string; icon?: string }) => api.post("/kb/categories", data),
+  updateCategory: (id: number, data: { name?: string; description?: string; icon?: string }) => api.put(`/kb/categories/${id}`, data),
+  deleteCategory: (id: number) => api.delete(`/kb/categories/${id}`),
+  listArticles: (params?: { category_id?: string; status?: string; search?: string }) => api.get("/kb/articles", { params }),
+  getArticle: (id: number) => api.get(`/kb/articles/${id}`),
+  createArticle: (data: { category_id?: number | null; title: string; content: string; status: string }) => api.post("/kb/articles", data),
+  updateArticle: (id: number, data: { category_id?: number | null; title?: string; content?: string; status?: string }) => api.put(`/kb/articles/${id}`, data),
+  deleteArticle: (id: number) => api.delete(`/kb/articles/${id}`),
 };
 
 // Tags

@@ -1,11 +1,18 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/repliq/backend/internal/database"
+	"github.com/repliq/backend/internal/services/bot"
 	"github.com/gin-gonic/gin"
 )
 
@@ -173,5 +180,153 @@ func (h *AIBotHandler) GetUsage(c *gin.Context) {
 		"tokens_used":     tokensUsed,
 		"total_responses": totalResponses,
 		"logs":            logs,
+	})
+}
+
+func (h *AIBotHandler) TestMessage(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+
+	var req struct {
+		Message string `json:"message"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Message == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "message field is required"})
+		return
+	}
+
+	// Load config
+	var config struct {
+		BrandName          string
+		BrandDescription   string
+		BrandTone          string
+		ProductsServices   string
+		FAQ                string
+		Policies           string
+		CustomInstructions string
+	}
+	err := h.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(brand_name,''), COALESCE(brand_description,''), COALESCE(brand_tone,'professional'),
+		        COALESCE(products_services,''), COALESCE(faq,''), COALESCE(policies,''), COALESCE(custom_instructions,'')
+		 FROM ai_bot_config WHERE org_id = $1`, orgID,
+	).Scan(&config.BrandName, &config.BrandDescription, &config.BrandTone,
+		&config.ProductsServices, &config.FAQ, &config.Policies, &config.CustomInstructions)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "AI Bot henüz yapılandırılmadı"})
+		return
+	}
+
+	// Build system prompt
+	prompt := fmt.Sprintf(`Sen %s müşteri destek temsilcisisin.
+
+Marka: %s
+
+`, config.BrandName, config.BrandDescription)
+
+	if config.ProductsServices != "" {
+		prompt += fmt.Sprintf("Ürünler:\n%s\n\n", config.ProductsServices)
+	}
+	if config.FAQ != "" {
+		prompt += fmt.Sprintf("SSS:\n%s\n\n", config.FAQ)
+	}
+	if config.Policies != "" {
+		prompt += fmt.Sprintf("Politikalar:\n%s\n\n", config.Policies)
+	}
+	if config.CustomInstructions != "" {
+		prompt += config.CustomInstructions + "\n\n"
+	}
+	prompt += `YAZIM KURALLARI:
+- Maksimum 2-3 cümle. Kısa tut.
+- Düz yazı yaz. Yıldız, diyez, tire listeleme, numaralama gibi hiçbir formatlama KULLANMA. Sadece düz metin.
+- Kalıp bot cümleleri KULLANMA. Kurumsal ve kısa yaz.
+- Gereksiz yönlendirme yapma. Cevabı biliyorsan direkt ver.
+- Her cevabın sonuna "Başka sorunuz var mı?" ekleme.
+
+İÇERİK KURALLARI:
+- Sipariş bilgisi verilmişse direkt durumu aktar.
+- Sipariş bulunamadıysa: "Ekibimize ilettim, kontrol edip dönüş yapacaklar."
+- Bilmediğin şeyleri uydurma.
+- Müşterinin dilinde yaz.`
+
+	// Check for order numbers and fetch from Oplog
+	oplogClient := bot.NewOplogClient()
+	log.Printf("[AI Bot Test] Oplog configured: %v", oplogClient.IsConfigured())
+	orderNums := bot.ExtractOrderNumbers(req.Message)
+	log.Printf("[AI Bot Test] Extracted order numbers: %v from message: %s", orderNums, req.Message)
+	if oplogClient.IsConfigured() {
+		for _, num := range orderNums {
+			order, err := oplogClient.LookupOrder(ctx, num)
+			if err != nil {
+				log.Printf("[AI Bot Test] Oplog lookup error for #%s: %v", num, err)
+				continue
+			}
+			if order != nil {
+				log.Printf("[AI Bot Test] Found order #%s → %s", num, order.State)
+				prompt += "\n\n" + bot.FormatOrderContext(order)
+			} else {
+				log.Printf("[AI Bot Test] Order #%s not found in Oplog", num)
+			}
+		}
+	}
+
+	// Call Claude API (test only - no token deduction, no DB save)
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ANTHROPIC_API_KEY not configured"})
+		return
+	}
+
+	type claudeMsg struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"model":      "claude-haiku-4-5-20251001",
+		"max_tokens": 120,
+		"system":     prompt,
+		"messages":   []claudeMsg{{Role: "user", Content: req.Message}},
+	})
+
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", apiKey)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Claude API call failed"})
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Claude API error %d: %s", resp.StatusCode, string(respBody))})
+		return
+	}
+
+	var claudeResp struct {
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	json.Unmarshal(respBody, &claudeResp)
+
+	if len(claudeResp.Content) == 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Empty response from Claude"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"response":      claudeResp.Content[0].Text,
+		"tokens_used":   claudeResp.Usage.InputTokens + claudeResp.Usage.OutputTokens,
+		"input_tokens":  claudeResp.Usage.InputTokens,
+		"output_tokens": claudeResp.Usage.OutputTokens,
+		"test_mode":     true,
 	})
 }

@@ -238,6 +238,47 @@ func (h *ConversationHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Updated"})
 }
 
+func (h *ConversationHandler) BulkUpdate(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	var req struct {
+		IDs        []int64 `json:"ids" binding:"required"`
+		Status     *string `json:"status"`
+		Priority   *string `json:"priority"`
+		AssignedTo *int64  `json:"assigned_to"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.IDs) == 0 || len(req.IDs) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "1-100 arası konuşma seçilebilir"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	updated := 0
+	for _, id := range req.IDs {
+		if req.Status != nil {
+			if *req.Status == "resolved" {
+				h.db.Pool.Exec(ctx, `UPDATE conversations SET status=$1, resolved_at=NOW(), updated_at=NOW() WHERE id=$2 AND org_id=$3`, *req.Status, id, orgID)
+			} else {
+				h.db.Pool.Exec(ctx, `UPDATE conversations SET status=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3`, *req.Status, id, orgID)
+			}
+		}
+		if req.Priority != nil {
+			h.db.Pool.Exec(ctx, `UPDATE conversations SET priority=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3`, *req.Priority, id, orgID)
+		}
+		if req.AssignedTo != nil {
+			h.db.Pool.Exec(ctx, `UPDATE conversations SET assigned_to=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3`, *req.AssignedTo, id, orgID)
+		}
+		updated++
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("%d konuşma güncellendi", updated)})
+}
+
 func (h *ConversationHandler) Assign(c *gin.Context) {
 	orgID := c.GetInt64("org_id")
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)

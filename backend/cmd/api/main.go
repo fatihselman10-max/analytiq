@@ -146,6 +146,11 @@ func main() {
 	teamHandler := handlers.NewTeamHandler(db)
 	cannedHandler := handlers.NewCannedHandler(db)
 	tagHandler := handlers.NewTagHandler(db)
+	businessHoursHandler := handlers.NewBusinessHoursHandler(db)
+	slaHandler := handlers.NewSLAHandler(db)
+	csatHandler := handlers.NewCSATHandler(db)
+	automationHandler := handlers.NewAutomationHandler(db)
+	kbHandler := handlers.NewKBHandler(db)
 	wsHandler := handlers.NewWSHandler(hub, authService)
 
 	// Router
@@ -165,6 +170,9 @@ func main() {
 		authGroup.POST("/register", authHandler.Register)
 		authGroup.POST("/login", authHandler.Login)
 	}
+
+	// CSAT public endpoint (customers submit ratings)
+	r.POST("/api/v1/csat/submit", csatHandler.SubmitRating)
 
 	// Webhook routes (public)
 	webhooks := r.Group("/api/v1/webhooks")
@@ -193,6 +201,7 @@ func main() {
 		api.GET("/conversations/:id", conversationHandler.Get)
 		api.PATCH("/conversations/:id", conversationHandler.Update)
 		api.POST("/conversations/:id/assign", conversationHandler.Assign)
+		api.POST("/conversations/bulk", conversationHandler.BulkUpdate)
 		api.POST("/conversations/:id/tags", conversationHandler.AddTag)
 		api.DELETE("/conversations/:id/tags/:tag_id", conversationHandler.RemoveTag)
 
@@ -223,6 +232,7 @@ func main() {
 		api.POST("/ai-bot/config", aiBotHandler.SaveConfig)
 		api.PATCH("/ai-bot/toggle", aiBotHandler.Toggle)
 		api.GET("/ai-bot/usage", aiBotHandler.GetUsage)
+		api.POST("/ai-bot/test", aiBotHandler.TestMessage)
 
 		// Bot
 		api.GET("/bot/rules", botHandler.ListRules)
@@ -244,6 +254,39 @@ func main() {
 		api.POST("/canned-responses", cannedHandler.Create)
 		api.PUT("/canned-responses/:id", cannedHandler.Update)
 		api.DELETE("/canned-responses/:id", cannedHandler.Delete)
+
+		// Business Hours
+		api.GET("/business-hours", businessHoursHandler.Get)
+		api.POST("/business-hours", businessHoursHandler.Save)
+		api.PATCH("/business-hours/toggle", businessHoursHandler.Toggle)
+
+		// CSAT
+		api.GET("/csat/config", csatHandler.GetConfig)
+		api.POST("/csat/config", csatHandler.SaveConfig)
+		api.GET("/csat/responses", csatHandler.GetResponses)
+
+		// Automations
+		api.GET("/automations", automationHandler.List)
+		api.POST("/automations", automationHandler.Create)
+		api.PUT("/automations/:id", automationHandler.Update)
+		api.DELETE("/automations/:id", automationHandler.Delete)
+		api.PATCH("/automations/:id/toggle", automationHandler.Toggle)
+
+		// SLA
+		api.GET("/sla/policy", slaHandler.GetPolicy)
+		api.POST("/sla/policy", slaHandler.SavePolicy)
+		api.GET("/sla/statuses", slaHandler.GetConversationsSLA)
+
+		// Knowledge Base
+		api.GET("/kb/categories", kbHandler.ListCategories)
+		api.POST("/kb/categories", kbHandler.CreateCategory)
+		api.PUT("/kb/categories/:id", kbHandler.UpdateCategory)
+		api.DELETE("/kb/categories/:id", kbHandler.DeleteCategory)
+		api.GET("/kb/articles", kbHandler.ListArticles)
+		api.GET("/kb/articles/:id", kbHandler.GetArticle)
+		api.POST("/kb/articles", kbHandler.CreateArticle)
+		api.PUT("/kb/articles/:id", kbHandler.UpdateArticle)
+		api.DELETE("/kb/articles/:id", kbHandler.DeleteArticle)
 
 		// Tags
 		api.GET("/tags", tagHandler.List)

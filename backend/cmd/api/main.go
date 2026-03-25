@@ -236,6 +236,7 @@ func main() {
 		api.PATCH("/ai-bot/toggle", aiBotHandler.Toggle)
 		api.GET("/ai-bot/usage", aiBotHandler.GetUsage)
 		api.POST("/ai-bot/test", aiBotHandler.TestMessage)
+		api.PATCH("/ai-bot/test-senders", aiBotHandler.SetTestSenders)
 
 		// Bot
 		api.GET("/bot/rules", botHandler.ListRules)

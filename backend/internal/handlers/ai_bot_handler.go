@@ -129,6 +129,33 @@ func (h *AIBotHandler) Toggle(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"is_enabled": isEnabled})
 }
 
+func (h *AIBotHandler) SetTestSenders(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	var req struct {
+		TestSenderIDs string `json:"test_sender_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	// Ensure column exists
+	h.db.Pool.Exec(ctx, `ALTER TABLE ai_bot_config ADD COLUMN IF NOT EXISTS test_sender_ids TEXT DEFAULT ''`)
+
+	_, err := h.db.Pool.Exec(ctx,
+		`UPDATE ai_bot_config SET test_sender_ids = $1, updated_at = NOW() WHERE org_id = $2`,
+		req.TestSenderIDs, orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update test senders"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"test_sender_ids": req.TestSenderIDs})
+}
+
 func (h *AIBotHandler) GetUsage(c *gin.Context) {
 	orgID := c.GetInt64("org_id")
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)

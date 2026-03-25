@@ -3,12 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
-import { Inbox, BarChart3, Bot, Radio, Users, UserCircle, Settings, LogOut, MessageSquare, Menu, X, Workflow, BookOpen, Moon, Sun } from "lucide-react";
+import { Inbox, BarChart3, Bot, Radio, Users, UserCircle, Settings, LogOut, MessageSquare, Menu, X, Workflow, BookOpen, Moon, Sun, Target, Megaphone, ClipboardList, PieChart } from "lucide-react";
 import { useState } from "react";
 import { useThemeStore } from "@/store/theme";
 
 const navItems = [
   { href: "/inbox", label: "Gelen Kutusu", icon: Inbox },
+  { href: "/crm", label: "Müşteri CRM", icon: Target },
+  { href: "/campaigns", label: "Kampanyalar", icon: Megaphone },
+  { href: "/tasks", label: "Görevler", icon: ClipboardList },
+  { href: "/crm-reports", label: "CRM Raporları", icon: PieChart },
   { href: "/reports", label: "Raporlar", icon: BarChart3 },
   { href: "/bot", label: "AI Bot", icon: Bot },
   { href: "/channels", label: "Kanallar", icon: Radio },

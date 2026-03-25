@@ -183,6 +183,7 @@ func main() {
 		webhooks.POST("/whatsapp", webhookHandler.HandleWebhook("whatsapp"))
 		webhooks.GET("/whatsapp", webhookHandler.VerifyWebhook)
 		webhooks.POST("/instagram", webhookHandler.HandleWebhook("instagram"))
+		webhooks.GET("/instagram", webhookHandler.VerifyWebhook)
 		webhooks.POST("/telegram", webhookHandler.HandleWebhook("telegram"))
 		webhooks.POST("/facebook", webhookHandler.HandleWebhook("facebook"))
 		webhooks.GET("/facebook", webhookHandler.VerifyWebhook)

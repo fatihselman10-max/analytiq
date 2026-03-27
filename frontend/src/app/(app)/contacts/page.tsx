@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { contactsAPI } from "@/lib/api";
 import { Contact } from "@/types";
 import { Search, UserCircle } from "lucide-react";
+import { useAuthStore } from "@/store/auth";
+import { isDemoOrg, DEMO_CONTACTS } from "@/lib/demo-data";
 
 const CHANNEL_LABELS: Record<string, string> = {
   whatsapp: "WhatsApp",
@@ -21,8 +23,20 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const { organization } = useAuthStore();
+  const isDemo = isDemoOrg(organization?.name);
 
   const loadContacts = async () => {
+    if (isDemo) {
+      let filtered = DEMO_CONTACTS as any as Contact[];
+      if (search) {
+        const q = search.toLowerCase();
+        filtered = filtered.filter(c => c.name?.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q) || c.phone?.includes(q));
+      }
+      setContacts(filtered);
+      setLoading(false);
+      return;
+    }
     try {
       const { data } = await contactsAPI.list({ search: search || undefined });
       setContacts(data?.contacts || []);
@@ -34,8 +48,9 @@ export default function ContactsPage() {
   };
 
   useEffect(() => {
+    if (!organization) return;
     loadContacts();
-  }, [search]);
+  }, [search, isDemo, organization]);
 
   if (loading) {
     return (

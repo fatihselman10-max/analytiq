@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { automationsAPI, teamAPI, tagsAPI } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
+import { isDemoOrg, DEMO_AUTOMATIONS, DEMO_TEAM, DEMO_TAGS } from "@/lib/demo-data";
 import {
   Workflow,
   Plus,
@@ -82,12 +84,23 @@ export default function AutomationsPage() {
   const [agents, setAgents] = useState<{ id: number; full_name: string }[]>([]);
   const [tags, setTags] = useState<{ id: number; name: string }[]>([]);
 
+  const { organization } = useAuthStore();
+  const isDemo = isDemoOrg(organization?.name);
+
   useEffect(() => {
+    if (!organization) return;
     fetchAll();
-  }, []);
+  }, [isDemo, organization]);
 
   const fetchAll = async () => {
     setLoading(true);
+    if (isDemo) {
+      setAutomations(DEMO_AUTOMATIONS as any);
+      setAgents(DEMO_TEAM.map(m => ({ id: m.user_id, full_name: m.full_name })));
+      setTags(DEMO_TAGS.map(t => ({ id: t.id, name: t.name })));
+      setLoading(false);
+      return;
+    }
     try {
       const [autoRes, agentRes, tagRes] = await Promise.all([
         automationsAPI.list(),

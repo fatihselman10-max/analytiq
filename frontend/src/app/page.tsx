@@ -204,7 +204,7 @@ export default function LandingPage() {
     // If already logged in, redirect to inbox
     const token = localStorage.getItem("token");
     if (token) {
-      router.push("/inbox");
+      router.push("/dashboard");
       return;
     }
     setReady(true);

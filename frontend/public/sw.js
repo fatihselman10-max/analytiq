@@ -1,5 +1,5 @@
-const CACHE_NAME = "repliq-v1";
-const STATIC_ASSETS = ["/", "/inbox", "/reports", "/bot", "/channels", "/contacts"];
+const CACHE_NAME = "repliq-v3";
+const STATIC_ASSETS = ["/", "/dashboard", "/inbox", "/reports", "/crm", "/sales", "/products", "/bot", "/settings"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

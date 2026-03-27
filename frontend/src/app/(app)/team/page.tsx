@@ -5,17 +5,24 @@ import { teamAPI } from "@/lib/api";
 import { OrgMember } from "@/types";
 import { useAuthStore } from "@/store/auth";
 import { Plus, Trash2, Shield, UserCircle } from "lucide-react";
+import { isDemoOrg, DEMO_TEAM } from "@/lib/demo-data";
 
 export default function TeamPage() {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: "", full_name: "", role: "agent" });
-  const { role: currentRole } = useAuthStore();
+  const { role: currentRole, organization } = useAuthStore();
+  const isDemo = isDemoOrg(organization?.name);
 
   const isAdmin = currentRole === "owner" || currentRole === "admin";
 
   const loadMembers = async () => {
+    if (isDemo) {
+      setMembers(DEMO_TEAM as any);
+      setLoading(false);
+      return;
+    }
     try {
       const { data } = await teamAPI.listMembers();
       setMembers(data?.members || []);
@@ -27,8 +34,9 @@ export default function TeamPage() {
   };
 
   useEffect(() => {
+    if (!organization) return;
     loadMembers();
-  }, []);
+  }, [isDemo, organization]);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();

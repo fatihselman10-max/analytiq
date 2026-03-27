@@ -10,6 +10,8 @@ import ContactPanel from "@/components/inbox/ContactPanel";
 import { Inbox, MessageSquare, ArrowLeft, User } from "lucide-react";
 import { Conversation } from "@/types";
 import { useToast } from "@/components/ui/Toast";
+import { useAuthStore } from "@/store/auth";
+import { isDemoOrg, DEMO_CONVERSATIONS, DEMO_MESSAGES, DEMO_SLA_STATUSES } from "@/lib/demo-data";
 
 export default function InboxPage() {
   const {
@@ -29,9 +31,18 @@ export default function InboxPage() {
   const [showContactPanel, setShowContactPanel] = useState(false);
   const [slaStatuses, setSlaStatuses] = useState<Record<number, { response_breached: boolean; resolution_breached: boolean; response_elapsed: number; response_target: number }>>({});
   const { toast } = useToast();
+  const { organization } = useAuthStore();
+  const isDemo = isDemoOrg(organization?.name);
 
   // Fetch conversations on mount + poll every 5s
   useEffect(() => {
+    if (!organization) return;
+    if (isDemo) {
+      setConversations(DEMO_CONVERSATIONS as any);
+      setSlaStatuses(DEMO_SLA_STATUSES);
+      setLoading(false);
+      return;
+    }
     const fetchConversations = async () => {
       try {
         const res = await conversationsAPI.list();
@@ -42,17 +53,20 @@ export default function InboxPage() {
     fetchConversations().finally(() => setLoading(false));
     const interval = setInterval(fetchConversations, 5000);
 
-    // Fetch SLA statuses
     slaAPI.getStatuses().then(({ data }) => {
       if (data.enabled && data.sla_statuses) setSlaStatuses(data.sla_statuses);
     }).catch(() => {});
 
     return () => clearInterval(interval);
-  }, [setConversations]);
+  }, [setConversations, isDemo, organization]);
 
   // Fetch messages when active conversation changes + poll every 3s
   useEffect(() => {
     if (!activeConversationId) return;
+    if (isDemo) {
+      setMessages(activeConversationId, (DEMO_MESSAGES[activeConversationId] || []) as any);
+      return;
+    }
     const fetchMessages = async () => {
       try {
         const res = await messagesAPI.list(activeConversationId);
@@ -62,7 +76,7 @@ export default function InboxPage() {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
-  }, [activeConversationId, setMessages]);
+  }, [activeConversationId, setMessages, isDemo]);
 
   // Filter conversations
   const filteredConversations = useMemo(() => {
@@ -113,20 +127,28 @@ export default function InboxPage() {
   const handleSend = useCallback(
     async (content: string) => {
       if (!activeConversationId) return;
+      if (isDemo) {
+        toast("Demo modunda mesaj gonderilemez", "info");
+        return;
+      }
       try {
         await messagesAPI.reply(activeConversationId, content);
       } catch {
-        toast("Mesaj gönderilemedi", "error");
+        toast("Mesaj gonderilemedi", "error");
         return;
       }
       await refreshMessages(activeConversationId);
     },
-    [activeConversationId, refreshMessages]
+    [activeConversationId, refreshMessages, isDemo]
   );
 
   const handleNote = useCallback(
     async (content: string) => {
       if (!activeConversationId) return;
+      if (isDemo) {
+        toast("Demo modunda not eklenemez", "info");
+        return;
+      }
       try {
         await messagesAPI.addNote(activeConversationId, content);
       } catch {
@@ -135,7 +157,7 @@ export default function InboxPage() {
       }
       await refreshMessages(activeConversationId);
     },
-    [activeConversationId, refreshMessages]
+    [activeConversationId, refreshMessages, isDemo]
   );
 
   const handleUpdate = useCallback(

@@ -21,7 +21,7 @@ export default function LoginPage() {
     try {
       const { data } = await authAPI.login(email, password);
       login(data.token, data.user, data.organization, data.role);
-      router.push("/inbox");
+      router.push("/dashboard");
     } catch {
       setError("Geçersiz e-posta veya şifre");
     } finally {

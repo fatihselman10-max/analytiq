@@ -140,7 +140,7 @@ export default function OnboardingPage() {
 
   const finish = () => {
     localStorage.setItem("onboarding_done", "true");
-    router.push("/inbox");
+    router.push("/dashboard");
   };
 
   if (!isAuthenticated) {

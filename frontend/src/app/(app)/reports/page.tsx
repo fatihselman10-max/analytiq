@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { reportsAPI } from "@/lib/api";
 import { ReportOverview, AgentReport, ChannelReport, MessageAnalytics } from "@/types";
+import { useAuthStore } from "@/store/auth";
+import { isDemoOrg, DEMO_REPORTS } from "@/lib/demo-data";
 import StatCard from "@/components/ui/StatCard";
 import ConversationVolumeChart from "@/components/charts/ConversationVolumeChart";
 import ChannelPieChart from "@/components/charts/ChannelPieChart";
@@ -44,11 +46,48 @@ export default function ReportsPage() {
   const [channels, setChannels] = useState<ChannelReport[]>([]);
   const [msgAnalytics, setMsgAnalytics] = useState<MessageAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "analysis">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "analysis" | "crm">("overview");
   const [period, setPeriod] = useState("30d");
   const [channelFilter, setChannelFilter] = useState("all");
 
+  const { organization } = useAuthStore();
+  const isDemo = isDemoOrg(organization?.name);
+
   const loadData = useCallback(async (p: string, ch: string) => {
+    if (isDemo) {
+      const dr = DEMO_REPORTS;
+      setOverview({
+        total_conversations: dr.overview.total_conversations,
+        open_conversations: dr.overview.open_conversations,
+        resolved_count: dr.overview.resolved_conversations,
+        avg_response_time_minutes: dr.overview.avg_response_time,
+        daily_volume: dr.overview.daily,
+      } as any);
+      setAgents(dr.agents.map(a => ({
+        user_id: a.agent_id,
+        full_name: a.agent_name,
+        conversation_count: a.total_conversations,
+        resolved_count: a.resolved,
+        avg_response_time_minutes: a.avg_response_time,
+        resolution_rate: (a.resolved / a.total_conversations) * 100,
+      })) as any);
+      setChannels(dr.channels.map(c => ({
+        channel_type: c.channel,
+        conversation_count: c.count,
+        percentage: c.percentage,
+      })) as any);
+      setMsgAnalytics({
+        total_messages: dr.messages.total,
+        customer_messages: dr.messages.inbound,
+        agent_messages: dr.messages.outbound,
+        bot_messages: 47,
+        hourly_volume: dr.messages.hourly,
+        daily_messages: dr.messages.daily.map(d => ({ date: d.date, count: d.inbound + d.outbound })),
+        keywords: dr.messages.keywords,
+      } as any);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const chParam = ch === "all" ? undefined : ch;
     try {
@@ -67,11 +106,12 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isDemo, organization]);
 
   useEffect(() => {
+    if (!organization) return;
     loadData(period, channelFilter);
-  }, [period, channelFilter, loadData]);
+  }, [period, channelFilter, loadData, organization]);
 
   if (loading) {
     return (
@@ -150,6 +190,14 @@ export default function ReportsPage() {
               }`}
             >
               Mesaj Analizi
+            </button>
+            <button
+              onClick={() => setActiveTab("crm")}
+              className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all ${
+                activeTab === "crm" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              CRM & Segment
             </button>
           </div>
         </div>
@@ -348,6 +396,138 @@ export default function ReportsPage() {
           </div>
         </>
       )}
+
+      {activeTab === "crm" && (
+        <CRMReportsTab />
+      )}
+    </div>
+  );
+}
+
+// CRM Reports tab (inline)
+const CRM_SEGMENT_DATA = [
+  { id: 1, label: "Satis + Iletisim", count: 3, prev: 2, color: "bg-emerald-500", pct: 20 },
+  { id: 2, label: "Iletisim Var, Satis Yok", count: 5, prev: 4, color: "bg-blue-500", pct: 33 },
+  { id: 3, label: "Buyuk Firma, Ulasilamiyor", count: 3, prev: 4, color: "bg-amber-500", pct: 20 },
+  { id: 4, label: "Normal Firma, Ulasilamiyor", count: 4, prev: 5, color: "bg-red-500", pct: 27 },
+];
+const CRM_MOVEMENTS = [
+  { from: 4, to: 2, count: 2, label: "Segment 4 → 2", description: "Iletisim kuruldu", direction: "up" },
+  { from: 2, to: 1, count: 1, label: "Segment 2 → 1", description: "Satis gerceklesti", direction: "up" },
+  { from: 3, to: 2, count: 1, label: "Segment 3 → 2", description: "Buyuk firmaya ulasildi", direction: "up" },
+  { from: 1, to: 2, count: 1, label: "Segment 1 → 2", description: "Musteri bu sezon siparis vermedi", direction: "down" },
+];
+const CRM_CAMPAIGN_STATS = [
+  { name: "Yeni Sezon Kumas Katalogu", sent: 28, responded: 12, rate: 43, orders: 3 },
+  { name: "Rusca Tanitim Filmi", sent: 42, responded: 8, rate: 19, orders: 0 },
+  { name: "8 Mart Tebrigi", sent: 52, responded: 18, rate: 35, orders: 1 },
+  { name: "Fuar Sonrasi Takip", sent: 10, responded: 2, rate: 20, orders: 0 },
+];
+const CRM_DIRECTION = { inbound: { count: 18, pct: 31 }, outbound: { count: 40, pct: 69 } };
+
+function CRMReportsTab() {
+  const totalCustomers = CRM_SEGMENT_DATA.reduce((s, d) => s + d.count, 0);
+  const totalWins = CRM_MOVEMENTS.filter(m => m.direction === "up").reduce((s, m) => s + m.count, 0);
+  const totalLosses = CRM_MOVEMENTS.filter(m => m.direction === "down").reduce((s, m) => s + m.count, 0);
+
+  return (
+    <div className="space-y-6">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="card p-4">
+          <p className="text-xs text-gray-500 mb-1">Toplam Musteri</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalCustomers}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-gray-500 mb-1">Segment Yukselme</p>
+          <p className="text-2xl font-bold text-green-600">+{totalWins}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-gray-500 mb-1">Segment Dusus</p>
+          <p className="text-2xl font-bold text-red-600">-{totalLosses}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-gray-500 mb-1">Iletisim Yonu</p>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-xs text-blue-600 font-medium">Giden %{CRM_DIRECTION.outbound.pct}</span>
+            <span className="text-xs text-gray-400">|</span>
+            <span className="text-xs text-green-600 font-medium">Gelen %{CRM_DIRECTION.inbound.pct}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Segment Distribution + Movements */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Segment Dagilimi</h3>
+          <div className="space-y-3">
+            {CRM_SEGMENT_DATA.map(seg => (
+              <div key={seg.id}>
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="font-medium text-gray-700 dark:text-slate-300">S{seg.id}: {seg.label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-900 dark:text-white font-bold">{seg.count}</span>
+                    {seg.count > seg.prev ? (
+                      <span className="text-green-600 text-[10px]">+{seg.count - seg.prev}</span>
+                    ) : seg.count < seg.prev ? (
+                      <span className="text-red-600 text-[10px]">{seg.count - seg.prev}</span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="w-full h-3 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${seg.color}`} style={{ width: `${seg.pct}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Segment Gecisleri</h3>
+          <div className="space-y-2">
+            {CRM_MOVEMENTS.map((m, i) => (
+              <div key={i} className={`flex items-center gap-3 p-3 rounded-xl ${m.direction === "up" ? "bg-green-50/50 dark:bg-green-950/30 border border-green-100 dark:border-green-900" : "bg-red-50/50 dark:bg-red-950/30 border border-red-100 dark:border-red-900"}`}>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center ${m.direction === "up" ? "bg-green-100 dark:bg-green-900" : "bg-red-100 dark:bg-red-900"}`}>
+                  <span className="text-xs font-bold">{m.direction === "up" ? "↑" : "↓"}</span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{m.label} <span className="text-gray-400 font-normal">({m.count} musteri)</span></p>
+                  <p className="text-xs text-gray-500">{m.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Campaign Performance */}
+      <div className="card p-5">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Kampanya Performansi</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 dark:border-slate-700">
+                <th className="text-left py-2 font-medium text-gray-500">Kampanya</th>
+                <th className="text-right py-2 font-medium text-gray-500">Gonderilen</th>
+                <th className="text-right py-2 font-medium text-gray-500">Cevap</th>
+                <th className="text-right py-2 font-medium text-gray-500">Oran</th>
+                <th className="text-right py-2 font-medium text-gray-500">Siparis</th>
+              </tr>
+            </thead>
+            <tbody>
+              {CRM_CAMPAIGN_STATS.map(c => (
+                <tr key={c.name} className="border-b border-gray-50 dark:border-slate-800">
+                  <td className="py-2.5 font-medium text-gray-900 dark:text-white">{c.name}</td>
+                  <td className="py-2.5 text-right text-gray-600 dark:text-slate-400">{c.sent}</td>
+                  <td className="py-2.5 text-right text-gray-600 dark:text-slate-400">{c.responded}</td>
+                  <td className="py-2.5 text-right"><span className={`px-2 py-0.5 rounded text-xs font-medium ${c.rate >= 30 ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>%{c.rate}</span></td>
+                  <td className="py-2.5 text-right font-medium text-gray-900 dark:text-white">{c.orders}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

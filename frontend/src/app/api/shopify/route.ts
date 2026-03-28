@@ -62,7 +62,10 @@ export async function GET(req: NextRequest) {
     if (action === "orders") {
       const limit = searchParams.get("limit") || "20";
       const status = searchParams.get("status") || "any";
-      const data = await shopifyFetch(`orders.json?limit=${limit}&status=${status}&order=created_at+desc`);
+      const createdAtMin = searchParams.get("created_at_min") || "";
+      let url = `orders.json?limit=${limit}&status=${status}&order=created_at+desc`;
+      if (createdAtMin) url += `&created_at_min=${createdAtMin}`;
+      const data = await shopifyFetch(url);
       return NextResponse.json(data);
     }
 

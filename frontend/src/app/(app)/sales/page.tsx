@@ -14,10 +14,12 @@ import { reportsAPI } from "@/lib/api";
 
 type ShopifyOrder = {
   id: number; name: string; email: string; created_at: string;
-  total_price: string; financial_status: string;
-  fulfillment_status: string | null;
-  line_items: { title: string; quantity: number; price: string }[];
-  customer?: { first_name: string; last_name: string };
+  total_price: string; subtotal_price?: string; total_discounts?: string;
+  financial_status: string; fulfillment_status: string | null;
+  line_items: { title: string; quantity: number; price: string; variant_title?: string }[];
+  customer?: { first_name: string; last_name: string; email?: string };
+  shipping_address?: { city: string; province: string; country: string };
+  total_shipping_price_set?: { shop_money: { amount: string } };
 };
 
 const orderStatusColors: Record<string, { label: string; color: string }> = {
@@ -71,7 +73,7 @@ const DEMO_SITE_ANALYTICS = {
   },
 };
 
-type TabKey = "overview" | "crm" | "traffic" | "orders" | "ads";
+type TabKey = "overview" | "crm" | "ads" | "traffic" | "orders" | "returns";
 
 export default function SalesPage() {
   const { organization } = useAuthStore();
@@ -82,6 +84,7 @@ export default function SalesPage() {
   const [crmData, setCrmData] = useState<any>(null);
   const [metaAds, setMetaAds] = useState<any>(null);
   const [period, setPeriod] = useState<string>("30d");
+  const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
 
   const periodToMeta: Record<string, string> = {
     today: "today", yesterday: "yesterday", "7d": "last_7d", "30d": "last_30d",
@@ -92,7 +95,7 @@ export default function SalesPage() {
     try {
       const [statsRes, ordersRes, crmRes, metaRes] = await Promise.all([
         fetch("/api/shopify?action=stats"),
-        fetch("/api/shopify?action=orders&limit=50"),
+        fetch("/api/shopify?action=orders&limit=250"),
         reportsAPI.overview("30d").catch(() => ({ data: null })),
         fetch(`/api/shopify?action=meta-ads&date_preset=${periodToMeta[period] || "last_30d"}`).then(r => r.json()).catch(() => null),
       ]);
@@ -162,9 +165,10 @@ export default function SalesPage() {
           {([
             { key: "overview" as TabKey, label: "Genel Bakış" },
             { key: "crm" as TabKey, label: "CRM Raporu" },
-            { key: "traffic" as TabKey, label: "Site Trafiği" },
             { key: "ads" as TabKey, label: "Reklam" },
+            { key: "traffic" as TabKey, label: "Site Trafiği" },
             { key: "orders" as TabKey, label: "Siparişler" },
+            { key: "returns" as TabKey, label: "İadeler" },
           ]).map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === tab.key ? "bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm" : "text-gray-500"}`}>
@@ -770,40 +774,139 @@ export default function SalesPage() {
 
       {/* ==================== SİPARİŞLER ==================== */}
       {activeTab === "orders" && (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800">
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">Sipariş</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">Müşteri</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-500">Tutar</th>
-                  <th className="text-center py-3 px-4 font-medium text-gray-500">Ürün</th>
-                  <th className="text-center py-3 px-4 font-medium text-gray-500">Ödeme</th>
-                  <th className="text-center py-3 px-4 font-medium text-gray-500">Kargo</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-500">Tarih</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(filteredOrders.length > 0 ? filteredOrders : orders).map(o => {
-                  const fulfillment = o.fulfillment_status || "unfulfilled";
-                  const customerName = o.customer ? `${o.customer.first_name || ""} ${o.customer.last_name || ""}`.trim() : o.email?.split("@")[0] || "-";
-                  return (
-                    <tr key={o.id} className="border-b border-gray-50 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/50">
-                      <td className="py-3 px-4 font-mono font-medium text-gray-900 dark:text-white">{o.name}</td>
-                      <td className="py-3 px-4 text-gray-700 dark:text-slate-300 truncate max-w-[120px]">{customerName}</td>
-                      <td className="py-3 px-4 text-right font-medium text-gray-900 dark:text-white">{parseFloat(o.total_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</td>
-                      <td className="py-3 px-4 text-center text-gray-500">{o.line_items.length}</td>
-                      <td className="py-3 px-4 text-center"><span className={`text-[10px] font-medium ${paymentStatusColors[o.financial_status]?.color || "text-gray-500"}`}>{paymentStatusColors[o.financial_status]?.label || o.financial_status}</span></td>
-                      <td className="py-3 px-4 text-center"><span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${orderStatusColors[fulfillment]?.color || "bg-gray-100 text-gray-500"}`}>{orderStatusColors[fulfillment]?.label || fulfillment}</span></td>
-                      <td className="py-3 px-4 text-right text-gray-400">{new Date(o.created_at).toLocaleDateString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <div className="space-y-2">
+          {(filteredOrders.length > 0 ? filteredOrders : orders).map(o => {
+            const fulfillment = o.fulfillment_status || "unfulfilled";
+            const customerName = o.customer ? `${o.customer.first_name || ""} ${o.customer.last_name || ""}`.trim() : o.email?.split("@")[0] || "-";
+            const isExpanded = expandedOrder === o.id;
+            return (
+              <div key={o.id} className="card overflow-hidden">
+                <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors"
+                  onClick={() => setExpandedOrder(isExpanded ? null : o.id)}>
+                  <div className={`w-2 h-10 rounded-full flex-shrink-0 ${fulfillment === "fulfilled" ? "bg-emerald-400" : "bg-amber-400"}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-gray-900 dark:text-white">{o.name}</span>
+                      <span className="text-xs text-gray-500 truncate">{customerName}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${orderStatusColors[fulfillment]?.color || "bg-gray-100 text-gray-500"}`}>{orderStatusColors[fulfillment]?.label}</span>
+                      <span className={`text-[10px] font-medium ${paymentStatusColors[o.financial_status]?.color || "text-gray-500"}`}>{paymentStatusColors[o.financial_status]?.label}</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{o.line_items?.length} ürün · {new Date(o.created_at).toLocaleDateString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                  </div>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white flex-shrink-0">{parseFloat(o.total_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
+                </div>
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t border-gray-100 dark:border-slate-800 pt-3">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Ürünler</h4>
+                        <div className="space-y-2">
+                          {o.line_items?.map((li: any, i: number) => (
+                            <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 dark:bg-slate-800">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-gray-900 dark:text-white truncate">{li.title}</p>
+                                {li.variant_title && <p className="text-[10px] text-gray-400">{li.variant_title}</p>}
+                              </div>
+                              <span className="text-[10px] text-gray-500">{li.quantity} adet</span>
+                              <span className="text-xs font-medium text-gray-900 dark:text-white">{parseFloat(li.price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Sipariş Detayı</h4>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between p-2 rounded-lg bg-gray-50 dark:bg-slate-800">
+                            <span className="text-gray-500">Ara Toplam</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{parseFloat(o.subtotal_price || o.total_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
+                          </div>
+                          {o.total_discounts && parseFloat(o.total_discounts) > 0 && (
+                            <div className="flex justify-between p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/20">
+                              <span className="text-emerald-600">İndirim</span>
+                              <span className="font-medium text-emerald-600">-{parseFloat(o.total_discounts).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between p-2 rounded-lg bg-gray-50 dark:bg-slate-800">
+                            <span className="text-gray-500">Kargo</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{o.total_shipping_price_set?.shop_money?.amount ? parseFloat(o.total_shipping_price_set.shop_money.amount).toLocaleString("tr-TR", { maximumFractionDigits: 0 }) + " TL" : "Ücretsiz"}</span>
+                          </div>
+                          <div className="flex justify-between p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20 font-semibold">
+                            <span className="text-gray-700 dark:text-slate-300">Toplam</span>
+                            <span className="text-gray-900 dark:text-white">{parseFloat(o.total_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
+                          </div>
+                          {o.customer?.email && (
+                            <div className="flex justify-between p-2 rounded-lg bg-gray-50 dark:bg-slate-800">
+                              <span className="text-gray-500">E-posta</span>
+                              <span className="text-gray-700 dark:text-slate-300">{o.customer.email || o.email}</span>
+                            </div>
+                          )}
+                          {o.shipping_address && (
+                            <div className="p-2 rounded-lg bg-gray-50 dark:bg-slate-800">
+                              <span className="text-gray-500 block mb-1">Teslimat Adresi</span>
+                              <span className="text-gray-700 dark:text-slate-300">{o.shipping_address.city}, {o.shipping_address.province} {o.shipping_address.country}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
+      )}
+
+      {/* ==================== İADELER ==================== */}
+      {activeTab === "returns" && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-1"><AlertCircle className="h-4 w-4 text-red-500" /><span className="text-[10px] text-gray-500">Toplam İade</span></div>
+              <p className="text-xl font-bold text-red-600">{orders.filter(o => o.financial_status === "refunded" || o.financial_status === "partially_refunded").length}</p>
+            </div>
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-1"><DollarSign className="h-4 w-4 text-red-500" /><span className="text-[10px] text-gray-500">İade Tutarı</span></div>
+              <p className="text-xl font-bold text-red-600">{orders.filter(o => o.financial_status === "refunded" || o.financial_status === "partially_refunded").reduce((s, o) => s + parseFloat(o.total_price), 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</p>
+            </div>
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-1"><Target className="h-4 w-4 text-amber-500" /><span className="text-[10px] text-gray-500">İade Oranı</span></div>
+              <p className="text-xl font-bold text-amber-600">%{orders.length > 0 ? ((orders.filter(o => o.financial_status === "refunded" || o.financial_status === "partially_refunded").length / orders.length) * 100).toFixed(1) : 0}</p>
+            </div>
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-1"><Clock className="h-4 w-4 text-violet-500" /><span className="text-[10px] text-gray-500">Kısmi İade</span></div>
+              <p className="text-xl font-bold text-violet-600">{orders.filter(o => o.financial_status === "partially_refunded").length}</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {orders.filter(o => o.financial_status === "refunded" || o.financial_status === "partially_refunded").map(o => {
+              const customerName = o.customer ? `${o.customer.first_name || ""} ${o.customer.last_name || ""}`.trim() : o.email?.split("@")[0] || "-";
+              return (
+                <div key={o.id} className="card p-4 border-l-4 border-l-red-400">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-gray-900 dark:text-white">{o.name}</span>
+                      <span className="text-xs text-gray-500">{customerName}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${o.financial_status === "refunded" ? "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300" : "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"}`}>
+                        {o.financial_status === "refunded" ? "Tam İade" : "Kısmi İade"}
+                      </span>
+                    </div>
+                    <span className="text-sm font-bold text-red-600">{parseFloat(o.total_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
+                  </div>
+                  <p className="text-[10px] text-gray-400">{o.line_items?.map((l: any) => l.title).join(", ")}</p>
+                  <p className="text-[10px] text-gray-400 mt-1">{new Date(o.created_at).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}</p>
+                </div>
+              );
+            })}
+            {orders.filter(o => o.financial_status === "refunded" || o.financial_status === "partially_refunded").length === 0 && (
+              <div className="card p-8 text-center">
+                <CheckCircle className="h-10 w-10 text-emerald-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-500">Bu dönemde iade bulunmuyor.</p>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

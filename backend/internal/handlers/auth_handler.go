@@ -2,7 +2,13 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/tls"
+	"encoding/hex"
+	"fmt"
+	"net"
 	"net/http"
+	"net/smtp"
 	"strings"
 	"time"
 
@@ -198,6 +204,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+func generateToken() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
 func (h *AuthHandler) InviteMember(c *gin.Context) {
 	var req InviteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -211,7 +223,7 @@ func (h *AuthHandler) InviteMember(c *gin.Context) {
 	}
 
 	orgID := c.GetInt64("org_id")
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	tx, err := h.db.Pool.Begin(ctx)
@@ -221,8 +233,8 @@ func (h *AuthHandler) InviteMember(c *gin.Context) {
 	}
 	defer tx.Rollback(ctx)
 
-	// Create user with temporary password or find existing
-	tempHash, _ := h.auth.HashPassword("temp-change-me")
+	inviteToken := generateToken()
+	tempHash, _ := h.auth.HashPassword("invite-" + inviteToken)
 	var userID int64
 	err = tx.QueryRow(ctx,
 		`INSERT INTO users (email, password_hash, full_name)
@@ -236,7 +248,6 @@ func (h *AuthHandler) InviteMember(c *gin.Context) {
 		return
 	}
 
-	// Add to org
 	_, err = tx.Exec(ctx,
 		`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, $3)
 		 ON CONFLICT (org_id, user_id) DO UPDATE SET role = $3`,
@@ -252,5 +263,137 @@ func (h *AuthHandler) InviteMember(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Member invited", "user_id": userID})
+	var orgName string
+	h.db.Pool.QueryRow(ctx, `SELECT name FROM organizations WHERE id = $1`, orgID).Scan(&orgName)
+
+	go h.sendInviteEmail(req.Email, req.FullName, orgName, inviteToken)
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Davet gönderildi", "user_id": userID})
+}
+
+func (h *AuthHandler) sendInviteEmail(toEmail, fullName, orgName, token string) {
+	ctx := context.Background()
+	var creds string
+	err := h.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(credentials::text, '{}') FROM channels WHERE type = 'email' LIMIT 1`,
+	).Scan(&creds)
+	if err != nil {
+		return
+	}
+
+	smtpHost := "smtp.hostnet.nl"
+	smtpPort := "587"
+	smtpUser := "destek@lessandromance.com"
+	smtpPass := ""
+	fromAddr := "destek@lessandromance.com"
+
+	if strings.Contains(creds, "smtp_host") {
+		for _, part := range strings.Split(creds[1:len(creds)-1], ",") {
+			kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			key := strings.Trim(strings.TrimSpace(kv[0]), "\"")
+			val := strings.Trim(strings.TrimSpace(kv[1]), "\"")
+			switch key {
+			case "smtp_host":
+				smtpHost = val
+			case "smtp_port":
+				smtpPort = val
+			case "smtp_user":
+				smtpUser = val
+			case "smtp_password":
+				smtpPass = val
+			case "from_address":
+				fromAddr = val
+			}
+		}
+	}
+
+	if smtpPass == "" {
+		return
+	}
+
+	inviteURL := fmt.Sprintf("https://repliqsupport.com/accept-invite?token=%s&email=%s", token, toEmail)
+
+	subject := fmt.Sprintf("%s ekibine davet edildiniz - Repliq", orgName)
+	body := fmt.Sprintf("Merhaba %s,\r\n\r\n%s ekibine katilmaniz icin davet edildiniz.\r\n\r\nAsagidaki baglantiya tiklayarak sifrenizi belirleyip panele giris yapabilirsiniz:\r\n\r\n%s\r\n\r\nBu davet baglantisi 7 gun gecerlidir.\r\n\r\nIyi calismalar,\r\n%s Ekibi\r\nRepliq - repliqsupport.com",
+		fullName, orgName, inviteURL, orgName)
+
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=\"utf-8\"\r\nDate: %s\r\n\r\n%s",
+		fromAddr, toEmail, subject, time.Now().Format(time.RFC1123Z), body)
+
+	addr := net.JoinHostPort(smtpHost, smtpPort)
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return
+	}
+
+	client, err := smtp.NewClient(conn, smtpHost)
+	if err != nil {
+		conn.Close()
+		return
+	}
+	defer client.Close()
+
+	tlsConfig := &tls.Config{ServerName: smtpHost}
+	client.StartTLS(tlsConfig)
+	client.Auth(smtp.PlainAuth("", smtpUser, smtpPass, smtpHost))
+	client.Mail(fromAddr)
+	client.Rcpt(toEmail)
+	w, err := client.Data()
+	if err != nil {
+		return
+	}
+	w.Write([]byte(msg))
+	w.Close()
+	client.Quit()
+}
+
+// AcceptInvite handles the invite acceptance - user sets their password
+func (h *AuthHandler) AcceptInvite(c *gin.Context) {
+	var req struct {
+		Email    string `json:"email" binding:"required,email"`
+		Token    string `json:"token" binding:"required"`
+		Password string `json:"password" binding:"required,min=6"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	var userID int64
+	var storedHash string
+	err := h.db.Pool.QueryRow(ctx,
+		`SELECT id, password_hash FROM users WHERE email = $1`, req.Email,
+	).Scan(&userID, &storedHash)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanici bulunamadi"})
+		return
+	}
+
+	if !h.auth.CheckPassword("invite-"+req.Token, storedHash) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Gecersiz veya suresi dolmus davet baglantisi"})
+		return
+	}
+
+	newHash, err := h.auth.HashPassword(req.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Sifre olusturma hatasi"})
+		return
+	}
+
+	_, err = h.db.Pool.Exec(ctx,
+		`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+		newHash, userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Sifre guncelleme hatasi"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Sifreniz belirlendi. Artik giris yapabilirsiniz."})
 }

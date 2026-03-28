@@ -177,6 +177,9 @@ func main() {
 	// CSAT public endpoint (customers submit ratings)
 	r.POST("/api/v1/csat/submit", csatHandler.SubmitRating)
 
+	// Accept invite (public - no auth needed)
+	r.POST("/api/v1/auth/accept-invite", authHandler.AcceptInvite)
+
 	// Webhook routes (public)
 	webhooks := r.Group("/api/v1/webhooks")
 	{

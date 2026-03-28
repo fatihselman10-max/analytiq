@@ -40,22 +40,15 @@ export default function DashboardPage() {
   const loadAll = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      // Fetch Shopify data + message stats in parallel
+      // Same data source as Mağaza Analizi - fetch all orders, filter client-side
       const periodToMeta: Record<string, string> = {
         today: "today", yesterday: "yesterday", "7d": "last_7d", "30d": "last_30d",
         "90d": "last_90d", "180d": "last_180d", "365d": "last_year",
       };
-      // Calculate date for Shopify order filter
-      const periodDays: Record<string, number> = { today: 0, yesterday: 1, "7d": 7, "30d": 30, "90d": 90, "180d": 180, "365d": 365 };
-      const days = periodDays[period] || 7;
-      const sinceDate = new Date();
-      sinceDate.setDate(sinceDate.getDate() - days);
-      if (period === "today") sinceDate.setHours(0, 0, 0, 0);
-      const dateParam = `&created_at_min=${sinceDate.toISOString()}`;
 
       const [statsRes, ordersRes, productsRes, convRes, metaRes] = await Promise.all([
         fetch("/api/shopify?action=stats").then(r => r.json()).catch(() => null),
-        fetch(`/api/shopify?action=orders&limit=250${dateParam}`).then(r => r.json()).catch(() => ({ orders: [] })),
+        fetch("/api/shopify?action=orders&limit=250").then(r => r.json()).catch(() => ({ orders: [] })),
         fetch("/api/shopify?action=products&limit=50").then(r => r.json()).catch(() => ({ products: [] })),
         reportsAPI.overview("7d").catch(() => ({ data: null })),
         fetch(`/api/shopify?action=meta-ads&date_preset=${periodToMeta[period] || "last_7d"}`).then(r => r.json()).catch(() => null),
@@ -177,10 +170,24 @@ KURALLAR:
     return <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
   }
 
-  // Orders are already filtered by period from API (created_at_min parameter)
-  // Use them directly - no extra client-side filtering needed
-  const filteredOrders = orders;
-  const periodRevenue = orders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);
+  // Same filtering logic as Mağaza Analizi page
+  const now = new Date();
+  const getPeriodStart = (p: string) => {
+    const d = new Date(now);
+    switch (p) {
+      case "today": d.setHours(0, 0, 0, 0); return d;
+      case "yesterday": d.setDate(d.getDate() - 1); d.setHours(0, 0, 0, 0); return d;
+      case "7d": d.setDate(d.getDate() - 7); return d;
+      case "30d": d.setDate(d.getDate() - 30); return d;
+      case "90d": d.setDate(d.getDate() - 90); return d;
+      case "180d": d.setDate(d.getDate() - 180); return d;
+      case "365d": d.setDate(d.getDate() - 365); return d;
+      default: d.setDate(d.getDate() - 30); return d;
+    }
+  };
+  const periodStart = getPeriodStart(period);
+  const filteredOrders = orders.filter(o => new Date(o.created_at) >= periodStart);
+  const periodRevenue = filteredOrders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);
   const totalRevenue = periodRevenue;
   const unfulfilledCount = orders.filter(o => !o.fulfillment_status || o.fulfillment_status === "unfulfilled").length;
   const outOfStockCount = products.filter(p => p.variants?.every((v: any) => (v.inventory_quantity || 0) <= 0)).length;

@@ -85,6 +85,9 @@ export default function SalesPage() {
   const [metaAds, setMetaAds] = useState<any>(null);
   const [period, setPeriod] = useState<string>("30d");
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
+  const [refundOrders, setRefundOrders] = useState<any[]>([]);
+  const [showAddReturn, setShowAddReturn] = useState(false);
+  const [newReturn, setNewReturn] = useState({ orderNo: "", reason: "", amount: "" });
 
   const periodToMeta: Record<string, string> = {
     today: "today", yesterday: "yesterday", "7d": "last_7d", "30d": "last_30d",
@@ -93,17 +96,19 @@ export default function SalesPage() {
 
   const fetchData = async () => {
     try {
-      const [statsRes, ordersRes, crmRes, metaRes] = await Promise.all([
+      const [statsRes, ordersRes, crmRes, metaRes, refundsRes] = await Promise.all([
         fetch("/api/shopify?action=stats"),
         fetch("/api/shopify?action=orders&limit=250"),
         reportsAPI.overview("30d").catch(() => ({ data: null })),
         fetch(`/api/shopify?action=meta-ads&date_preset=${periodToMeta[period] || "last_30d"}`).then(r => r.json()).catch(() => null),
+        fetch("/api/shopify?action=refunds&limit=50").then(r => r.json()).catch(() => ({ orders: [] })),
       ]);
       setStats(await statsRes.json());
       const data = await ordersRes.json();
       setOrders(data.orders || []);
       setCrmData(crmRes.data);
       setMetaAds(metaRes);
+      setRefundOrders(refundsRes.orders || []);
     } catch {}
     setLoading(false);
   };
@@ -860,49 +865,113 @@ export default function SalesPage() {
       {/* ==================== İADELER ==================== */}
       {activeTab === "returns" && (
         <>
+          {/* KPI */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-1"><AlertCircle className="h-4 w-4 text-red-500" /><span className="text-[10px] text-gray-500">Toplam İade</span></div>
-              <p className="text-xl font-bold text-red-600">{orders.filter(o => o.financial_status === "refunded" || o.financial_status === "partially_refunded").length}</p>
+              <p className="text-xl font-bold text-red-600">{refundOrders.length}</p>
+              <p className="text-[10px] text-gray-400">Shopify canlı veri</p>
             </div>
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-1"><DollarSign className="h-4 w-4 text-red-500" /><span className="text-[10px] text-gray-500">İade Tutarı</span></div>
-              <p className="text-xl font-bold text-red-600">{orders.filter(o => o.financial_status === "refunded" || o.financial_status === "partially_refunded").reduce((s, o) => s + parseFloat(o.total_price), 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</p>
+              <p className="text-xl font-bold text-red-600">{refundOrders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</p>
             </div>
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-1"><Target className="h-4 w-4 text-amber-500" /><span className="text-[10px] text-gray-500">İade Oranı</span></div>
-              <p className="text-xl font-bold text-amber-600">%{orders.length > 0 ? ((orders.filter(o => o.financial_status === "refunded" || o.financial_status === "partially_refunded").length / orders.length) * 100).toFixed(1) : 0}</p>
+              <p className="text-xl font-bold text-amber-600">%{stats?.ordersCount > 0 ? ((refundOrders.length / stats.ordersCount) * 100).toFixed(1) : 0}</p>
             </div>
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-1"><Clock className="h-4 w-4 text-violet-500" /><span className="text-[10px] text-gray-500">Kısmi İade</span></div>
-              <p className="text-xl font-bold text-violet-600">{orders.filter(o => o.financial_status === "partially_refunded").length}</p>
+              <p className="text-xl font-bold text-violet-600">{refundOrders.filter(o => o.financial_status === "partially_refunded").length}</p>
             </div>
           </div>
 
+          {/* Manuel İade Ekleme */}
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">İade Listesi</h3>
+            <button onClick={() => setShowAddReturn(!showAddReturn)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-xl text-xs font-medium hover:bg-red-700 transition-colors">
+              + Manuel İade Ekle
+            </button>
+          </div>
+
+          {showAddReturn && (
+            <div className="card p-4 border-2 border-red-200 dark:border-red-800">
+              <h4 className="text-xs font-semibold text-gray-900 dark:text-white mb-3">Yeni İade Kaydı</h4>
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+                <input value={newReturn.orderNo} onChange={e => setNewReturn(p => ({ ...p, orderNo: e.target.value }))} placeholder="Sipariş No (#LAR-xxxx)"
+                  className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-xs" />
+                <select value={newReturn.reason} onChange={e => setNewReturn(p => ({ ...p, reason: e.target.value }))}
+                  className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-xs">
+                  <option value="">İade Sebebi</option>
+                  <option value="beden">Beden Uyumsuzluğu</option>
+                  <option value="kusur">Ürün Kusuru</option>
+                  <option value="renk">Renk Farklılığı</option>
+                  <option value="hasar">Kargoda Hasar</option>
+                  <option value="yanlis">Yanlış Ürün</option>
+                  <option value="vazgecme">Müşteri Vazgeçmesi</option>
+                  <option value="diger">Diğer</option>
+                </select>
+                <input value={newReturn.amount} onChange={e => setNewReturn(p => ({ ...p, amount: e.target.value }))} placeholder="Tutar (TL)"
+                  className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-xs" />
+                <button className="px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-medium hover:bg-red-700 transition-colors">
+                  Kaydet
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* İade Listesi */}
           <div className="space-y-2">
-            {orders.filter(o => o.financial_status === "refunded" || o.financial_status === "partially_refunded").map(o => {
+            {refundOrders.map(o => {
               const customerName = o.customer ? `${o.customer.first_name || ""} ${o.customer.last_name || ""}`.trim() : o.email?.split("@")[0] || "-";
+              const isExpanded = expandedOrder === o.id;
               return (
-                <div key={o.id} className="card p-4 border-l-4 border-l-red-400">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-gray-900 dark:text-white">{o.name}</span>
-                      <span className="text-xs text-gray-500">{customerName}</span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${o.financial_status === "refunded" ? "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300" : "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"}`}>
-                        {o.financial_status === "refunded" ? "Tam İade" : "Kısmi İade"}
-                      </span>
+                <div key={o.id} className="card overflow-hidden border-l-4 border-l-red-400">
+                  <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors"
+                    onClick={() => setExpandedOrder(isExpanded ? null : o.id)}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono font-bold text-gray-900 dark:text-white">{o.name}</span>
+                        <span className="text-xs text-gray-500">{customerName}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${o.financial_status === "refunded" ? "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300" : "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"}`}>
+                          {o.financial_status === "refunded" ? "Tam İade" : "Kısmi İade"}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{o.line_items?.map((l: any) => l.title).join(", ")}</p>
                     </div>
-                    <span className="text-sm font-bold text-red-600">{parseFloat(o.total_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-bold text-red-600">{parseFloat(o.total_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</p>
+                      <p className="text-[10px] text-gray-400">{new Date(o.created_at).toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}</p>
+                    </div>
                   </div>
-                  <p className="text-[10px] text-gray-400">{o.line_items?.map((l: any) => l.title).join(", ")}</p>
-                  <p className="text-[10px] text-gray-400 mt-1">{new Date(o.created_at).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}</p>
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t border-gray-100 dark:border-slate-800 pt-3">
+                      <div className="space-y-2">
+                        {o.line_items?.map((li: any, i: number) => (
+                          <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-red-50 dark:bg-red-950/10">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-gray-900 dark:text-white">{li.title}</p>
+                              {li.variant_title && <p className="text-[10px] text-gray-400">{li.variant_title}</p>}
+                            </div>
+                            <span className="text-[10px] text-gray-500">{li.quantity} adet</span>
+                            <span className="text-xs font-medium text-red-600">{parseFloat(li.price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between p-2 rounded-lg bg-gray-50 dark:bg-slate-800 text-xs">
+                          <span className="text-gray-500">Müşteri</span>
+                          <span className="text-gray-700 dark:text-slate-300">{customerName} {o.customer?.email ? `(${o.customer.email})` : o.email ? `(${o.email})` : ""}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
-            {orders.filter(o => o.financial_status === "refunded" || o.financial_status === "partially_refunded").length === 0 && (
+            {refundOrders.length === 0 && (
               <div className="card p-8 text-center">
                 <CheckCircle className="h-10 w-10 text-emerald-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">Bu dönemde iade bulunmuyor.</p>
+                <p className="text-sm text-gray-500">İade kaydı bulunmuyor.</p>
               </div>
             )}
           </div>

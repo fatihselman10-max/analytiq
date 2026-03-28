@@ -83,6 +83,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(data);
     }
 
+    if (action === "refunds") {
+      const limit = searchParams.get("limit") || "50";
+      // Get orders with refunds
+      const data = await shopifyFetch(`orders.json?limit=${limit}&status=any&financial_status=refunded,partially_refunded&order=created_at+desc`);
+      return NextResponse.json(data);
+    }
+
     if (action === "meta-ads") {
       const datePreset = searchParams.get("date_preset") || "last_7d";
       const res = await fetch(

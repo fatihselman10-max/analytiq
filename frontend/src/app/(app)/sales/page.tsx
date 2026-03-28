@@ -17,8 +17,9 @@ type ShopifyOrder = {
   total_price: string; subtotal_price?: string; total_discounts?: string;
   financial_status: string; fulfillment_status: string | null;
   line_items: { title: string; quantity: number; price: string; variant_title?: string }[];
-  customer?: { first_name: string; last_name: string; email?: string };
-  shipping_address?: { city: string; province: string; country: string };
+  phone?: string;
+  customer?: { first_name: string; last_name: string; email?: string; phone?: string };
+  shipping_address?: { address1?: string; city: string; province: string; country: string; phone?: string };
   total_shipping_price_set?: { shop_money: { amount: string } };
 };
 
@@ -839,16 +840,22 @@ export default function SalesPage() {
                             <span className="text-gray-700 dark:text-slate-300">Toplam</span>
                             <span className="text-gray-900 dark:text-white">{parseFloat(o.total_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
                           </div>
-                          {o.customer?.email && (
+                          {(o.customer?.email || o.email) && (
                             <div className="flex justify-between p-2 rounded-lg bg-gray-50 dark:bg-slate-800">
                               <span className="text-gray-500">E-posta</span>
-                              <span className="text-gray-700 dark:text-slate-300">{o.customer.email || o.email}</span>
+                              <span className="text-gray-700 dark:text-slate-300">{o.customer?.email || o.email}</span>
+                            </div>
+                          )}
+                          {(o.customer?.phone || o.phone || o.shipping_address?.phone) && (
+                            <div className="flex justify-between p-2 rounded-lg bg-gray-50 dark:bg-slate-800">
+                              <span className="text-gray-500">Telefon</span>
+                              <span className="text-gray-700 dark:text-slate-300">{o.customer?.phone || o.phone || o.shipping_address?.phone}</span>
                             </div>
                           )}
                           {o.shipping_address && (
                             <div className="p-2 rounded-lg bg-gray-50 dark:bg-slate-800">
                               <span className="text-gray-500 block mb-1">Teslimat Adresi</span>
-                              <span className="text-gray-700 dark:text-slate-300">{o.shipping_address.city}, {o.shipping_address.province} {o.shipping_address.country}</span>
+                              <span className="text-gray-700 dark:text-slate-300">{o.shipping_address.address1 ? o.shipping_address.address1 + ", " : ""}{o.shipping_address.city}, {o.shipping_address.province} {o.shipping_address.country}</span>
                             </div>
                           )}
                         </div>

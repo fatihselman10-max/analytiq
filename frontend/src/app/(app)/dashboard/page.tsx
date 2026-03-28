@@ -177,31 +177,11 @@ KURALLAR:
     return <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
   }
 
-  // Filter orders by period
-  const now = new Date();
-  const getPeriodStart = () => {
-    const d = new Date(now);
-    switch (period) {
-      case "today": d.setHours(0, 0, 0, 0); return d;
-      case "yesterday": d.setDate(d.getDate() - 1); d.setHours(0, 0, 0, 0); return d;
-      case "7d": d.setDate(d.getDate() - 7); return d;
-      case "30d": d.setDate(d.getDate() - 30); return d;
-      case "90d": d.setDate(d.getDate() - 90); return d;
-      case "180d": d.setDate(d.getDate() - 180); return d;
-      case "365d": d.setDate(d.getDate() - 365); return d;
-      default: d.setHours(0, 0, 0, 0); return d;
-    }
-  };
-  const periodStart = getPeriodStart();
-  const periodEnd = period === "yesterday" ? (() => { const d = new Date(now); d.setHours(0, 0, 0, 0); return d; })() : now;
-
-  const filteredOrders = orders.filter(o => {
-    const d = new Date(o.created_at);
-    return d >= periodStart && d <= periodEnd;
-  });
-
-  const periodRevenue = filteredOrders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);
-  const totalRevenue = filteredOrders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);
+  // Orders are already filtered by period from API (created_at_min parameter)
+  // Use them directly - no extra client-side filtering needed
+  const filteredOrders = orders;
+  const periodRevenue = orders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);
+  const totalRevenue = periodRevenue;
   const unfulfilledCount = orders.filter(o => !o.fulfillment_status || o.fulfillment_status === "unfulfilled").length;
   const outOfStockCount = products.filter(p => p.variants?.every((v: any) => (v.inventory_quantity || 0) <= 0)).length;
   const lowStockCount = products.filter(p => p.variants?.some((v: any) => v.inventory_quantity > 0 && v.inventory_quantity < 10)).length;

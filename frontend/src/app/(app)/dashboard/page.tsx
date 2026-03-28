@@ -380,12 +380,12 @@ KURALLAR:
       {/* Kâr Özeti - Mini P&L */}
       <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
         {[
-          { label: "Ciro", value: `${(metaAds?.purchaseValue ? Math.round(metaAds.purchaseValue) : periodRevenue).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL`, sub: periodLabel, color: "text-gray-900 dark:text-white" },
-          { label: "COGS", value: `${Math.round((metaAds?.purchaseValue || periodRevenue) * 0.4).toLocaleString("tr-TR")} TL`, sub: "%40", color: "text-red-600" },
-          { label: "Brüt Kâr", value: `${Math.round((metaAds?.purchaseValue || periodRevenue) * 0.6).toLocaleString("tr-TR")} TL`, sub: "%60 marj", color: "text-emerald-600" },
-          { label: "Reklam", value: `${metaAds?.spend ? Math.round(metaAds.spend).toLocaleString("tr-TR") : "~" + Math.round(periodRevenue * 0.2).toLocaleString("tr-TR")} TL`, sub: metaAds?.spend ? "Meta canlı" : "tahmini", color: "text-amber-600" },
-          { label: "ROAS", value: metaAds?.roas ? `${metaAds.roas.toFixed(2)}x` : "-", sub: metaAds?.spend ? "Meta pixel" : "", color: metaAds?.roas > 2 ? "text-emerald-600" : "text-red-600" },
-          { label: "Net Kâr", value: `${Math.round((metaAds?.purchaseValue || periodRevenue) * 0.6 - (metaAds?.spend || periodRevenue * 0.2) - (metaAds?.purchaseValue || periodRevenue) * 0.28).toLocaleString("tr-TR")} TL`, sub: "tahmini", color: "text-emerald-600" },
+          { label: "Ciro", value: `${periodRevenue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL`, sub: periodLabel, color: "text-gray-900 dark:text-white" },
+          { label: "COGS", value: `${Math.round(periodRevenue * 0.4).toLocaleString("tr-TR")} TL`, sub: "%40", color: "text-red-600" },
+          { label: "Brüt Kâr", value: `${Math.round(periodRevenue * 0.6).toLocaleString("tr-TR")} TL`, sub: "%60 marj", color: "text-emerald-600" },
+          { label: "Sipariş", value: `${filteredOrders.length}`, sub: `Ort: ${filteredOrders.length > 0 ? Math.round(periodRevenue / filteredOrders.length).toLocaleString("tr-TR") : 0} TL`, color: "text-blue-600" },
+          { label: "Reklam", value: metaAds?.spend ? `${Math.round(metaAds.spend).toLocaleString("tr-TR")} TL` : "-", sub: metaAds?.roas ? `ROAS ${metaAds.roas.toFixed(1)}x` : "Meta bağla", color: "text-amber-600" },
+          { label: "Net Kâr", value: `${Math.round(periodRevenue * 0.6 - (metaAds?.spend || periodRevenue * 0.2) - periodRevenue * 0.28).toLocaleString("tr-TR")} TL`, sub: "tahmini", color: periodRevenue * 0.6 - (metaAds?.spend || periodRevenue * 0.2) - periodRevenue * 0.28 > 0 ? "text-emerald-600" : "text-red-600" },
         ].map((kpi, i) => (
           <Link key={i} href="/settings" className="card p-3 hover:shadow-sm transition-shadow text-center">
             <p className="text-[10px] text-gray-400">{kpi.label}</p>

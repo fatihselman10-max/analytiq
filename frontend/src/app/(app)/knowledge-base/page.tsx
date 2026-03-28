@@ -193,7 +193,7 @@ export default function KnowledgeBasePage() {
         <div className="text-center py-20">
           <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-4" />
           <p className="text-gray-500 font-medium">Henüz makale yok</p>
-          <p className="text-sm text-gray-400 mt-1">İlk makalenizi oluşturun.</p>
+          <p className="text-sm text-gray-400 mt-1">İlk makalenizi oluştürün.</p>
         </div>
       ) : (
         <div className="space-y-2">

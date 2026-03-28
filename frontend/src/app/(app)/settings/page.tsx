@@ -28,20 +28,18 @@ const defaultSchedule: Record<string, { enabled: boolean; start: string; end: st
 };
 
 const tabs = [
-  { key: "profile", label: "Profil", icon: User },
-  { key: "organization", label: "Organizasyon", icon: Building2 },
+  { key: "profile", label: "Profil & Organizasyon", icon: User },
   { key: "channels", label: "Kanallar", icon: Radio },
   { key: "team", label: "Ekip", icon: Users },
   { key: "bot", label: "AI Bot", icon: Bot },
-  { key: "contacts", label: "Kisiler", icon: Users },
   { key: "knowledge-base", label: "Bilgi Bankasi", icon: BookOpen },
   { key: "business-hours", label: "Is Saatleri", icon: Clock },
-  { key: "sla", label: "SLA Yonetimi", icon: ShieldCheck },
+  { key: "sla", label: "SLA Yönetimi", icon: ShieldCheck },
   { key: "csat", label: "CSAT Anketleri", icon: Star },
   { key: "notifications", label: "Bildirimler", icon: Bell },
-  { key: "nebim", label: "Nebim ERP", icon: Key },
-  { key: "api", label: "API & Entegrasyonlar", icon: Key },
-  { key: "portal", label: "Musteri Portali", icon: Globe2 },
+  { key: "integrations", label: "Entegrasyonlar", icon: Globe2 },
+  { key: "costs", label: "Maliyetler", icon: CreditCard },
+  { key: "api", label: "API", icon: Key },
   { key: "billing", label: "Plan & Faturalandirma", icon: CreditCard },
 ];
 
@@ -828,107 +826,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {activeTab === "nebim" && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="card p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                      <span className="text-white text-lg font-bold">N</span>
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Nebim V3 ERP Entegrasyonu</h2>
-                      <p className="text-sm text-gray-500">Stok, cari hesap ve fatura verilerinizi senkronize edin</p>
-                    </div>
-                  </div>
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950 px-3 py-1.5 rounded-full">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Bagli
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">API URL</label>
-                    <input value="https://api.nebim.cloud/v3/messe-tekstil" readOnly
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-xl text-sm bg-gray-50 dark:bg-slate-800 text-gray-600" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">Firma Kodu</label>
-                    <input value="MESSE-001" readOnly
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-xl text-sm bg-gray-50 dark:bg-slate-800 text-gray-600" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">Kullanici Adi</label>
-                    <input value="messe_api_user" readOnly
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-xl text-sm bg-gray-50 dark:bg-slate-800 text-gray-600" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">Sifre</label>
-                    <input value="••••••••••••" readOnly type="password"
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-xl text-sm bg-gray-50 dark:bg-slate-800 text-gray-600" />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <button className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-medium">Baglantiyi Test Et</button>
-                  <button className="px-4 py-2 text-sm border border-gray-200 dark:border-slate-700 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-600 dark:text-slate-400 font-medium">Kaydet</button>
-                </div>
-              </div>
-
-              {/* Sync Settings */}
-              <div className="card p-6">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Senkronizasyon Ayarlari</h3>
-                <div className="space-y-4">
-                  {[
-                    { label: "Urun & Stok", desc: "Urun katalogu, stok miktarlari, fiyatlar", interval: "Her 15 dk", synced: 10, icon: "P" },
-                    { label: "Cari Hesaplar", desc: "Musteri kartlari, bakiyeler, kredi limitleri", interval: "Her 30 dk", synced: 15, icon: "C" },
-                    { label: "Satis Faturalari", desc: "Fatura detaylari, siparis gecmisi", interval: "Her 1 saat", synced: 47, icon: "F" },
-                    { label: "Depo & Raf", desc: "Depo lokasyonlari, raf bilgileri, transfer", interval: "Her 15 dk", synced: 10, icon: "D" },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
-                          <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{item.icon}</span>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">{item.label}</p>
-                          <p className="text-xs text-gray-500">{item.desc}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-xs text-gray-500">{item.interval}</span>
-                        <span className="text-xs font-medium text-emerald-600">{item.synced} kayit</span>
-                        <div className="relative inline-flex h-5 w-9 items-center rounded-full bg-emerald-500 transition-colors">
-                          <span className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm" style={{ transform: "translateX(17px)" }} />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Sync Log */}
-              <div className="card p-6">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Son Senkronizasyon Kayitlari</h3>
-                <div className="space-y-2">
-                  {[
-                    { time: "14:32", type: "Stok", status: "success", detail: "10 urun guncellendi" },
-                    { time: "14:30", type: "Cari", status: "success", detail: "2 yeni cari eklendi, 3 bakiye guncellendi" },
-                    { time: "14:15", type: "Fatura", status: "success", detail: "Fatura #8653 senkronize edildi" },
-                    { time: "14:00", type: "Stok", status: "success", detail: "Rezervasyon guncellendi: M-1204 (+20)" },
-                    { time: "13:45", type: "Depo", status: "success", detail: "Transfer: B-3-01 → A-1-02 (M-1225)" },
-                    { time: "13:30", type: "Fatura", status: "warning", detail: "Fatura #8649 - cari eslesmesi bekleniyor" },
-                  ].map((log, i) => (
-                    <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800">
-                      <span className="text-xs text-gray-400 w-12 flex-shrink-0">{log.time}</span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${log.status === "success" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400" : "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400"}`}>{log.type}</span>
-                      <span className="text-xs text-gray-600 dark:text-slate-400">{log.detail}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          
 
           {activeTab === "api" && (
             <div className="card p-6 animate-fade-in">
@@ -957,107 +855,338 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {activeTab === "portal" && (
-            <div className="space-y-4 animate-fade-in">
+          {activeTab === "integrations" && (
+            <div className="space-y-6 animate-fade-in">
+              {/* E-Ticaret Platformları */}
               <div className="card p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600">
-                    <Globe2 className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Musteri Self-Service Portali</h2>
-                    <p className="text-xs text-gray-500">Musterileriniz kendi hesaplarindan siparis ve takip yapabilir</p>
-                  </div>
-                  <span className="ml-auto px-3 py-1 bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 text-xs font-bold rounded-full">YAKLASIM</span>
-                </div>
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-xl p-5 border border-indigo-100 dark:border-indigo-900">
-                  <p className="text-sm text-gray-700 dark:text-slate-300 mb-3">Musteri portali ile musterileriniz:</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {[
-                      { title: "Stok Sorgulama", desc: "Canli stok durumunu gorebilir, renk/metre bilgisine ulasabilir" },
-                      { title: "Online Siparis", desc: "Urun secip siparis olusturabilir, proforma alabilir" },
-                      { title: "Siparis Takibi", desc: "Siparislerinin durumunu ve kargo takibini gorebilir" },
-                      { title: "Fiyat Listesi", desc: "Kendine ozel iskontolu fiyat listesini goruntuleyebilir" },
-                      { title: "Numune Talebi", desc: "Online numune talep formu doldurabilir" },
-                      { title: "Hesap Durumu", desc: "Cari bakiye, fatura ve odeme gecmisini gorebilir" },
-                      { title: "Dijital Katalog", desc: "Guncel katalogu indirebilir, online goruntuleyebilir" },
-                      { title: "Mesajlasma", desc: "Temsilcisiyle dogrudan iletisim kurabilir" },
-                    ].map((f, i) => (
-                      <div key={i} className="flex items-start gap-2 p-2.5 bg-white dark:bg-slate-900 rounded-lg">
-                        <div className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <Check className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
-                        </div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">E-Ticaret Platformları</h2>
+                <p className="text-sm text-gray-500 mb-5">Mağazanızı bağlayarak sipariş, ürün ve müşteri verilerini otomatik çekin.</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[
+                    { id: "shopify", name: "Shopify", desc: "Sipariş, ürün, stok ve müşteri verilerini çekin.", status: "connected",
+                      logo: <svg viewBox="0 0 109.5 124.5" className="w-6 h-6"><path fill="#95BF47" d="M95.6 28.4s-1.2.3-3.3.9c-.3-1-1-2.3-2.1-3.4-3.2-3.3-7.6-3.3-9.4-3.3-.8-1.7-2.3-3.3-4.3-4.2-4.5-2-9-.4-11.7 2.5-2 2.2-3.5 5.3-4 8.5-3.3 1-5.6 1.7-5.8 1.8-1.8.6-1.8.6-2.1 2.3-.2 1.3-4.8 37-4.8 37l38.2 6.6 16.4-4zM77.4 32c-2.3.7-4.9 1.5-7.5 2.3.7-2.7 2.1-5.4 3.7-7.2 1.3-1.3 3-2.7 5-2.7 1.2 0 1.7.6 1.7 1.3-.3 2.4-1.6 4.3-2.9 6.3z"/><path fill="#5E8E3E" d="M97.5 29c0-.4-.3-.6-.6-.6-1.4 0-3.7.4-6 1.8-3 1.8-5.4 5-7 8.7l10.7-3.3c.4-.2.6-.2.8-.3.3-1.3.7-3.3.7-4.2 0-1.3-.3-2.1-.6-2.1z"/><path fill="#fff" d="M47.2 59.5s-3.3-1.7-7.5-1.7c-6 0-6.3 3.8-6.3 4.7 0 5.2 13.4 7.2 13.4 19.3 0 9.6-6 15.7-14.2 15.7-9.8 0-14.8-6.1-14.8-6.1l2.6-8.7s5.2 4.4 9.5 4.4c2.8 0 4-2.2 4-3.8 0-6.7-11-7-11-18.2 0-9.3 6.7-18.4 20.2-18.4 5.2 0 7.8 1.5 7.8 1.5z"/></svg> },
+                    { id: "ikas", name: "ikas", desc: "ikas altyapınızı entegre edin, siparişleri senkronize edin.", status: "available",
+                      logo: <svg viewBox="0 0 40 40" className="w-6 h-6"><rect width="40" height="40" rx="8" fill="#4F46E5"/><text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="18" fontWeight="bold" fontFamily="sans-serif">iK</text></svg> },
+                    { id: "ticimax", name: "Ticimax", desc: "Ticimax mağazanızı bağlayın, sipariş ve stok takibi yapın.", status: "available",
+                      logo: <svg viewBox="0 0 40 40" className="w-6 h-6"><rect width="40" height="40" rx="8" fill="#F97316"/><text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="16" fontWeight="bold" fontFamily="sans-serif">Tc</text></svg> },
+                    { id: "woocommerce", name: "WooCommerce", desc: "WordPress WooCommerce mağazanızı bağlayın.", status: "available",
+                      logo: <svg viewBox="0 0 40 40" className="w-6 h-6"><rect width="40" height="40" rx="8" fill="#7B5EA7"/><text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="16" fontWeight="bold" fontFamily="sans-serif">Wc</text></svg> },
+                    { id: "wix", name: "Wix", desc: "Wix e-ticaret mağazanızı entegre edin.", status: "coming_soon",
+                      logo: <svg viewBox="0 0 40 40" className="w-6 h-6"><rect width="40" height="40" rx="8" fill="#0C6EFC"/><text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="16" fontWeight="bold" fontFamily="sans-serif">Wx</text></svg> },
+                    { id: "hepsiburada", name: "Hepsiburada", desc: "Pazaryeri siparişlerinizi yönetin.", status: "coming_soon",
+                      logo: <svg viewBox="0 0 40 40" className="w-6 h-6"><rect width="40" height="40" rx="8" fill="#FF6000"/><text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="14" fontWeight="bold" fontFamily="sans-serif">HB</text></svg> },
+                  ].map(p => (
+                    <div key={p.id} className={`p-5 rounded-xl border transition-all hover:shadow-sm ${p.status === "connected" ? "border-green-200 dark:border-green-800 bg-green-50/30 dark:bg-green-950/10" : "border-gray-100 dark:border-slate-800"}`}>
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">{p.logo}</div>
                         <div>
-                          <p className="text-xs font-semibold text-gray-900 dark:text-white">{f.title}</p>
-                          <p className="text-[10px] text-gray-500">{f.desc}</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900 dark:text-white">{p.name}</span>
+                            {p.status === "connected" && <span className="text-[10px] px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 rounded-full font-semibold">Bağlı</span>}
+                            {p.status === "coming_soon" && <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">Yakında</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-3">{p.desc}</p>
+                      {p.status === "connected" ? (
+                        <button className="w-full px-3 py-2 bg-gray-100 dark:bg-slate-800 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-200 transition-colors">Ayarlar</button>
+                      ) : p.status === "available" ? (
+                        <button className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors">Bağla</button>
+                      ) : (
+                        <button disabled className="w-full px-3 py-2 bg-gray-100 text-gray-400 rounded-lg text-xs font-medium cursor-not-allowed">Yakında</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Pazarlama Entegrasyonları */}
+              <div className="card p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Pazarlama Entegrasyonları</h2>
+                <p className="text-sm text-gray-500 mb-5">Reklam hesaplarınızı bağlayarak ROAS, harcama ve dönüşüm verilerini takip edin.</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[
+                    { id: "meta", name: "Meta Ads", desc: "Instagram ve Facebook reklam hesabınızı bağlayın. ROAS, CTR, harcama ve dönüşüm verilerini görün.", status: "available",
+                      logo: <svg viewBox="0 0 40 40" className="w-10 h-10"><defs><linearGradient id="meta-g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#0081FB"/><stop offset="100%" stopColor="#A020F0"/></linearGradient></defs><rect width="40" height="40" rx="10" fill="url(#meta-g)"/><text x="50%" y="56%" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="10" fontWeight="700" fontFamily="sans-serif">META</text></svg> },
+                    { id: "google", name: "Google Ads", desc: "Google Search ve Shopping reklam hesabınızı bağlayın. Anahtar kelime performansı ve ROAS takibi.", status: "available",
+                      logo: <svg viewBox="0 0 40 40" className="w-10 h-10"><rect width="40" height="40" rx="10" fill="#fff" stroke="#E5E7EB"/><text x="50%" y="38%" textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="700"><tspan fill="#4285F4">G</tspan><tspan fill="#EA4335">o</tspan><tspan fill="#FBBC05">o</tspan><tspan fill="#4285F4">g</tspan><tspan fill="#34A853">l</tspan><tspan fill="#EA4335">e</tspan></text><text x="50%" y="68%" textAnchor="middle" dominantBaseline="middle" fill="#5F6368" fontSize="7" fontWeight="600" fontFamily="sans-serif">Ads</text></svg> },
+                    { id: "tiktok", name: "TikTok Ads", desc: "TikTok reklam hesabınızı bağlayarak video performansı ve dönüşüm verilerini takip edin.", status: "coming_soon",
+                      logo: <svg viewBox="0 0 40 40" className="w-10 h-10"><rect width="40" height="40" rx="10" fill="#010101"/><text x="50%" y="40%" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="7" fontWeight="700" fontFamily="sans-serif">Tik</text><text x="50%" y="62%" textAnchor="middle" dominantBaseline="middle" fill="#25F4EE" fontSize="7" fontWeight="700" fontFamily="sans-serif">Tok</text></svg> },
+                  ].map(p => (
+                    <div key={p.id} className={`p-5 rounded-xl border transition-all hover:shadow-sm ${p.status === "connected" ? "border-green-200 dark:border-green-800 bg-green-50/30 dark:bg-green-950/10" : "border-gray-100 dark:border-slate-800"}`}>
+                      <div className="flex items-center gap-3 mb-3">
+                        {p.logo}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900 dark:text-white">{p.name}</span>
+                            {p.status === "connected" && <span className="text-[10px] px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 rounded-full font-semibold">Bağlı</span>}
+                            {p.status === "coming_soon" && <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">Yakında</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-3">{p.desc}</p>
+                      {p.status === "connected" ? (
+                        <button className="w-full px-3 py-2 bg-gray-100 dark:bg-slate-800 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-200 transition-colors">Hesap Ayarları</button>
+                      ) : p.status === "available" ? (
+                        <button className="w-full px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-xs font-medium hover:shadow-md transition-all">Hesap Bağla</button>
+                      ) : (
+                        <button disabled className="w-full px-3 py-2 bg-gray-100 text-gray-400 rounded-lg text-xs font-medium cursor-not-allowed">Yakında</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Analitik Entegrasyonları */}
+              <div className="card p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Analitik Entegrasyonları</h2>
+                <p className="text-sm text-gray-500 mb-5">Site trafiği ve kullanıcı davranışını takip edin.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    { id: "ga4", name: "Google Analytics 4", desc: "Ziyaretçi sayısı, sayfa görüntüleme, oturum süresi, dönüşüm hunisi ve e-ticaret takibi.", status: "available",
+                      logo: <svg viewBox="0 0 40 40" className="w-10 h-10"><rect width="40" height="40" rx="10" fill="#F9AB00"/><text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="14" fontWeight="700" fontFamily="sans-serif">GA</text></svg> },
+                    { id: "meta-pixel", name: "Meta Pixel", desc: "Facebook ve Instagram dönüşüm takibi, özel hedef kitle oluşturma, retargeting.", status: "available",
+                      logo: <svg viewBox="0 0 40 40" className="w-10 h-10"><rect width="40" height="40" rx="10" fill="#1877F2"/><text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="14" fontWeight="700" fontFamily="sans-serif">Px</text></svg> },
+                  ].map(p => (
+                    <div key={p.id} className="p-5 rounded-xl border border-gray-100 dark:border-slate-800 hover:shadow-sm transition-all">
+                      <div className="flex items-center gap-3 mb-3">
+                        {p.logo}
+                        <div>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">{p.name}</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-3">{p.desc}</p>
+                      <button className="w-full px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-xs font-medium hover:shadow-md transition-all">Bağla</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          
+
+          
+          {activeTab === "costs" && (
+            <div className="space-y-5 animate-fade-in">
+              {/* Header */}
+              <div className="card p-6">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Maliyet & Kâr Analizi</h2>
+                  <span className="text-[10px] px-2.5 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 rounded-full font-semibold">Mart 2026</span>
+                </div>
+                <p className="text-sm text-gray-500">Ürün maliyetleri, sabit giderler ve reklam harcamalarını yöneterek kârlılığınızı takip edin.</p>
+              </div>
+
+              {/* P&L Summary - Triple Whale Style */}
+              <div className="card overflow-hidden">
+                <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-5">
+                  <h3 className="text-sm font-semibold text-white/80 mb-4">Kâr & Zarar Tablosu</h3>
+                  <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+                    <div className="p-3 rounded-xl bg-white/10 backdrop-blur-sm">
+                      <p className="text-[10px] text-white/50">Brüt Gelir</p>
+                      <p className="text-lg font-bold text-white">342.000 TL</p>
+                      <p className="text-[10px] text-emerald-400">Shopify canlı</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/10 backdrop-blur-sm">
+                      <p className="text-[10px] text-white/50">COGS</p>
+                      <p className="text-lg font-bold text-red-400">-136.800 TL</p>
+                      <p className="text-[10px] text-white/40">%40 ürün maliyeti</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/10 backdrop-blur-sm">
+                      <p className="text-[10px] text-white/50">Brüt Kâr</p>
+                      <p className="text-lg font-bold text-emerald-400">205.200 TL</p>
+                      <p className="text-[10px] text-white/40">%60 marj</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/10 backdrop-blur-sm">
+                      <p className="text-[10px] text-white/50">Reklam</p>
+                      <p className="text-lg font-bold text-amber-400">-67.000 TL</p>
+                      <p className="text-[10px] text-white/40">Meta + Google</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/10 backdrop-blur-sm">
+                      <p className="text-[10px] text-white/50">Sabit Gider</p>
+                      <p className="text-lg font-bold text-orange-400">-95.500 TL</p>
+                      <p className="text-[10px] text-white/40">Operasyon</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-emerald-500/20 backdrop-blur-sm border border-emerald-500/30">
+                      <p className="text-[10px] text-emerald-300">Net Kâr</p>
+                      <p className="text-lg font-bold text-emerald-400">42.700 TL</p>
+                      <p className="text-[10px] text-emerald-300/70">%12.5 marj</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* COGS - Ürün Maliyeti */}
+                <div className="card p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center"><span className="text-sm">📦</span></div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">COGS (Ürün Maliyeti)</h3>
+                        <p className="text-[10px] text-gray-400">Satılan ürünlerin direkt maliyeti</p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-red-600">136.800 TL</span>
+                  </div>
+                  <div className="space-y-2">
+                    {[
+                      { label: "Ürün / Hammadde Alımı", value: "98.000", pct: "28.7%" },
+                      { label: "Üretim / Fason Dikim", value: "24.500", pct: "7.2%" },
+                      { label: "Paketleme & Etiket", value: "8.800", pct: "2.6%" },
+                      { label: "Kargo Maliyeti (Birim)", value: "5.500", pct: "1.6%" },
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
+                        <span className="text-xs text-gray-600 dark:text-slate-400 flex-1">{item.label}</span>
+                        <span className="text-[10px] text-gray-400 w-12 text-right">{item.pct}</span>
+                        <div className="flex items-center gap-1">
+                          <input defaultValue={item.value} className="w-20 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-xs text-right font-mono font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                          <span className="text-[10px] text-gray-400">TL</span>
                         </div>
                       </div>
                     ))}
                   </div>
+                  <div className="mt-3 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-700 dark:text-slate-300">COGS Oranı</span>
+                    <span className="text-sm font-bold text-red-600">%40.0</span>
+                  </div>
+                </div>
+
+                {/* Sabit Giderler */}
+                <div className="card p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center"><span className="text-sm">🏢</span></div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Sabit Giderler</h3>
+                        <p className="text-[10px] text-gray-400">Aylık operasyon maliyetleri</p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-orange-600">95.500 TL</span>
+                  </div>
+                  <div className="space-y-2">
+                    {[
+                      { label: "Personel Maaşları", value: "52.000" },
+                      { label: "Kira & Depo", value: "15.000" },
+                      { label: "Kargo Anlaşması (Aylık)", value: "12.000" },
+                      { label: "Yazılım & Abonelikler", value: "4.500" },
+                      { label: "Muhasebe & Hukuk", value: "3.500" },
+                      { label: "Diğer Giderler", value: "8.500" },
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
+                        <span className="text-xs text-gray-600 dark:text-slate-400 flex-1">{item.label}</span>
+                        <div className="flex items-center gap-1">
+                          <input defaultValue={item.value} className="w-20 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-xs text-right font-mono font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                          <span className="text-[10px] text-gray-400">TL</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 p-3 rounded-lg bg-orange-50 dark:bg-orange-950/20 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-700 dark:text-slate-300">Ciro Oranı</span>
+                    <span className="text-sm font-bold text-orange-600">%27.9</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="card p-6">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Portal Onizleme</h3>
-                <div className="bg-gray-900 rounded-xl p-4 border border-gray-700">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-3 h-3 rounded-full bg-red-500" />
-                    <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                    <div className="w-3 h-3 rounded-full bg-green-500" />
-                    <span className="text-[10px] text-gray-400 ml-2">portal.messetekstil.com</span>
-                  </div>
-                  <div className="bg-white dark:bg-slate-800 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-slate-700">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
-                          <span className="text-white text-xs font-bold">M</span>
-                        </div>
-                        <span className="text-sm font-bold text-gray-900 dark:text-white">Messe Tekstil</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">Hosgeldiniz, Anna</span>
-                        <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600">A</div>
-                      </div>
+              {/* Reklam Harcaması - API'den otomatik */}
+              <div className="card p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center"><span className="text-sm">📣</span></div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Reklam Harcaması</h3>
+                      <p className="text-[10px] text-gray-400">Bağlı hesaplardan otomatik çekilir</p>
                     </div>
-                    <div className="grid grid-cols-4 gap-2 mb-4">
-                      {["Urunler", "Siparislerim", "Numune Talebi", "Hesabim"].map((item, i) => (
-                        <div key={i} className="p-2 rounded-lg bg-gray-50 dark:bg-slate-700 text-center cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors">
-                          <p className="text-[10px] font-medium text-gray-700 dark:text-slate-300">{item}</p>
+                  </div>
+                  <span className="text-sm font-bold text-violet-600">67.000 TL</span>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                  <div className="p-4 rounded-xl border border-pink-200 dark:border-pink-800 bg-pink-50/50 dark:bg-pink-950/10">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg viewBox="0 0 40 40" className="w-6 h-6"><defs><linearGradient id="mg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#0081FB"/><stop offset="100%" stopColor="#A020F0"/></linearGradient></defs><rect width="40" height="40" rx="8" fill="url(#mg)"/><text x="50%" y="56%" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" fontWeight="700">META</text></svg>
+                      <span className="text-xs font-bold text-gray-900 dark:text-white">Meta Ads</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-pink-100 text-pink-600 dark:bg-pink-900 dark:text-pink-300 rounded-full">Otomatik</span>
+                    </div>
+                    <p className="text-xl font-bold text-gray-900 dark:text-white">32.000 TL</p>
+                    <div className="flex items-center gap-3 mt-2 text-[10px] text-gray-500">
+                      <span>ROAS: <b className="text-emerald-600">4.2x</b></span>
+                      <span>CPC: <b>1.35 TL</b></span>
+                      <span>Dönüşüm: <b className="text-emerald-600">28</b></span>
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/10">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg viewBox="0 0 40 40" className="w-6 h-6"><rect width="40" height="40" rx="8" fill="#fff" stroke="#E5E7EB"/><text x="50%" y="38%" textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700"><tspan fill="#4285F4">G</tspan><tspan fill="#EA4335">o</tspan><tspan fill="#FBBC05">o</tspan><tspan fill="#4285F4">g</tspan></text><text x="50%" y="64%" textAnchor="middle" dominantBaseline="middle" fill="#5F6368" fontSize="7" fontWeight="600">Ads</text></svg>
+                      <span className="text-xs font-bold text-gray-900 dark:text-white">Google Ads</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300 rounded-full">Otomatik</span>
+                    </div>
+                    <p className="text-xl font-bold text-gray-900 dark:text-white">18.000 TL</p>
+                    <div className="flex items-center gap-3 mt-2 text-[10px] text-gray-500">
+                      <span>ROAS: <b className="text-emerald-600">3.1x</b></span>
+                      <span>CPC: <b>1.88 TL</b></span>
+                      <span>Dönüşüm: <b className="text-emerald-600">18</b></span>
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-lg bg-gray-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-gray-500">+</div>
+                      <span className="text-xs font-bold text-gray-900 dark:text-white">Diğer Reklam</span>
+                    </div>
+                    <div className="space-y-2 mt-2">
+                      {[
+                        { label: "TikTok Ads", value: "5.000" },
+                        { label: "Influencer", value: "12.000" },
+                      ].map((item, i) => (
+                        <div key={i} className="flex items-center justify-between">
+                          <span className="text-[10px] text-gray-500">{item.label}</span>
+                          <div className="flex items-center gap-1">
+                            <input defaultValue={item.value} className="w-16 px-1.5 py-1 border border-gray-200 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-[10px] text-right font-mono focus:ring-2 focus:ring-blue-500 transition-all" />
+                            <span className="text-[9px] text-gray-400">TL</span>
+                          </div>
                         </div>
                       ))}
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
-                        <p className="text-[10px] text-gray-400">Aktif Siparisler</p>
-                        <p className="text-lg font-bold text-emerald-600">2</p>
-                      </div>
-                      <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30">
-                        <p className="text-[10px] text-gray-400">Cari Bakiye</p>
-                        <p className="text-lg font-bold text-blue-600">-$18,500</p>
-                      </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Diğer Giderler */}
+              <div className="card p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center"><span className="text-sm">📋</span></div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Diğer Giderler</h3>
+                      <p className="text-[10px] text-gray-400">Vergiler, komisyonlar ve beklenmeyen giderler</p>
                     </div>
                   </div>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-2 text-center">Musteri portali yaklasim asamasindadir - detaylar icin iletisime gecin</p>
-              </div>
-
-              <div className="card p-6">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Portal Avantajlari</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 text-center">
-                    <p className="text-2xl font-bold text-blue-600">%40-50</p>
-                    <p className="text-xs text-gray-600 dark:text-slate-400 mt-1">Personel yukunde azalma</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900 text-center">
-                    <p className="text-2xl font-bold text-emerald-600">7/24</p>
-                    <p className="text-xs text-gray-600 dark:text-slate-400 mt-1">Siparis alma kapasitesi</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900 text-center">
-                    <p className="text-2xl font-bold text-violet-600">+%30</p>
-                    <p className="text-xs text-gray-600 dark:text-slate-400 mt-1">Musteri memnuniyeti artisi</p>
-                  </div>
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+                  {[
+                    { label: "Shopify Komisyon", value: "6.840", note: "%2 işlem ücreti" },
+                    { label: "Banka Komisyon", value: "3.420", note: "%1 kredi kartı" },
+                    { label: "İade Maliyeti", value: "4.200", note: "Kargo + kayıp" },
+                    { label: "Vergi / KDV Farkı", value: "0", note: "Dahil" },
+                  ].map((item, i) => (
+                    <div key={i} className="p-3 rounded-lg bg-gray-50 dark:bg-slate-800">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-gray-600 dark:text-slate-400">{item.label}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <input defaultValue={item.value} className="w-20 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-xs text-right font-mono font-medium focus:ring-2 focus:ring-blue-500 transition-all" />
+                        <span className="text-[10px] text-gray-400">TL</span>
+                      </div>
+                      <p className="text-[9px] text-gray-400 mt-1">{item.note}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
+
+              <button className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-sm font-medium shadow-md hover:shadow-lg transition-all">
+                Maliyetleri Kaydet & Kâr Tablosunu Güncelle
+              </button>
             </div>
           )}
 

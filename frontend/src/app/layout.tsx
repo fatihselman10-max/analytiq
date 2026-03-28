@@ -12,8 +12,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Repliq - AI Destekli Musteri Hizmetleri Platformu",
-  description: "WhatsApp, Instagram, Telegram, E-posta ve daha fazlasi. Tum destek kanallarinizi tek panelden yonetin. AI ile 7/24 musteri destegi.",
+  title: "Repliq - AI Destekli Müşteri Hizmetleri Platformu",
+  description: "WhatsApp, Instagram, Telegram, E-posta ve daha fazlasi. Tum destek kanallarinizi tek panelden yonetin. AI ile 7/24 müşteri destegi.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

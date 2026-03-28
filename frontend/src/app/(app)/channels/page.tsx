@@ -51,7 +51,7 @@ const CHANNEL_CONFIGS: ChannelConfig[] = [
     color: "text-blue-500", bgColor: "bg-blue-50", iconColor: "text-blue-500",
     description: "Telegram bot ile müşteri desteği verin",
     fields: [
-      { key: "bot_token", label: "Bot Token", placeholder: "123456:ABC-DEF1234...", help: "@BotFather ile bot oluşturun ve token alın" },
+      { key: "bot_token", label: "Bot Token", placeholder: "123456:ABC-DEF1234...", help: "@BotFather ile bot oluştürün ve token alın" },
     ],
     hasWebhook: true,
   },

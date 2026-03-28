@@ -582,7 +582,7 @@ export default function LandingPage() {
               {
                 step: "01",
                 title: "Kayıt Olun",
-                desc: "Ücretsiz hesabınızı oluşturun ve organizasyonunuzu ayarlayın.",
+                desc: "Ücretsiz hesabınızı oluştürün ve organizasyonunuzu ayarlayın.",
                 icon: Users,
               },
               {

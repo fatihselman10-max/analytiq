@@ -27,3 +27,5 @@ Thumbs.db
 *.log
 .vercel
 backend/api
+.vercel
+messe-panel/

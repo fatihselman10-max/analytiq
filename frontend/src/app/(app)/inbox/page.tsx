@@ -128,13 +128,13 @@ export default function InboxPage() {
     async (content: string) => {
       if (!activeConversationId) return;
       if (isDemo) {
-        toast("Demo modunda mesaj gonderilemez", "info");
+        toast("Demo modunda mesaj gönderilemez", "info");
         return;
       }
       try {
         await messagesAPI.reply(activeConversationId, content);
       } catch {
-        toast("Mesaj gonderilemedi", "error");
+        toast("Mesaj gönderilemedi", "error");
         return;
       }
       await refreshMessages(activeConversationId);

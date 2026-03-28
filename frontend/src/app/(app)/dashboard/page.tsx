@@ -3,344 +3,448 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
-import { isDemoOrg, DEMO_CONVERSATIONS, DEMO_REPORTS, DEMO_TEAM, DEMO_CHANNELS, DEMO_AUTOMATIONS, DEMO_BOT_CONFIG, DEMO_CSAT_RESPONSES, DEMO_KB_ARTICLES } from "@/lib/demo-data";
-import { conversationsAPI, reportsAPI, teamAPI, channelsAPI } from "@/lib/api";
+import { conversationsAPI, reportsAPI } from "@/lib/api";
 import {
-  Inbox, MessageSquare, Clock, CheckCircle, Users, TrendingUp,
-  Bot, Radio, Workflow, BookOpen, Star, ArrowRight, AlertTriangle,
-  Target, Megaphone, BarChart3, Zap,
+  Inbox, MessageSquare, Clock, CheckCircle, TrendingUp,
+  Bot, ArrowRight, AlertTriangle, ShoppingCart, DollarSign,
+  Package, Truck, AlertCircle as AlertIcon, Users, Sparkles,
+  BarChart3, ArrowUpRight, ArrowDownRight, Loader2,
 } from "lucide-react";
 
 export default function DashboardPage() {
   const { user, organization } = useAuthStore();
-  const isDemo = isDemoOrg(organization?.name);
   const [loading, setLoading] = useState(true);
-
-  // Data state
-  const [stats, setStats] = useState({
-    openConversations: 0,
-    pendingConversations: 0,
-    resolvedToday: 0,
-    avgResponseTime: 0,
-    totalContacts: 0,
-    csatScore: 0,
-    activeAutomations: 0,
-    botResponses: 0,
-    activeChannels: 0,
-    kbArticles: 0,
-    teamMembers: 0,
-  });
-  const [recentConversations, setRecentConversations] = useState<any[]>([]);
-  const [channelBreakdown, setChannelBreakdown] = useState<{ channel: string; count: number; color: string }[]>([]);
+  const [shopData, setShopData] = useState<any>(null);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [msgStats, setMsgStats] = useState({ open: 0, pending: 0, resolved: 0, avgResponse: 0 });
+  const [aiInsight, setAiInsight] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [period, setPeriod] = useState<string>("today");
+  const [metaAds, setMetaAds] = useState<any>(null);
 
   useEffect(() => {
     if (!organization) return;
-    loadDashboard();
-  }, [organization, isDemo]);
+    loadAll();
+  }, [organization, period]);
 
-  const loadDashboard = async () => {
+  const loadAll = async () => {
     setLoading(true);
-    if (isDemo) {
-      const convs = DEMO_CONVERSATIONS;
-      setStats({
-        openConversations: convs.filter(c => c.status === "open").length,
-        pendingConversations: convs.filter(c => c.status === "pending").length,
-        resolvedToday: 4,
-        avgResponseTime: DEMO_REPORTS.overview.avg_response_time,
-        totalContacts: 15,
-        csatScore: DEMO_CSAT_RESPONSES.stats.avg_rating,
-        activeAutomations: DEMO_AUTOMATIONS.filter(a => a.is_active).length,
-        botResponses: DEMO_BOT_CONFIG.total_responses,
-        activeChannels: DEMO_CHANNELS.length,
-        kbArticles: DEMO_KB_ARTICLES.length,
-        teamMembers: DEMO_TEAM.length,
-      });
-      setRecentConversations(convs.filter(c => c.status === "open").slice(0, 5));
-      setChannelBreakdown(DEMO_REPORTS.channels.map(c => ({
-        channel: c.channel,
-        count: c.count,
-        color: channelColor(c.channel),
-      })));
-      setLoading(false);
-      return;
-    }
     try {
-      const [convRes, ovRes] = await Promise.all([
-        conversationsAPI.list(),
-        reportsAPI.overview("7d"),
+      // Fetch Shopify data + message stats in parallel
+      const periodToMeta: Record<string, string> = {
+        today: "today", yesterday: "yesterday", "7d": "last_7d", "30d": "last_30d",
+        "90d": "last_90d", "180d": "last_180d", "365d": "last_year",
+      };
+      const [statsRes, ordersRes, productsRes, convRes, metaRes] = await Promise.all([
+        fetch("/api/shopify?action=stats").then(r => r.json()).catch(() => null),
+        fetch("/api/shopify?action=orders&limit=20").then(r => r.json()).catch(() => ({ orders: [] })),
+        fetch("/api/shopify?action=products&limit=50").then(r => r.json()).catch(() => ({ products: [] })),
+        reportsAPI.overview("7d").catch(() => ({ data: null })),
+        fetch(`/api/shopify?action=meta-ads&date_preset=${periodToMeta[period] || "last_7d"}`).then(r => r.json()).catch(() => null),
       ]);
-      const convs = convRes.data?.conversations || convRes.data || [];
-      const ov = ovRes.data;
-      setStats({
-        openConversations: ov?.open_conversations || 0,
-        pendingConversations: convs.filter((c: any) => c.status === "pending").length,
-        resolvedToday: ov?.resolved_count || 0,
-        avgResponseTime: ov?.avg_response_time_minutes || 0,
-        totalContacts: 0,
-        csatScore: 0,
-        activeAutomations: 0,
-        botResponses: 0,
-        activeChannels: 0,
-        kbArticles: 0,
-        teamMembers: 0,
+
+      setShopData(statsRes);
+      setOrders(ordersRes.orders || []);
+      setProducts(productsRes.products || []);
+      setMetaAds(metaRes?.error ? null : metaRes);
+
+      const ov = convRes.data;
+      setMsgStats({
+        open: ov?.open_conversations || 0,
+        pending: 0,
+        resolved: ov?.resolved_count || 0,
+        avgResponse: ov?.avg_response_time_minutes || 0,
       });
-      setRecentConversations(convs.filter((c: any) => c.status === "open").slice(0, 5));
-    } catch {}
+    } catch (err) {
+      console.error("Dashboard load error:", err);
+    }
     setLoading(false);
+
+    // AI Insight - daily cache
+    const todayKey = `ai-briefing-${new Date().toISOString().slice(0, 10)}`;
+    const cached = typeof window !== "undefined" ? localStorage.getItem(todayKey) : null;
+    if (cached) {
+      setAiInsight(cached);
+    } else {
+      generateInsight(todayKey);
+    }
   };
 
-  const channelColor = (ch: string) => {
-    const map: Record<string, string> = {
-      whatsapp: "#25D366", telegram: "#0088cc", instagram: "#E4405F",
-      email: "#6B7280", vk: "#4680C2", facebook: "#1877F2",
-    };
-    return map[ch] || "#9CA3AF";
-  };
+  const generateInsight = async (cacheKey: string) => {
+    setAiLoading(true);
+    try {
+      const [ordersRes, productsRes, msgRes] = await Promise.all([
+        fetch("/api/shopify?action=orders&limit=30").then(r => r.json()),
+        fetch("/api/shopify?action=products&limit=30").then(r => r.json()),
+        reportsAPI.overview("7d").then(r => r.data).catch(() => null),
+      ]);
 
-  const channelLabel = (ch: string) => {
-    const map: Record<string, string> = {
-      whatsapp: "WhatsApp", telegram: "Telegram", instagram: "Instagram",
-      email: "E-posta", vk: "VK", facebook: "Facebook",
-    };
-    return map[ch] || ch;
-  };
+      const recentOrders = ordersRes.orders || [];
+      const todayCount = recentOrders.filter((o: any) => o.created_at?.slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
+      const todayRev = recentOrders.filter((o: any) => o.created_at?.slice(0, 10) === new Date().toISOString().slice(0, 10)).reduce((s: number, o: any) => s + parseFloat(o.total_price || "0"), 0);
 
-  const statusColor = (s: string) => {
-    if (s === "open") return "bg-green-100 text-green-700";
-    if (s === "pending") return "bg-yellow-100 text-yellow-700";
-    if (s === "resolved") return "bg-blue-100 text-blue-700";
-    return "bg-gray-100 text-gray-600";
-  };
+      // En çok satılan ürünler
+      const productSales: Record<string, number> = {};
+      recentOrders.forEach((o: any) => o.line_items?.forEach((li: any) => {
+        productSales[li.title] = (productSales[li.title] || 0) + li.quantity;
+      }));
+      const topSelling = Object.entries(productSales).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, qty]) => `${name} (${qty} adet)`).join(", ");
 
-  const statusLabel = (s: string) => {
-    if (s === "open") return "Acik";
-    if (s === "pending") return "Beklemede";
-    if (s === "resolved") return "Cozuldu";
-    return "Kapali";
-  };
+      // Stok durumu
+      const allProducts = productsRes.products || [];
+      const outOfStock = allProducts.filter((p: any) => p.variants?.every((v: any) => v.inventory_quantity <= 0)).map((p: any) => p.title).slice(0, 5);
+      const lowStock = allProducts.filter((p: any) => p.variants?.some((v: any) => v.inventory_quantity > 0 && v.inventory_quantity < 10)).map((p: any) => `${p.title} (${p.variants[0]?.inventory_quantity})`).slice(0, 5);
 
-  const channelIcon = (ch: string) => {
-    const map: Record<string, string> = { whatsapp: "WA", telegram: "TG", instagram: "IG", email: "EM", vk: "VK" };
-    return map[ch] || "CH";
+      // Sipariş detayları - müşteri davranışı
+      const avgOrderValue = recentOrders.length > 0 ? recentOrders.reduce((s: number, o: any) => s + parseFloat(o.total_price || "0"), 0) / recentOrders.length : 0;
+      const unfulfilledOrders = recentOrders.filter((o: any) => !o.fulfillment_status || o.fulfillment_status === "unfulfilled").length;
+      const refunded = recentOrders.filter((o: any) => o.financial_status === "refunded" || o.financial_status === "partially_refunded").length;
+
+      // Müşteri mesaj istatistikleri
+      const openConvs = msgRes?.open_conversations || 0;
+      const resolvedConvs = msgRes?.resolved_count || 0;
+      const avgResponseMin = msgRes?.avg_response_time_minutes || 0;
+
+      const prompt = `Sen LessandRomance kadın giyim markasının işletme danışmanısın. Her gün patrona kısa, aksiyon odaklı bir brifing veriyorsun. Hem satış verilerini hem müşteri mesajlarını değerlendirip somut öneriler sunuyorsun.
+
+SATIŞ VERİLERİ:
+- Bugün ${todayCount} sipariş, ${todayRev.toLocaleString("tr-TR")} TL ciro.
+- Son 30 siparişte ortalama sepet: ${avgOrderValue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL.
+- ${unfulfilledOrders} sipariş henüz kargoya verilmedi.
+- ${refunded} iade/iptal var.
+- En çok satılanlar: ${topSelling || "veri yok"}.
+
+STOK:
+- Tükenen (${outOfStock.length}): ${outOfStock.join(", ") || "yok"}.
+- Azalan: ${lowStock.join(", ") || "yok"}.
+
+MÜŞTERİ İLETİŞİMİ:
+- ${openConvs} açık mesaj cevaplanmayı bekliyor.
+- Son 7 günde ${resolvedConvs} mesaj çözüldü.
+- Ortalama yanıt süresi: ${avgResponseMin} dakika.
+
+KURALLAR:
+- Tam 4 madde yaz. Her madde yeni satırda başlasın.
+- Her madde tam ve bitmiş bir cümle olsun, kesinlikle yarım bırakma.
+- 1. madde: Bugünün satış durumunu değerlendir, müşterilerin ne aldığına bak, bir trend varsa belirt.
+- 2. madde: Müşteri iletişim durumunu yorumla - yanıt süresi, bekleyen mesajlar, müşteri memnuniyeti açısından ne yapılmalı?
+- 3. madde: Stok veya ürün bazlı somut bir uyarı. Tükenen popüler ürün varsa dikkat çek.
+- 4. madde: Bu hafta alınması gereken en önemli aksiyon ne? Somut ve uygulanabilir bir öneri ver.
+- Patron bir kadın giyim markası sahibi, ona direkt hitap et. Samimi ama profesyonel ol.
+- Emoji kullanma, madde işareti kullanma, düz cümleler yaz.
+- Türkçe yaz, para birimi TL olsun.`;
+
+      const res = await fetch("/api/shopify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const insight = data.insight || "";
+        setAiInsight(insight);
+        if (insight && typeof window !== "undefined") {
+          localStorage.setItem(cacheKey, insight);
+        }
+      }
+    } catch {}
+    setAiLoading(false);
   };
 
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Gunaydin" : hour < 18 ? "Iyi gunler" : "Iyi aksamlar";
+  const greeting = hour < 12 ? "Günaydın" : hour < 18 ? "İyi günler" : "İyi akşamlar";
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
+    return <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
   }
+
+  // Filter orders by period
+  const now = new Date();
+  const getPeriodStart = () => {
+    const d = new Date(now);
+    switch (period) {
+      case "today": d.setHours(0, 0, 0, 0); return d;
+      case "yesterday": d.setDate(d.getDate() - 1); d.setHours(0, 0, 0, 0); return d;
+      case "7d": d.setDate(d.getDate() - 7); return d;
+      case "30d": d.setDate(d.getDate() - 30); return d;
+      case "90d": d.setDate(d.getDate() - 90); return d;
+      case "180d": d.setDate(d.getDate() - 180); return d;
+      case "365d": d.setDate(d.getDate() - 365); return d;
+      default: d.setHours(0, 0, 0, 0); return d;
+    }
+  };
+  const periodStart = getPeriodStart();
+  const periodEnd = period === "yesterday" ? (() => { const d = new Date(now); d.setHours(0, 0, 0, 0); return d; })() : now;
+
+  const filteredOrders = orders.filter(o => {
+    const d = new Date(o.created_at);
+    return d >= periodStart && d <= periodEnd;
+  });
+
+  const periodRevenue = filteredOrders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);
+  const totalRevenue = orders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);
+  const unfulfilledCount = orders.filter(o => !o.fulfillment_status || o.fulfillment_status === "unfulfilled").length;
+  const outOfStockCount = products.filter(p => p.variants?.every((v: any) => (v.inventory_quantity || 0) <= 0)).length;
+  const lowStockCount = products.filter(p => p.variants?.some((v: any) => v.inventory_quantity > 0 && v.inventory_quantity < 10)).length;
+  const periodLabel = { today: "Bugün", yesterday: "Dün", "7d": "Son 7 Gün", "30d": "Son 30 Gün", "90d": "Son 3 Ay", "180d": "Son 6 Ay", "365d": "Son 1 Yıl" }[period] || "Bugün";
 
   return (
     <div className="p-4 lg:p-8 space-y-6 animate-fade-in">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">
-          {greeting}, {user?.full_name?.split(" ")[0]}
-        </h1>
-        <p className="text-gray-500 dark:text-slate-400 mt-1">
-          {organization?.name} - Isletme ozeti
-        </p>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">
+            {greeting}, {user?.full_name?.split(" ")[0]}
+          </h1>
+          <p className="text-gray-500 dark:text-slate-400 mt-1">
+            {shopData?.shop?.name || organization?.name} - İşletme özeti
+          </p>
+        </div>
+        <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1">
+          {[
+            { key: "today", label: "Bugün" },
+            { key: "yesterday", label: "Dün" },
+            { key: "7d", label: "7 Gün" },
+            { key: "30d", label: "30 Gün" },
+            { key: "90d", label: "3 Ay" },
+            { key: "180d", label: "6 Ay" },
+            { key: "365d", label: "1 Yıl" },
+          ].map(p => (
+            <button key={p.key} onClick={() => setPeriod(p.key)}
+              className={`px-2 lg:px-3 py-1 text-[10px] lg:text-xs font-medium rounded-lg transition-all ${period === p.key ? "bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* KPI Cards - Top Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Link href="/inbox" className="card p-4 hover:shadow-md transition-shadow group">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 rounded-xl bg-orange-50 dark:bg-orange-950">
-              <Inbox className="h-5 w-5 text-orange-600" />
+      {/* AI Satış Asistanı */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-violet-950 to-indigo-950 dark:from-slate-950 dark:via-violet-950/80 dark:to-indigo-950/80 rounded-2xl p-5 lg:p-6 shadow-lg">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-violet-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+        <div className="relative">
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="p-2 rounded-xl bg-white/10 backdrop-blur-sm">
+              <Sparkles className="h-4 w-4 text-violet-300" />
             </div>
-            <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+            <h3 className="text-sm font-semibold text-white/90">Günlük Brifing</h3>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 font-medium">AI Asistan</span>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.openConversations}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Acik Gorusme</p>
-          {stats.pendingConversations > 0 && (
-            <p className="text-[10px] text-yellow-600 mt-1 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" /> {stats.pendingConversations} beklemede
-            </p>
+          {aiLoading ? (
+            <div className="flex items-center gap-3 py-2">
+              <div className="flex gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+              <span className="text-sm text-white/50">Mağaza verileri analiz ediliyor...</span>
+            </div>
+          ) : aiInsight ? (
+            <div className="space-y-2.5">
+              {aiInsight.split("\n").filter(Boolean).map((line, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-[10px] font-bold text-violet-300">{i + 1}</span>
+                  </div>
+                  <p className="text-sm text-white/80 leading-relaxed">{line.replace(/^\d+[\.\)]\s*/, "")}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-white/60 leading-relaxed">Bugün {filteredOrders.length} yeni sipariş geldi ({periodRevenue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL). {unfulfilledCount > 0 ? `${unfulfilledCount} sipariş kargoya hazırlanmayı bekliyor.` : "Tüm siparişler güncel."} {outOfStockCount > 0 ? `${outOfStockCount} üründe stok tükenmiş durumda.` : ""}</p>
           )}
+        </div>
+      </div>
+
+      {/* Kâr Özeti - Mini P&L */}
+      <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
+        {[
+          { label: "Ciro", value: `${(metaAds?.purchaseValue ? Math.round(metaAds.purchaseValue) : periodRevenue).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL`, sub: periodLabel, color: "text-gray-900 dark:text-white" },
+          { label: "COGS", value: `${Math.round((metaAds?.purchaseValue || periodRevenue) * 0.4).toLocaleString("tr-TR")} TL`, sub: "%40", color: "text-red-600" },
+          { label: "Brüt Kâr", value: `${Math.round((metaAds?.purchaseValue || periodRevenue) * 0.6).toLocaleString("tr-TR")} TL`, sub: "%60 marj", color: "text-emerald-600" },
+          { label: "Reklam", value: `${metaAds?.spend ? Math.round(metaAds.spend).toLocaleString("tr-TR") : "~" + Math.round(periodRevenue * 0.2).toLocaleString("tr-TR")} TL`, sub: metaAds?.spend ? "Meta canlı" : "tahmini", color: "text-amber-600" },
+          { label: "ROAS", value: metaAds?.roas ? `${metaAds.roas.toFixed(2)}x` : "-", sub: metaAds?.spend ? "Meta pixel" : "", color: metaAds?.roas > 2 ? "text-emerald-600" : "text-red-600" },
+          { label: "Net Kâr", value: `${Math.round((metaAds?.purchaseValue || periodRevenue) * 0.6 - (metaAds?.spend || periodRevenue * 0.2) - (metaAds?.purchaseValue || periodRevenue) * 0.28).toLocaleString("tr-TR")} TL`, sub: "tahmini", color: "text-emerald-600" },
+        ].map((kpi, i) => (
+          <Link key={i} href="/settings" className="card p-3 hover:shadow-sm transition-shadow text-center">
+            <p className="text-[10px] text-gray-400">{kpi.label}</p>
+            <p className={`text-sm font-bold ${kpi.color}`}>{kpi.value}</p>
+            <p className="text-[9px] text-gray-400">{kpi.sub}</p>
+          </Link>
+        ))}
+      </div>
+
+      {/* Satış KPI'ları - Ana Satır */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <Link href="/sales" className="card p-4 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950"><DollarSign className="h-4 w-4 text-emerald-600" /></div>
+            <span className="text-xs text-gray-500">{periodLabel} Satış</span>
+          </div>
+          <p className="text-xl font-bold text-gray-900 dark:text-white">{periodRevenue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</p>
+          <p className="text-[10px] text-emerald-600 flex items-center gap-0.5 mt-1"><ArrowUpRight className="h-3 w-3" />{filteredOrders.length} sipariş</p>
         </Link>
 
-        <Link href="/reports" className="card p-4 hover:shadow-md transition-shadow group">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 rounded-xl bg-green-50 dark:bg-green-950">
-              <Clock className="h-5 w-5 text-green-600" />
-            </div>
-            <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+        <Link href="/sales" className="card p-4 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950"><ShoppingCart className="h-4 w-4 text-blue-600" /></div>
+            <span className="text-xs text-gray-500">Toplam Sipariş</span>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.avgResponseTime.toFixed(1)} dk</p>
-          <p className="text-xs text-gray-500 mt-0.5">Ort. Yanit Suresi</p>
+          <p className="text-xl font-bold text-gray-900 dark:text-white">{shopData?.ordersCount?.toLocaleString() || orders.length}</p>
+          <p className="text-[10px] text-gray-400 mt-1">Ort: {orders.length > 0 ? (totalRevenue / orders.length).toLocaleString("tr-TR", { maximumFractionDigits: 0 }) : 0} TL</p>
         </Link>
 
-        <Link href="/reports" className="card p-4 hover:shadow-md transition-shadow group">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950">
-              <CheckCircle className="h-5 w-5 text-blue-600" />
-            </div>
-            <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+        <Link href="/sales" className="card p-4 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950"><Truck className="h-4 w-4 text-amber-600" /></div>
+            <span className="text-xs text-gray-500">Bekleyen Kargo</span>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.resolvedToday}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Cozulen (bugun)</p>
+          <p className="text-xl font-bold text-amber-600">{unfulfilledCount}</p>
+          <p className="text-[10px] text-gray-400 mt-1">Hazırlanması gereken</p>
         </Link>
 
-        <Link href="/settings" className="card p-4 hover:shadow-md transition-shadow group">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 rounded-xl bg-yellow-50 dark:bg-yellow-950">
-              <Star className="h-5 w-5 text-yellow-600" />
-            </div>
-            <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+        <Link href="/products" className="card p-4 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950"><AlertIcon className="h-4 w-4 text-red-600" /></div>
+            <span className="text-xs text-gray-500">Stok Uyarısı</span>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.csatScore.toFixed(1)}/5</p>
-          <p className="text-xs text-gray-500 mt-0.5">CSAT Puani</p>
+          <p className="text-xl font-bold text-red-600">{outOfStockCount + lowStockCount}</p>
+          <p className="text-[10px] text-gray-400 mt-1">{outOfStockCount} tükenen, {lowStockCount} azalan</p>
+        </Link>
+
+        <Link href="/inbox" className="card p-4 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 rounded-lg bg-violet-50 dark:bg-violet-950"><MessageSquare className="h-4 w-4 text-violet-600" /></div>
+            <span className="text-xs text-gray-500">Açık Mesaj</span>
+          </div>
+          <p className="text-xl font-bold text-gray-900 dark:text-white">{msgStats.open}</p>
+          <p className="text-[10px] text-gray-400 mt-1">{msgStats.resolved} çözülen (7g)</p>
         </Link>
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Conversations */}
+      {/* Ana Grid: Son Siparişler + Stok Uyarıları */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Son Siparişler */}
         <div className="lg:col-span-2 card p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-blue-600" />
-              Son Gorusmeler
+              <ShoppingCart className="h-4 w-4 text-blue-600" />
+              Son Siparişler
             </h2>
-            <Link href="/inbox" className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
-              Tumunu Gor <ArrowRight className="h-3 w-3" />
+            <Link href="/sales" className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
+              Tümünü Gör <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
           <div className="space-y-2">
-            {recentConversations.map((conv: any) => (
-              <Link key={conv.id} href="/inbox"
-                className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900 dark:to-indigo-900 flex items-center justify-center flex-shrink-0">
-                  <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">{conv.contact?.name?.charAt(0)}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{conv.contact?.name}</p>
-                    <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 flex-shrink-0">{channelIcon(conv.channel_type)}</span>
-                  </div>
-                  <p className="text-xs text-gray-500 truncate">{conv.last_message}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${statusColor(conv.status)}`}>
-                    {statusLabel(conv.status)}
-                  </span>
-                  {conv.priority === "high" || conv.priority === "urgent" ? (
-                    <span className="text-[10px] text-red-500 font-medium">{conv.priority === "urgent" ? "Acil" : "Yuksek"}</span>
-                  ) : null}
-                </div>
-              </Link>
-            ))}
-            {recentConversations.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-6">Acik gorusme yok</p>
-            )}
-          </div>
-        </div>
-
-        {/* Channel Distribution */}
-        <div className="card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <Radio className="h-4 w-4 text-purple-600" />
-              Kanal Dagilimi
-            </h2>
-            <Link href="/channels" className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
-              Kanallara Git <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
-          <div className="space-y-3">
-            {channelBreakdown.map((ch) => {
-              const total = channelBreakdown.reduce((s, c) => s + c.count, 0);
-              const pct = total > 0 ? (ch.count / total) * 100 : 0;
+            {(filteredOrders.length > 0 ? filteredOrders : orders).slice(0, 8).map((o: any) => {
+              const customer = o.customer ? `${o.customer.first_name || ""} ${o.customer.last_name || ""}`.trim() : o.email?.split("@")[0] || "-";
+              const fulfillment = o.fulfillment_status || "unfulfilled";
               return (
-                <div key={ch.channel}>
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="font-medium text-gray-700 dark:text-slate-300">{channelLabel(ch.channel)}</span>
-                    <span className="text-gray-500">{ch.count} (%{pct.toFixed(0)})</span>
+                <div key={o.id} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
+                  <div className={`w-2 h-8 rounded-full flex-shrink-0 ${fulfillment === "fulfilled" ? "bg-emerald-400" : "bg-amber-400"}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-medium text-gray-900 dark:text-white">{o.name}</span>
+                      <span className="text-xs text-gray-500 truncate">{customer}</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 truncate">{o.line_items?.map((l: any) => l.title).join(", ")}</p>
                   </div>
-                  <div className="w-full h-2 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: ch.color }} />
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-xs font-bold text-gray-900 dark:text-white">{parseFloat(o.total_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</p>
+                    <p className={`text-[10px] font-medium ${o.financial_status === "paid" ? "text-emerald-600" : "text-amber-600"}`}>
+                      {o.financial_status === "paid" ? "Ödendi" : "Bekliyor"}
+                    </p>
                   </div>
                 </div>
               );
             })}
-            {channelBreakdown.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-4">Kanal verisi yok</p>
-            )}
           </div>
         </div>
-      </div>
 
-      {/* Quick Access Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Link href="/crm" className="card p-4 hover:shadow-md transition-all group hover:border-blue-200 dark:hover:border-blue-800">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950"><Target className="h-4 w-4 text-emerald-600" /></div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">CRM</h3>
+        {/* Sağ Panel: Müşteri İletişim + Stok */}
+        <div className="space-y-4">
+          {/* Müşteri İletişim Özeti */}
+          <div className="card p-5">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+              <MessageSquare className="h-4 w-4 text-blue-500" />
+              Müşteri İletişimi
+            </h2>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="p-2.5 rounded-lg bg-orange-50 dark:bg-orange-950/20 text-center">
+                <p className="text-lg font-bold text-orange-600">{msgStats.open}</p>
+                <p className="text-[10px] text-gray-500">Açık Mesaj</p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 text-center">
+                <p className="text-lg font-bold text-emerald-600">{msgStats.resolved}</p>
+                <p className="text-[10px] text-gray-500">Çözülen (7g)</p>
+              </div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/20">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-gray-500">Ort. Yanıt Süresi</span>
+                <span className={`text-xs font-bold ${msgStats.avgResponse > 60 ? "text-red-600" : "text-emerald-600"}`}>
+                  {msgStats.avgResponse > 60 ? `${Math.round(msgStats.avgResponse / 60)} saat` : `${msgStats.avgResponse} dk`}
+                </span>
+              </div>
+            </div>
+            <Link href="/inbox" className="flex items-center justify-center gap-1 mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium">
+              Gelen Kutusuna Git <ArrowRight className="h-3 w-3" />
+            </Link>
           </div>
-          <p className="text-xs text-gray-500">{stats.totalContacts} musteri</p>
-        </Link>
 
-        <Link href="/sales" className="card p-4 hover:shadow-md transition-all group hover:border-blue-200 dark:hover:border-blue-800">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950"><TrendingUp className="h-4 w-4 text-blue-600" /></div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Satis Analizi</h3>
+          {/* Tükenen Ürünler */}
+          <div className="card p-5">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+              <AlertIcon className="h-4 w-4 text-red-500" />
+              Stok Uyarıları
+            </h2>
+            <div className="space-y-2">
+              {products.filter(p => p.variants?.every((v: any) => (v.inventory_quantity || 0) <= 0)).slice(0, 4).map((p: any) => (
+                <div key={p.id} className="flex items-center gap-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/20">
+                  {p.images?.[0]?.src ? (
+                    <img src={p.images[0].src} alt="" className="w-8 h-8 rounded-md object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-md bg-red-100 dark:bg-red-900 flex items-center justify-center"><Package className="h-3 w-3 text-red-400" /></div>
+                  )}
+                  <p className="text-[11px] text-gray-700 dark:text-slate-300 truncate flex-1">{p.title}</p>
+                  <span className="text-[10px] font-bold text-red-600">Tükendi</span>
+                </div>
+              ))}
+              {products.filter(p => p.variants?.some((v: any) => v.inventory_quantity > 0 && v.inventory_quantity < 10)).slice(0, 3).map((p: any) => (
+                <div key={p.id} className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20">
+                  {p.images?.[0]?.src ? (
+                    <img src={p.images[0].src} alt="" className="w-8 h-8 rounded-md object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-md bg-amber-100 dark:bg-amber-900 flex items-center justify-center"><Package className="h-3 w-3 text-amber-400" /></div>
+                  )}
+                  <p className="text-[11px] text-gray-700 dark:text-slate-300 truncate flex-1">{p.title}</p>
+                  <span className="text-[10px] font-bold text-amber-600">{p.variants?.[0]?.inventory_quantity} adet</span>
+                </div>
+              ))}
+              {outOfStockCount === 0 && lowStockCount === 0 && <p className="text-xs text-gray-400 text-center py-2">Tüm ürünler stokta</p>}
+            </div>
           </div>
-          <p className="text-xs text-gray-500">Donusum & gelir</p>
-        </Link>
 
-        <Link href="/bot" className="card p-4 hover:shadow-md transition-all group hover:border-blue-200 dark:hover:border-blue-800">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-950"><Bot className="h-4 w-4 text-violet-600" /></div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">AI Bot</h3>
+          {/* Hızlı Erişim */}
+          <div className="card p-5">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Hızlı Erişim</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { href: "/inbox", label: "Gelen Kutusu", icon: Inbox, color: "bg-orange-50 dark:bg-orange-950 text-orange-600" },
+                { href: "/bot", label: "AI Bot", icon: Bot, color: "bg-violet-50 dark:bg-violet-950 text-violet-600" },
+                { href: "/sales", label: "Mağaza Analizi", icon: BarChart3, color: "bg-rose-50 dark:bg-rose-950 text-rose-600" },
+                { href: "/tasks", label: "Görevler", icon: CheckCircle, color: "bg-cyan-50 dark:bg-cyan-950 text-cyan-600" },
+              ].map(item => (
+                <Link key={item.href} href={item.href} className="flex items-center gap-2 p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
+                  <div className={`p-1.5 rounded-lg ${item.color}`}><item.icon className="h-3.5 w-3.5" /></div>
+                  <span className="text-xs font-medium text-gray-700 dark:text-slate-300">{item.label}</span>
+                </Link>
+              ))}
+            </div>
           </div>
-          <p className="text-xs text-gray-500">{stats.botResponses} cevap</p>
-        </Link>
-
-        <Link href="/automations" className="card p-4 hover:shadow-md transition-all group hover:border-blue-200 dark:hover:border-blue-800">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950"><Workflow className="h-4 w-4 text-amber-600" /></div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Otomasyonlar</h3>
-          </div>
-          <p className="text-xs text-gray-500">{stats.activeAutomations} aktif</p>
-        </Link>
-
-        <Link href="/campaigns" className="card p-4 hover:shadow-md transition-all group hover:border-blue-200 dark:hover:border-blue-800">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-pink-50 dark:bg-pink-950"><Megaphone className="h-4 w-4 text-pink-600" /></div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Kampanyalar</h3>
-          </div>
-          <p className="text-xs text-gray-500">Toplu mesajlar</p>
-        </Link>
-
-        <Link href="/knowledge-base" className="card p-4 hover:shadow-md transition-all group hover:border-blue-200 dark:hover:border-blue-800">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-cyan-50 dark:bg-cyan-950"><BookOpen className="h-4 w-4 text-cyan-600" /></div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Bilgi Bankasi</h3>
-          </div>
-          <p className="text-xs text-gray-500">{stats.kbArticles} makale</p>
-        </Link>
-
-        <Link href="/team" className="card p-4 hover:shadow-md transition-all group hover:border-blue-200 dark:hover:border-blue-800">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950"><Users className="h-4 w-4 text-indigo-600" /></div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Ekip</h3>
-          </div>
-          <p className="text-xs text-gray-500">{stats.teamMembers} uye</p>
-        </Link>
-
-        <Link href="/reports" className="card p-4 hover:shadow-md transition-all group hover:border-blue-200 dark:hover:border-blue-800">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950"><BarChart3 className="h-4 w-4 text-rose-600" /></div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Raporlar</h3>
-          </div>
-          <p className="text-xs text-gray-500">Detayli analiz</p>
-        </Link>
+        </div>
       </div>
     </div>
   );

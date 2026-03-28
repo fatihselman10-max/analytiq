@@ -234,7 +234,7 @@ export default function AutomationsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Otomasyonlar</h1>
-          <p className="text-sm text-gray-500 mt-1">Tetikleyici-eylem iş akışları oluşturun</p>
+          <p className="text-sm text-gray-500 mt-1">Tetikleyici-eylem iş akışları oluştürün</p>
         </div>
         <button
           onClick={() => { resetForm(); setShowForm(true); }}
@@ -380,7 +380,7 @@ export default function AutomationsPage() {
         <div className="text-center py-20">
           <Workflow className="h-12 w-12 text-gray-300 mx-auto mb-4" />
           <p className="text-gray-500 font-medium">Henüz otomasyon yok</p>
-          <p className="text-sm text-gray-400 mt-1">İlk otomasyonunuzu oluşturun ve iş akışlarınızı otomatikleştirin.</p>
+          <p className="text-sm text-gray-400 mt-1">İlk otomasyonunuzu oluştürün ve iş akışlarınızı otomatikleştirin.</p>
         </div>
       ) : (
         <div className="space-y-3">

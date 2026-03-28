@@ -64,7 +64,7 @@ export default function RegisterPage() {
             </div>
           </div>
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900">Hesap Oluşturun</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Hesap Oluştürün</h1>
             <p className="mt-2 text-gray-500">Ücretsiz başlayın, kredi kartı gerekmez</p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">

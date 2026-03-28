@@ -87,6 +87,7 @@ export default function SalesPage() {
   const [period, setPeriod] = useState<string>("30d");
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
   const [refundOrders, setRefundOrders] = useState<any[]>([]);
+  const [orderSearch, setOrderSearch] = useState("");
   const [showAddReturn, setShowAddReturn] = useState(false);
   const [newReturn, setNewReturn] = useState({ orderNo: "", reason: "", amount: "" });
 
@@ -780,8 +781,20 @@ export default function SalesPage() {
 
       {/* ==================== SİPARİŞLER ==================== */}
       {activeTab === "orders" && (
-        <div className="space-y-2">
-          {(filteredOrders.length > 0 ? filteredOrders : orders).map(o => {
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input value={orderSearch} onChange={e => setOrderSearch(e.target.value)}
+              placeholder="Sipariş no, müşteri adı veya telefon ara..."
+              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-sm" />
+          </div>
+          {(filteredOrders.length > 0 ? filteredOrders : orders).filter(o => {
+            if (!orderSearch.trim()) return true;
+            const q = orderSearch.toLowerCase();
+            const name = o.customer ? `${o.customer.first_name || ""} ${o.customer.last_name || ""}`.toLowerCase() : "";
+            const phone = o.customer?.phone || o.phone || o.shipping_address?.phone || "";
+            return o.name?.toLowerCase().includes(q) || name.includes(q) || (o.email || "").toLowerCase().includes(q) || phone.includes(q);
+          }).map(o => {
             const fulfillment = o.fulfillment_status || "unfulfilled";
             const customerName = o.customer ? `${o.customer.first_name || ""} ${o.customer.last_name || ""}`.trim() : o.email?.split("@")[0] || "-";
             const isExpanded = expandedOrder === o.id;

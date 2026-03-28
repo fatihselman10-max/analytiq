@@ -34,14 +34,27 @@ export default function ProductsPage() {
 
   const fetchData = async () => {
     try {
-      const [statsRes, productsRes] = await Promise.all([
+      const [statsRes, productsRes, ordersRes] = await Promise.all([
         fetch("/api/shopify?action=stats"),
         fetch("/api/shopify?action=products&limit=500"),
+        fetch("/api/shopify?action=orders&limit=250"),
       ]);
+      const ordersData = await ordersRes.json();
+      const recentOrders = ordersData.orders || [];
       const statsData = await statsRes.json();
       const productsData = await productsRes.json();
 
       setStats(statsData);
+
+      // Calculate daily sales per product from recent orders
+      const productSales: Record<string, number> = {};
+      const daysSpan = recentOrders.length > 0 ? Math.max(1, Math.ceil((Date.now() - new Date(recentOrders[recentOrders.length - 1]?.created_at).getTime()) / (1000 * 60 * 60 * 24))) : 30;
+      recentOrders.forEach((o: any) => {
+        o.line_items?.forEach((li: any) => {
+          const pid = String(li.product_id);
+          productSales[pid] = (productSales[pid] || 0) + li.quantity;
+        });
+      });
 
       const mapped = (productsData.products || []).map((p: ShopifyProduct) => {
         const totalStock = p.variants.reduce((s, v) => s + (v.inventory_quantity || 0), 0);
@@ -49,6 +62,9 @@ export default function ProductsPage() {
         const comparePrice = parseFloat(p.variants[0]?.compare_at_price || "0");
         const sku = p.variants[0]?.sku || "-";
         const status = p.status === "draft" ? "draft" : totalStock === 0 ? "out_of_stock" : totalStock < 10 ? "low_stock" : "active";
+        const soldRecent = productSales[String(p.id)] || 0;
+        const dailySales = daysSpan > 0 ? soldRecent / daysSpan : 0;
+        const runway = dailySales > 0 ? Math.round(totalStock / dailySales) : totalStock > 0 ? 999 : 0;
         return {
           id: p.id,
           name: p.title,
@@ -57,9 +73,12 @@ export default function ProductsPage() {
           comparePrice: comparePrice > price ? comparePrice : 0,
           stock: totalStock,
           status,
-          category: p.product_type || "Diger",
+          category: p.product_type || "Diğer",
           variants: p.variants.length,
           image: p.images?.[0]?.src || "",
+          dailySales: Math.round(dailySales * 10) / 10,
+          runway,
+          soldRecent,
         };
       });
       setProducts(mapped);
@@ -156,8 +175,9 @@ export default function ProductsPage() {
                 <th className="text-left py-3 px-4 font-medium text-gray-500">SKU</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-500">Fiyat</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-500">Stok</th>
+                <th className="text-right py-3 px-4 font-medium text-gray-500">Günlük Satış</th>
+                <th className="text-right py-3 px-4 font-medium text-gray-500">Runway</th>
                 <th className="text-center py-3 px-4 font-medium text-gray-500">Durum</th>
-                <th className="text-center py-3 px-4 font-medium text-gray-500">Varyant</th>
               </tr>
             </thead>
             <tbody>
@@ -182,8 +202,21 @@ export default function ProductsPage() {
                     {p.comparePrice > 0 && <span className="text-[10px] text-gray-400 line-through ml-1">{parseFloat(p.comparePrice).toLocaleString()}</span>}
                   </td>
                   <td className={`py-3 px-4 text-right font-medium ${p.stock === 0 ? "text-red-600" : p.stock < 10 ? "text-amber-600" : "text-gray-900 dark:text-white"}`}>{p.stock}</td>
+                  <td className="py-3 px-4 text-right text-gray-500">{p.dailySales > 0 ? `${p.dailySales}/gün` : "-"}</td>
+                  <td className="py-3 px-4 text-right">
+                    {p.runway === 0 ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-red-100 text-red-700">Tükendi</span>
+                    ) : p.runway < 7 ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-red-100 text-red-700">{p.runway} gün</span>
+                    ) : p.runway < 30 ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-700">{p.runway} gün</span>
+                    ) : p.runway >= 999 ? (
+                      <span className="text-[10px] text-gray-400">Satış yok</span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700">{p.runway} gün</span>
+                    )}
+                  </td>
                   <td className="py-3 px-4 text-center"><span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusMap[p.status]?.color || ""}`}>{statusMap[p.status]?.label || p.status}</span></td>
-                  <td className="py-3 px-4 text-center text-gray-500">{p.variants}</td>
                 </tr>
               ))}
             </tbody>

@@ -8,7 +8,7 @@ import {
   Inbox, MessageSquare, Clock, CheckCircle, TrendingUp,
   Bot, ArrowRight, AlertTriangle, ShoppingCart, DollarSign,
   Package, Truck, AlertCircle as AlertIcon, Users, Sparkles,
-  BarChart3, ArrowUpRight, ArrowDownRight, Loader2,
+  BarChart3, ArrowUpRight, ArrowDownRight, Loader2, Send, MessageCircle, X,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -22,6 +22,10 @@ export default function DashboardPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [period, setPeriod] = useState<string>("today");
   const [metaAds, setMetaAds] = useState<any>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ role: string; content: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
 
   useEffect(() => {
     if (!organization) return;
@@ -256,6 +260,119 @@ KURALLAR:
             <p className="text-sm text-white/60 leading-relaxed">Bugün {filteredOrders.length} yeni sipariş geldi ({periodRevenue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL). {unfulfilledCount > 0 ? `${unfulfilledCount} sipariş kargoya hazırlanmayı bekliyor.` : "Tüm siparişler güncel."} {outOfStockCount > 0 ? `${outOfStockCount} üründe stok tükenmiş durumda.` : ""}</p>
           )}
         </div>
+      </div>
+
+      {/* AI Chat Widget */}
+      <div className="relative">
+        {!chatOpen ? (
+          <button onClick={() => setChatOpen(true)}
+            className="w-full card p-3 flex items-center gap-3 hover:shadow-md transition-all group">
+            <div className="p-2 rounded-xl bg-violet-100 dark:bg-violet-900/30">
+              <MessageCircle className="h-4 w-4 text-violet-600" />
+            </div>
+            <span className="text-xs text-gray-500 group-hover:text-gray-700 dark:group-hover:text-slate-300">İşletmeniz hakkında AI asistana soru sorun...</span>
+            <span className="ml-auto text-[10px] px-2 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-600 rounded-full">AI Chat</span>
+          </button>
+        ) : (
+          <div className="card overflow-hidden border-2 border-violet-200 dark:border-violet-800">
+            {/* Chat Header */}
+            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-950/30 dark:to-indigo-950/30 border-b border-violet-100 dark:border-violet-800">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-violet-100 dark:bg-violet-900/50">
+                  <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+                </div>
+                <span className="text-xs font-semibold text-gray-900 dark:text-white">AI İşletme Asistanı</span>
+                <span className="text-[9px] px-1.5 py-0.5 bg-violet-100 dark:bg-violet-900/50 text-violet-600 rounded-full">Shopify + Meta + CRM</span>
+              </div>
+              <button onClick={() => setChatOpen(false)} className="p-1 text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="max-h-64 overflow-y-auto p-3 space-y-3 bg-gray-50/50 dark:bg-slate-900/50">
+              {chatMessages.length === 0 && (
+                <div className="text-center py-4">
+                  <p className="text-xs text-gray-400">Mağazanız hakkında her şeyi sorabilirsiniz.</p>
+                  <div className="flex flex-wrap gap-1.5 justify-center mt-3">
+                    {["En çok satan ürün ne?", "İade oranım nasıl?", "ROAS'ım iyi mi?", "Bu hafta satış nasıl?"].map(q => (
+                      <button key={q} onClick={() => { setChatInput(q); }}
+                        className="text-[10px] px-2.5 py-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-full text-gray-500 hover:text-violet-600 hover:border-violet-300 transition-colors">
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-xs leading-relaxed ${
+                    msg.role === "user"
+                      ? "bg-violet-600 text-white rounded-tr-md"
+                      : "bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 border border-gray-100 dark:border-slate-700 rounded-tl-md"
+                  }`}>
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="px-3 py-2 rounded-2xl rounded-tl-md bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700">
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Chat Input */}
+            <div className="flex items-center gap-2 p-3 border-t border-gray-100 dark:border-slate-800">
+              <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+                placeholder="Sorunuzu yazın..."
+                className="flex-1 px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                onKeyDown={e => {
+                  if (e.key === "Enter" && chatInput.trim() && !chatLoading) {
+                    const question = chatInput.trim();
+                    setChatInput("");
+                    setChatMessages(prev => [...prev, { role: "user", content: question }]);
+                    setChatLoading(true);
+
+                    // Build context from available data
+                    const context = `Shopify: ${shopData?.ordersCount || 0} toplam sipariş, ${shopData?.productsCount || 0} ürün. Son siparişler cirosu: ${periodRevenue.toLocaleString("tr-TR")} TL. Bekleyen kargo: ${unfulfilledCount}. Tükenen ürün: ${outOfStockCount}. Az stok: ${lowStockCount}. Meta Ads: ${metaAds?.spend ? Math.round(metaAds.spend).toLocaleString("tr-TR") + " TL harcama, ROAS " + metaAds.roas?.toFixed(2) + "x, " + metaAds.purchases + " satış" : "bağlı değil"}. Mesaj: ${msgStats.open} açık, ${msgStats.resolved} çözülen. Mağaza: ${shopData?.shop?.name || "LessandRomance"}.`;
+
+                    fetch("/api/shopify", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        prompt: `Sen bir e-ticaret işletme danışmanısın. LessandRomance kadın giyim markasının verilerine erişimin var. Kısa ve öz cevap ver, Türkçe yaz, 2-3 cümle yeterli.\n\nVERİLER: ${context}\n\nSORU: ${question}`
+                      }),
+                    }).then(r => r.json()).then(data => {
+                      setChatMessages(prev => [...prev, { role: "assistant", content: data.insight || "Yanıt alınamadı." }]);
+                    }).catch(() => {
+                      setChatMessages(prev => [...prev, { role: "assistant", content: "Bağlantı hatası. Tekrar deneyin." }]);
+                    }).finally(() => setChatLoading(false));
+                  }
+                }}
+              />
+              <button onClick={() => {
+                if (!chatInput.trim() || chatLoading) return;
+                const question = chatInput.trim();
+                setChatInput("");
+                setChatMessages(prev => [...prev, { role: "user", content: question }]);
+                setChatLoading(true);
+                const context = `Shopify: ${shopData?.ordersCount || 0} toplam sipariş, ${shopData?.productsCount || 0} ürün. Ciro: ${periodRevenue.toLocaleString("tr-TR")} TL. Bekleyen: ${unfulfilledCount}. Tükenen: ${outOfStockCount}. Meta: ${metaAds?.spend ? Math.round(metaAds.spend).toLocaleString("tr-TR") + " TL, ROAS " + metaAds.roas?.toFixed(2) + "x" : "yok"}.`;
+                fetch("/api/shopify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: `E-ticaret danışmanısın. LessandRomance verileri: ${context}\nSoru: ${question}\nKısa Türkçe cevap ver.` }) })
+                  .then(r => r.json()).then(d => setChatMessages(p => [...p, { role: "assistant", content: d.insight || "Yanıt alınamadı." }]))
+                  .catch(() => setChatMessages(p => [...p, { role: "assistant", content: "Hata." }]))
+                  .finally(() => setChatLoading(false));
+              }} disabled={chatLoading || !chatInput.trim()}
+                className="p-2 bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 transition-colors">
+                <Send className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Kâr Özeti - Mini P&L */}

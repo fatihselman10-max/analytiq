@@ -241,69 +241,62 @@ ${lowStock.slice(0, 10).map((p: any) => `- ${p.title} (${p.variants?.[0]?.invent
 SON 10 SİPARİŞ DETAYI:
 ${orders.slice(0, 10).map((o: any) => `${o.name}: ${parseFloat(o.total_price).toLocaleString("tr-TR")} TL - ${o.line_items?.map((l: any) => l.title + " x" + l.quantity).join(", ")} - ${o.financial_status} - ${o.fulfillment_status || "bekliyor"}`).join("\n")}`;
 
-      // Meta Ads - deep analysis
-      if (META_ACCESS_TOKEN) {
+      // Meta Ads - direct Graph API call
+      {
+        const mToken = (process.env.META_ACCESS_TOKEN || META_ACCESS_TOKEN || "").trim();
+        const mAccount = (process.env.META_AD_ACCOUNT_ID || META_AD_ACCOUNT || "").trim();
         try {
-          const [metaWeekly, metaMonthly, metaDaily, metaCampaigns] = await Promise.all([
-            fetch(`https://graph.facebook.com/v21.0/${META_AD_ACCOUNT}/insights?fields=spend,impressions,clicks,ctr,cpc,actions,action_values,purchase_roas&date_preset=last_7d&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()).catch(() => null),
-            fetch(`https://graph.facebook.com/v21.0/${META_AD_ACCOUNT}/insights?fields=spend,impressions,clicks,actions,action_values,purchase_roas&date_preset=last_30d&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()).catch(() => null),
-            fetch(`https://graph.facebook.com/v21.0/${META_AD_ACCOUNT}/insights?fields=spend,actions&date_preset=last_7d&time_increment=1&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()).catch(() => null),
-            fetch(`https://graph.facebook.com/v21.0/${META_AD_ACCOUNT}/campaigns?fields=name,status,objective,insights.date_preset(last_7d){spend,impressions,clicks,actions,purchase_roas}&limit=10&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()).catch(() => null),
+          const [metaWeeklyRaw, metaMonthlyRaw] = await Promise.all([
+            fetch(`https://graph.facebook.com/v21.0/${mAccount}/insights?fields=spend,impressions,clicks,ctr,cpc,actions,action_values,purchase_roas,cost_per_action_type&date_preset=last_7d&access_token=${mToken}`).then(r => r.json()).catch(() => null),
+            fetch(`https://graph.facebook.com/v21.0/${mAccount}/insights?fields=spend,actions,action_values,purchase_roas&date_preset=last_30d&access_token=${mToken}`).then(r => r.json()).catch(() => null),
           ]);
 
-          const mw = metaWeekly?.data?.[0];
-          const mm = metaMonthly?.data?.[0];
-          if (mw) {
-            const getAction = (actions: any[], type: string) => (actions || []).find((a: any) => a.action_type === type)?.value || 0;
-            const getActionValue = (vals: any[], type: string) => (vals || []).find((a: any) => a.action_type === type)?.value || 0;
+          const mwRaw = metaWeeklyRaw?.data?.[0];
+          const mmRaw = metaMonthlyRaw?.data?.[0];
+          const ga = (arr: any[], t: string) => (arr || []).find((a: any) => a.action_type === t)?.value || 0;
+          const gv = (arr: any[], t: string) => (arr || []).find((a: any) => a.action_type === t)?.value || 0;
+
+          if (!mwRaw || mwRaw.error) {
+            context += `\n\nMETA REKLAMLARI: Token süresi dolmuş veya bağlantı hatası. Kullanıcı Meta Ads Manager'dan güncel verileri kontrol etmeli. Detaylı reklam analizi için Ayarlar > Entegrasyonlar'dan Meta hesabını yeniden bağlaması gerekiyor.`;
+          }
+          if (mwRaw && parseFloat(mwRaw.spend || "0") > 0) {
+            const mw = {
+              spend: parseFloat(mwRaw.spend), impressions: parseInt(mwRaw.impressions || "0"),
+              clicks: parseInt(mwRaw.clicks || "0"), ctr: parseFloat(mwRaw.ctr || "0"),
+              cpc: parseFloat(mwRaw.cpc || "0"), roas: parseFloat(mwRaw.purchase_roas?.[0]?.value || "0"),
+              purchases: parseInt(ga(mwRaw.actions, "purchase")), purchaseValue: parseFloat(gv(mwRaw.action_values, "purchase")),
+              addToCart: parseInt(ga(mwRaw.actions, "add_to_cart")), viewContent: parseInt(ga(mwRaw.actions, "view_content")),
+              initiateCheckout: parseInt(ga(mwRaw.actions, "initiate_checkout")), videoViews: parseInt(ga(mwRaw.actions, "video_view")),
+              messaging: parseInt(ga(mwRaw.actions, "onsite_conversion.messaging_first_reply")),
+              costPerPurchase: parseFloat((mwRaw.cost_per_action_type || []).find((a: any) => a.action_type === "purchase")?.value || "0"),
+            };
             context += `\n\nMETA REKLAMLARI (son 7 gün):
-Harcama: ${Math.round(parseFloat(mw.spend || "0")).toLocaleString("tr-TR")} TL
-Gösterim: ${parseInt(mw.impressions || "0").toLocaleString("tr-TR")}
-Tıklama: ${parseInt(mw.clicks || "0").toLocaleString("tr-TR")}
-CTR: %${parseFloat(mw.ctr || "0").toFixed(2)}
-CPC: ${parseFloat(mw.cpc || "0").toFixed(2)} TL
-ROAS: ${mw.purchase_roas?.[0]?.value ? parseFloat(mw.purchase_roas[0].value).toFixed(2) : "bilinmiyor"}x
-Dönüşüm Cirosu: ${Math.round(parseFloat(getActionValue(mw.action_values, "purchase"))).toLocaleString("tr-TR")} TL
-Satın Alma: ${getAction(mw.actions, "purchase")}
-Sepete Ekleme: ${getAction(mw.actions, "add_to_cart")}
-İçerik Görüntüleme: ${getAction(mw.actions, "view_content")}
-Ödeme Başlatma: ${getAction(mw.actions, "initiate_checkout")}
-Video İzleme: ${getAction(mw.actions, "video_view")}
-Mesajlaşma: ${getAction(mw.actions, "onsite_conversion.messaging_first_reply")}
-Müşteri Edinme Maliyeti: ${parseInt(getAction(mw.actions, "purchase")) > 0 ? Math.round(parseFloat(mw.spend) / parseInt(getAction(mw.actions, "purchase"))).toLocaleString("tr-TR") : "hesaplanamıyor"} TL`;
+Harcama: ${Math.round(mw.spend).toLocaleString("tr-TR")} TL
+Gösterim: ${mw.impressions?.toLocaleString("tr-TR") || 0}
+Tıklama: ${mw.clicks?.toLocaleString("tr-TR") || 0}
+CTR: %${mw.ctr?.toFixed(2) || 0}
+CPC: ${mw.cpc?.toFixed(2) || 0} TL
+ROAS: ${mw.roas?.toFixed(2) || "bilinmiyor"}x
+Dönüşüm Cirosu: ${mw.purchaseValue ? Math.round(mw.purchaseValue).toLocaleString("tr-TR") : 0} TL
+Satın Alma: ${mw.purchases || 0}
+Sepete Ekleme: ${mw.addToCart || 0}
+İçerik Görüntüleme: ${mw.viewContent || 0}
+Ödeme Başlatma: ${mw.initiateCheckout || 0}
+Video İzleme: ${mw.videoViews || 0}
+Mesajlaşma: ${mw.messaging || 0}
+Müşteri Edinme Maliyeti: ${mw.costPerPurchase ? Math.round(mw.costPerPurchase).toLocaleString("tr-TR") : "hesaplanamıyor"} TL`;
           }
 
-          if (mm) {
-            const getAction = (actions: any[], type: string) => (actions || []).find((a: any) => a.action_type === type)?.value || 0;
+          if (mmRaw && parseFloat(mmRaw.spend || "0") > 0) {
             context += `\n\nMETA 30 GÜNLÜK:
-Harcama: ${Math.round(parseFloat(mm.spend || "0")).toLocaleString("tr-TR")} TL
-ROAS: ${mm.purchase_roas?.[0]?.value ? parseFloat(mm.purchase_roas[0].value).toFixed(2) : "-"}x
-Satın Alma: ${getAction(mm.actions, "purchase")}`;
+Harcama: ${Math.round(parseFloat(mmRaw.spend)).toLocaleString("tr-TR")} TL
+ROAS: ${mmRaw.purchase_roas?.[0]?.value ? parseFloat(mmRaw.purchase_roas[0].value).toFixed(2) : "-"}x
+Satın Alma: ${ga(mmRaw.actions, "purchase")}
+Dönüşüm Cirosu: ${Math.round(parseFloat(gv(mmRaw.action_values, "purchase"))).toLocaleString("tr-TR")} TL`;
           }
-
-          // Daily breakdown
-          const dailyData = metaDaily?.data || [];
-          if (dailyData.length > 0) {
-            context += `\n\nGÜNLÜK REKLAM HARCAMASI (son 7 gün):`;
-            dailyData.forEach((d: any) => {
-              const purchases = (d.actions || []).find((a: any) => a.action_type === "purchase")?.value || 0;
-              context += `\n${d.date_start}: ${Math.round(parseFloat(d.spend)).toLocaleString("tr-TR")} TL harcama, ${purchases} satış`;
-            });
-          }
-
-          // Campaign breakdown
-          const campaigns = metaCampaigns?.data || [];
-          if (campaigns.length > 0) {
-            context += `\n\nAKTİF KAMPANYALAR:`;
-            campaigns.filter((c: any) => c.status === "ACTIVE").forEach((c: any) => {
-              const ins = c.insights?.data?.[0];
-              if (ins) {
-                const purchases = (ins.actions || []).find((a: any) => a.action_type === "purchase")?.value || 0;
-                context += `\n- ${c.name}: ${Math.round(parseFloat(ins.spend)).toLocaleString("tr-TR")} TL harcama, ${ins.clicks} tıklama, ${purchases} satış, ROAS ${ins.purchase_roas?.[0]?.value ? parseFloat(ins.purchase_roas[0].value).toFixed(2) : "-"}x`;
-              }
-            });
-          }
-        } catch {}
+        } catch (metaErr: any) {
+          context += `\n\nMETA REKLAMLARI: Veri çekilemedi (${metaErr?.message || "bilinmeyen hata"}). Kullanıcıyı Meta Ads Manager'a yönlendir.`;
+        }
       }
 
       // CRM / Messaging data from Railway backend

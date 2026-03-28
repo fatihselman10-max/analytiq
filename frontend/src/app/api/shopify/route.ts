@@ -12,7 +12,7 @@ async function shopifyFetch(endpoint: string) {
     `https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/${endpoint}`,
     {
       headers: { "X-Shopify-Access-Token": SHOPIFY_TOKEN },
-      next: { revalidate: 300 }, // cache 5 min
+      next: { revalidate: 60 }, // cache 1 min
     }
   );
   if (!res.ok) throw new Error(`Shopify API error: ${res.status}`);

@@ -30,10 +30,15 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!organization) return;
     loadAll();
+    // Auto-refresh every 60 seconds (silent - no loading spinner)
+    const interval = setInterval(() => {
+      loadAll(true);
+    }, 60000);
+    return () => clearInterval(interval);
   }, [organization, period]);
 
-  const loadAll = async () => {
-    setLoading(true);
+  const loadAll = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       // Fetch Shopify data + message stats in parallel
       const periodToMeta: Record<string, string> = {

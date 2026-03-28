@@ -163,8 +163,114 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt } = await req.json();
-    if (!prompt) return NextResponse.json({ error: "prompt required" }, { status: 400 });
+    const { prompt, chat } = await req.json();
+
+    // Smart chat mode - fetch real Shopify data based on question
+    if (chat) {
+      const question = chat.toLowerCase();
+
+      // Fetch relevant data based on question content
+      let context = "";
+
+      // Always fetch recent orders and products for rich context
+      const [ordersData, productsData, statsData] = await Promise.all([
+        shopifyFetch("orders.json?limit=50&status=any&order=created_at+desc").catch(() => ({ orders: [] })),
+        shopifyFetch("products.json?limit=100&status=active").catch(() => ({ products: [] })),
+        Promise.all([
+          shopifyFetch("products/count.json").catch(() => ({ count: 0 })),
+          shopifyFetch("orders/count.json?status=any").catch(() => ({ count: 0 })),
+        ]),
+      ]);
+
+      const orders = ordersData.orders || [];
+      const products = productsData.products || [];
+
+      // Product sales summary
+      const productSales: Record<string, { name: string; qty: number; revenue: number }> = {};
+      orders.forEach((o: any) => {
+        o.line_items?.forEach((li: any) => {
+          const key = li.title || li.product_id;
+          if (!productSales[key]) productSales[key] = { name: li.title, qty: 0, revenue: 0 };
+          productSales[key].qty += li.quantity;
+          productSales[key].revenue += parseFloat(li.price) * li.quantity;
+        });
+      });
+      const topSelling = Object.values(productSales).sort((a, b) => b.qty - a.qty);
+
+      // Order stats
+      const totalRevenue = orders.reduce((s: number, o: any) => s + parseFloat(o.total_price || "0"), 0);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayOrders = orders.filter((o: any) => o.created_at?.slice(0, 10) === todayStr);
+      const todayRevenue = todayOrders.reduce((s: number, o: any) => s + parseFloat(o.total_price || "0"), 0);
+      const refunds = orders.filter((o: any) => o.financial_status === "refunded" || o.financial_status === "partially_refunded");
+      const unfulfilled = orders.filter((o: any) => !o.fulfillment_status || o.fulfillment_status === "unfulfilled");
+
+      // Stock info
+      const outOfStock = products.filter((p: any) => p.variants?.every((v: any) => (v.inventory_quantity || 0) <= 0));
+      const lowStock = products.filter((p: any) => p.variants?.some((v: any) => v.inventory_quantity > 0 && v.inventory_quantity < 10));
+
+      context = `MAĞAZA: LessandRomance (kadın giyim)
+GENEL: ${statsData[1].count} toplam sipariş, ${statsData[0].count} ürün.
+BUGÜN: ${todayOrders.length} sipariş, ${todayRevenue.toLocaleString("tr-TR")} TL ciro.
+SON 50 SİPARİŞ: ${orders.length} sipariş, ${Math.round(totalRevenue).toLocaleString("tr-TR")} TL toplam ciro.
+BEKLEYENLEr: ${unfulfilled.length} sipariş kargoya verilmedi.
+İADELER: ${refunds.length} iade/iptal.
+
+EN ÇOK SATAN ÜRÜNLER (son siparişlerden):
+${topSelling.slice(0, 15).map((p, i) => `${i + 1}. ${p.name}: ${p.qty} adet satıldı, ${Math.round(p.revenue).toLocaleString("tr-TR")} TL ciro`).join("\n")}
+
+TÜKENEN ÜRÜNLER (${outOfStock.length}):
+${outOfStock.slice(0, 10).map((p: any) => `- ${p.title}`).join("\n") || "Yok"}
+
+AZ STOKLU (${lowStock.length}):
+${lowStock.slice(0, 10).map((p: any) => `- ${p.title} (${p.variants?.[0]?.inventory_quantity || 0} adet)`).join("\n") || "Yok"}
+
+SON 10 SİPARİŞ DETAYI:
+${orders.slice(0, 10).map((o: any) => `${o.name}: ${parseFloat(o.total_price).toLocaleString("tr-TR")} TL - ${o.line_items?.map((l: any) => l.title + " x" + l.quantity).join(", ")} - ${o.financial_status} - ${o.fulfillment_status || "bekliyor"}`).join("\n")}`;
+
+      // Add Meta Ads context if available
+      if (META_ACCESS_TOKEN) {
+        try {
+          const metaRes = await fetch(
+            `https://graph.facebook.com/v21.0/${META_AD_ACCOUNT}/insights?fields=spend,purchase_roas,actions&date_preset=last_7d&access_token=${META_ACCESS_TOKEN}`
+          );
+          const metaData = await metaRes.json();
+          const mi = metaData.data?.[0];
+          if (mi) {
+            const purchases = (mi.actions || []).find((a: any) => a.action_type === "purchase")?.value || 0;
+            context += `\n\nMETA REKLAMLARI (son 7 gün):
+Harcama: ${Math.round(parseFloat(mi.spend || "0")).toLocaleString("tr-TR")} TL
+ROAS: ${mi.purchase_roas?.[0]?.value || "bilinmiyor"}x
+Satın alma: ${purchases}`;
+          }
+        } catch {}
+      }
+
+      const fullPrompt = `Sen LessandRomance kadın giyim markasının e-ticaret danışmanısın. Aşağıdaki gerçek Shopify mağaza verilerine erişimin var. Soruyu bu verilere dayanarak cevapla. Türkçe, kısa ve net cevap ver. Veri yoksa "bu veriyi göremiyorum" de, uydurma.
+
+${context}
+
+KULLANICI SORUSU: ${chat}`;
+
+      const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": ANTHROPIC_KEY,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 600,
+          messages: [{ role: "user", content: fullPrompt }],
+        }),
+      });
+      const aiData = await aiRes.json();
+      return NextResponse.json({ insight: aiData.content?.[0]?.text || "Yanıt alınamadı." });
+    }
+
+    // Simple prompt mode (for daily briefing)
+    if (!prompt) return NextResponse.json({ error: "prompt or chat required" }, { status: 400 });
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",

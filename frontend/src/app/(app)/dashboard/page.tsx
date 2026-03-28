@@ -338,15 +338,10 @@ KURALLAR:
                     setChatMessages(prev => [...prev, { role: "user", content: question }]);
                     setChatLoading(true);
 
-                    // Build context from available data
-                    const context = `Shopify: ${shopData?.ordersCount || 0} toplam sipariş, ${shopData?.productsCount || 0} ürün. Son siparişler cirosu: ${periodRevenue.toLocaleString("tr-TR")} TL. Bekleyen kargo: ${unfulfilledCount}. Tükenen ürün: ${outOfStockCount}. Az stok: ${lowStockCount}. Meta Ads: ${metaAds?.spend ? Math.round(metaAds.spend).toLocaleString("tr-TR") + " TL harcama, ROAS " + metaAds.roas?.toFixed(2) + "x, " + metaAds.purchases + " satış" : "bağlı değil"}. Mesaj: ${msgStats.open} açık, ${msgStats.resolved} çözülen. Mağaza: ${shopData?.shop?.name || "LessandRomance"}.`;
-
                     fetch("/api/shopify", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        prompt: `Sen bir e-ticaret işletme danışmanısın. LessandRomance kadın giyim markasının verilerine erişimin var. Kısa ve öz cevap ver, Türkçe yaz, 2-3 cümle yeterli.\n\nVERİLER: ${context}\n\nSORU: ${question}`
-                      }),
+                      body: JSON.stringify({ chat: question }),
                     }).then(r => r.json()).then(data => {
                       setChatMessages(prev => [...prev, { role: "assistant", content: data.insight || "Yanıt alınamadı." }]);
                     }).catch(() => {
@@ -361,8 +356,7 @@ KURALLAR:
                 setChatInput("");
                 setChatMessages(prev => [...prev, { role: "user", content: question }]);
                 setChatLoading(true);
-                const context = `Shopify: ${shopData?.ordersCount || 0} toplam sipariş, ${shopData?.productsCount || 0} ürün. Ciro: ${periodRevenue.toLocaleString("tr-TR")} TL. Bekleyen: ${unfulfilledCount}. Tükenen: ${outOfStockCount}. Meta: ${metaAds?.spend ? Math.round(metaAds.spend).toLocaleString("tr-TR") + " TL, ROAS " + metaAds.roas?.toFixed(2) + "x" : "yok"}.`;
-                fetch("/api/shopify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: `E-ticaret danışmanısın. LessandRomance verileri: ${context}\nSoru: ${question}\nKısa Türkçe cevap ver.` }) })
+                fetch("/api/shopify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat: question }) })
                   .then(r => r.json()).then(d => setChatMessages(p => [...p, { role: "assistant", content: d.insight || "Yanıt alınamadı." }]))
                   .catch(() => setChatMessages(p => [...p, { role: "assistant", content: "Hata." }]))
                   .finally(() => setChatLoading(false));

@@ -172,17 +172,30 @@ export async function POST(req: NextRequest) {
       // Fetch relevant data based on question content
       let context = "";
 
-      // Always fetch recent orders and products for rich context
-      const [ordersData, productsData, statsData] = await Promise.all([
-        shopifyFetch("orders.json?limit=50&status=any&order=created_at+desc").catch(() => ({ orders: [] })),
-        shopifyFetch("products.json?limit=100&status=active").catch(() => ({ products: [] })),
+      // Fetch all recent orders (paginate through 250 at a time) and products
+      let allOrders: any[] = [];
+      let orderUrl = "orders.json?limit=250&status=any&order=created_at+desc";
+      // Get up to 750 orders (3 pages) for comprehensive data
+      for (let page = 0; page < 3; page++) {
+        try {
+          const batch = await shopifyFetch(orderUrl);
+          const batchOrders = batch.orders || [];
+          allOrders = allOrders.concat(batchOrders);
+          if (batchOrders.length < 250) break;
+          const lastId = batchOrders[batchOrders.length - 1].id;
+          orderUrl = `orders.json?limit=250&status=any&order=created_at+desc&since_id=${lastId}`;
+        } catch { break; }
+      }
+
+      const [productsData, statsData] = await Promise.all([
+        shopifyFetch("products.json?limit=250&status=active").catch(() => ({ products: [] })),
         Promise.all([
           shopifyFetch("products/count.json").catch(() => ({ count: 0 })),
           shopifyFetch("orders/count.json?status=any").catch(() => ({ count: 0 })),
         ]),
       ]);
 
-      const orders = ordersData.orders || [];
+      const orders = allOrders;
       const products = productsData.products || [];
 
       // Product sales summary
@@ -212,7 +225,7 @@ export async function POST(req: NextRequest) {
       context = `MAĞAZA: LessandRomance (kadın giyim)
 GENEL: ${statsData[1].count} toplam sipariş, ${statsData[0].count} ürün.
 BUGÜN: ${todayOrders.length} sipariş, ${todayRevenue.toLocaleString("tr-TR")} TL ciro.
-SON 50 SİPARİŞ: ${orders.length} sipariş, ${Math.round(totalRevenue).toLocaleString("tr-TR")} TL toplam ciro.
+SON SİPARİŞLER: ${orders.length} sipariş incelendi, ${Math.round(totalRevenue).toLocaleString("tr-TR")} TL toplam ciro.
 BEKLEYENLEr: ${unfulfilled.length} sipariş kargoya verilmedi.
 İADELER: ${refunds.length} iade/iptal.
 

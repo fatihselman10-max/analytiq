@@ -224,67 +224,75 @@ KURALLAR:
         </div>
       </div>
 
-      {/* AI Satış Asistanı */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-violet-950 to-indigo-950 dark:from-slate-950 dark:via-violet-950/80 dark:to-indigo-950/80 rounded-2xl p-5 lg:p-6 shadow-lg">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-violet-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+      {/* AI Günlük Brifing - Kompakt */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-violet-950 to-indigo-950 dark:from-slate-950 dark:via-violet-950/80 dark:to-indigo-950/80 rounded-2xl p-4 shadow-lg">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-violet-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
         <div className="relative">
-          <div className="flex items-center gap-2.5 mb-3">
-            <div className="p-2 rounded-xl bg-white/10 backdrop-blur-sm">
-              <Sparkles className="h-4 w-4 text-violet-300" />
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-violet-300" />
+              <span className="text-xs font-semibold text-white/80">Günlük Brifing</span>
             </div>
-            <h3 className="text-sm font-semibold text-white/90">Günlük Brifing</h3>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 font-medium">AI Asistan</span>
+            <span className="text-[9px] text-white/30">Her sabah 09:00 güncellenir · Detay için AI Asistan kullanın</span>
           </div>
           {aiLoading ? (
-            <div className="flex items-center gap-3 py-2">
+            <div className="flex items-center gap-2 py-1">
               <div className="flex gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                <div className="w-1 h-1 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <div className="w-1 h-1 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <div className="w-1 h-1 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
-              <span className="text-sm text-white/50">Mağaza verileri analiz ediliyor...</span>
+              <span className="text-xs text-white/40">Analiz ediliyor...</span>
             </div>
           ) : aiInsight ? (
-            <div className="space-y-2.5">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-1">
               {aiInsight.split("\n").filter(Boolean).map((line, i) => (
-                <div key={i} className="flex items-start gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-[10px] font-bold text-violet-300">{i + 1}</span>
-                  </div>
-                  <p className="text-sm text-white/80 leading-relaxed">{line.replace(/^\d+[\.\)]\s*/, "")}</p>
-                </div>
+                <p key={i} className="text-[11px] text-white/70 leading-relaxed flex items-start gap-1.5">
+                  <span className="text-violet-400 font-bold mt-px">{i + 1}.</span>
+                  {line.replace(/^\d+[\.\)]\s*/, "")}
+                </p>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-white/60 leading-relaxed">Bugün {filteredOrders.length} yeni sipariş geldi ({periodRevenue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL). {unfulfilledCount > 0 ? `${unfulfilledCount} sipariş kargoya hazırlanmayı bekliyor.` : "Tüm siparişler güncel."} {outOfStockCount > 0 ? `${outOfStockCount} üründe stok tükenmiş durumda.` : ""}</p>
+            <p className="text-[11px] text-white/50">Bugün {filteredOrders.length} sipariş ({periodRevenue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL). {unfulfilledCount > 0 ? `${unfulfilledCount} bekleyen kargo.` : ""} {outOfStockCount > 0 ? `${outOfStockCount} tükenen ürün.` : ""}</p>
           )}
         </div>
       </div>
 
-      {/* AI Chat Widget */}
+      {/* AI İşletme Asistanı */}
       <div className="relative">
         {!chatOpen ? (
           <button onClick={() => setChatOpen(true)}
-            className="w-full card p-3 flex items-center gap-3 hover:shadow-md transition-all group">
-            <div className="p-2 rounded-xl bg-violet-100 dark:bg-violet-900/30">
-              <MessageCircle className="h-4 w-4 text-violet-600" />
+            className="w-full relative overflow-hidden rounded-2xl p-4 flex items-center gap-4 hover:shadow-lg transition-all group bg-gradient-to-r from-white to-violet-50 dark:from-slate-900 dark:to-violet-950/20 border border-violet-200 dark:border-violet-800">
+            <div className="absolute right-0 top-0 w-32 h-32 bg-violet-100 dark:bg-violet-900/20 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 opacity-50" />
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-500/20 flex-shrink-0">
+              <MessageCircle className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xs text-gray-500 group-hover:text-gray-700 dark:group-hover:text-slate-300">İşletmeniz hakkında AI asistana soru sorun...</span>
-            <span className="ml-auto text-[10px] px-2 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-600 rounded-full">AI Chat</span>
+            <div className="flex-1 text-left relative">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">AI İşletme Asistanı</h3>
+              <p className="text-[10px] text-gray-500 mt-0.5">Shopify, Meta Ads ve müşteri verilerinizi analiz ederek sorularınızı yanıtlar</p>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white rounded-xl text-xs font-medium shadow-md group-hover:shadow-lg transition-all relative">
+              Soru Sor
+            </div>
           </button>
         ) : (
-          <div className="card overflow-hidden border-2 border-violet-200 dark:border-violet-800">
+          <div className="rounded-2xl overflow-hidden border-2 border-violet-200 dark:border-violet-800 shadow-xl shadow-violet-500/5">
             {/* Chat Header */}
-            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-950/30 dark:to-indigo-950/30 border-b border-violet-100 dark:border-violet-800">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-violet-100 dark:bg-violet-900/50">
-                  <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+            <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-violet-600 to-indigo-600">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-white/20">
+                  <Sparkles className="h-4 w-4 text-white" />
                 </div>
-                <span className="text-xs font-semibold text-gray-900 dark:text-white">AI İşletme Asistanı</span>
-                <span className="text-[9px] px-1.5 py-0.5 bg-violet-100 dark:bg-violet-900/50 text-violet-600 rounded-full">Shopify + Meta + CRM</span>
+                <div>
+                  <span className="text-sm font-semibold text-white">AI İşletme Asistanı</span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span className="text-[9px] text-white/60">Shopify · Meta Ads · CRM · Canlı</span>
+                  </div>
+                </div>
               </div>
-              <button onClick={() => setChatOpen(false)} className="p-1 text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+              <button onClick={() => setChatOpen(false)} className="p-1.5 text-white/60 hover:text-white hover:bg-white/10 rounded-lg transition-colors"><X className="h-4 w-4" /></button>
             </div>
 
             {/* Chat Messages */}

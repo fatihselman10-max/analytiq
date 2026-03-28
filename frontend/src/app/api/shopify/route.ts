@@ -241,23 +241,83 @@ ${lowStock.slice(0, 10).map((p: any) => `- ${p.title} (${p.variants?.[0]?.invent
 SON 10 SİPARİŞ DETAYI:
 ${orders.slice(0, 10).map((o: any) => `${o.name}: ${parseFloat(o.total_price).toLocaleString("tr-TR")} TL - ${o.line_items?.map((l: any) => l.title + " x" + l.quantity).join(", ")} - ${o.financial_status} - ${o.fulfillment_status || "bekliyor"}`).join("\n")}`;
 
-      // Add Meta Ads context if available
+      // Meta Ads - deep analysis
       if (META_ACCESS_TOKEN) {
         try {
-          const metaRes = await fetch(
-            `https://graph.facebook.com/v21.0/${META_AD_ACCOUNT}/insights?fields=spend,purchase_roas,actions&date_preset=last_7d&access_token=${META_ACCESS_TOKEN}`
-          );
-          const metaData = await metaRes.json();
-          const mi = metaData.data?.[0];
-          if (mi) {
-            const purchases = (mi.actions || []).find((a: any) => a.action_type === "purchase")?.value || 0;
+          const [metaWeekly, metaMonthly, metaDaily, metaCampaigns] = await Promise.all([
+            fetch(`https://graph.facebook.com/v21.0/${META_AD_ACCOUNT}/insights?fields=spend,impressions,clicks,ctr,cpc,actions,action_values,purchase_roas&date_preset=last_7d&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()).catch(() => null),
+            fetch(`https://graph.facebook.com/v21.0/${META_AD_ACCOUNT}/insights?fields=spend,impressions,clicks,actions,action_values,purchase_roas&date_preset=last_30d&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()).catch(() => null),
+            fetch(`https://graph.facebook.com/v21.0/${META_AD_ACCOUNT}/insights?fields=spend,actions&date_preset=last_7d&time_increment=1&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()).catch(() => null),
+            fetch(`https://graph.facebook.com/v21.0/${META_AD_ACCOUNT}/campaigns?fields=name,status,objective,insights.date_preset(last_7d){spend,impressions,clicks,actions,purchase_roas}&limit=10&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()).catch(() => null),
+          ]);
+
+          const mw = metaWeekly?.data?.[0];
+          const mm = metaMonthly?.data?.[0];
+          if (mw) {
+            const getAction = (actions: any[], type: string) => (actions || []).find((a: any) => a.action_type === type)?.value || 0;
+            const getActionValue = (vals: any[], type: string) => (vals || []).find((a: any) => a.action_type === type)?.value || 0;
             context += `\n\nMETA REKLAMLARI (son 7 gün):
-Harcama: ${Math.round(parseFloat(mi.spend || "0")).toLocaleString("tr-TR")} TL
-ROAS: ${mi.purchase_roas?.[0]?.value || "bilinmiyor"}x
-Satın alma: ${purchases}`;
+Harcama: ${Math.round(parseFloat(mw.spend || "0")).toLocaleString("tr-TR")} TL
+Gösterim: ${parseInt(mw.impressions || "0").toLocaleString("tr-TR")}
+Tıklama: ${parseInt(mw.clicks || "0").toLocaleString("tr-TR")}
+CTR: %${parseFloat(mw.ctr || "0").toFixed(2)}
+CPC: ${parseFloat(mw.cpc || "0").toFixed(2)} TL
+ROAS: ${mw.purchase_roas?.[0]?.value ? parseFloat(mw.purchase_roas[0].value).toFixed(2) : "bilinmiyor"}x
+Dönüşüm Cirosu: ${Math.round(parseFloat(getActionValue(mw.action_values, "purchase"))).toLocaleString("tr-TR")} TL
+Satın Alma: ${getAction(mw.actions, "purchase")}
+Sepete Ekleme: ${getAction(mw.actions, "add_to_cart")}
+İçerik Görüntüleme: ${getAction(mw.actions, "view_content")}
+Ödeme Başlatma: ${getAction(mw.actions, "initiate_checkout")}
+Video İzleme: ${getAction(mw.actions, "video_view")}
+Mesajlaşma: ${getAction(mw.actions, "onsite_conversion.messaging_first_reply")}
+Müşteri Edinme Maliyeti: ${parseInt(getAction(mw.actions, "purchase")) > 0 ? Math.round(parseFloat(mw.spend) / parseInt(getAction(mw.actions, "purchase"))).toLocaleString("tr-TR") : "hesaplanamıyor"} TL`;
+          }
+
+          if (mm) {
+            const getAction = (actions: any[], type: string) => (actions || []).find((a: any) => a.action_type === type)?.value || 0;
+            context += `\n\nMETA 30 GÜNLÜK:
+Harcama: ${Math.round(parseFloat(mm.spend || "0")).toLocaleString("tr-TR")} TL
+ROAS: ${mm.purchase_roas?.[0]?.value ? parseFloat(mm.purchase_roas[0].value).toFixed(2) : "-"}x
+Satın Alma: ${getAction(mm.actions, "purchase")}`;
+          }
+
+          // Daily breakdown
+          const dailyData = metaDaily?.data || [];
+          if (dailyData.length > 0) {
+            context += `\n\nGÜNLÜK REKLAM HARCAMASI (son 7 gün):`;
+            dailyData.forEach((d: any) => {
+              const purchases = (d.actions || []).find((a: any) => a.action_type === "purchase")?.value || 0;
+              context += `\n${d.date_start}: ${Math.round(parseFloat(d.spend)).toLocaleString("tr-TR")} TL harcama, ${purchases} satış`;
+            });
+          }
+
+          // Campaign breakdown
+          const campaigns = metaCampaigns?.data || [];
+          if (campaigns.length > 0) {
+            context += `\n\nAKTİF KAMPANYALAR:`;
+            campaigns.filter((c: any) => c.status === "ACTIVE").forEach((c: any) => {
+              const ins = c.insights?.data?.[0];
+              if (ins) {
+                const purchases = (ins.actions || []).find((a: any) => a.action_type === "purchase")?.value || 0;
+                context += `\n- ${c.name}: ${Math.round(parseFloat(ins.spend)).toLocaleString("tr-TR")} TL harcama, ${ins.clicks} tıklama, ${purchases} satış, ROAS ${ins.purchase_roas?.[0]?.value ? parseFloat(ins.purchase_roas[0].value).toFixed(2) : "-"}x`;
+              }
+            });
           }
         } catch {}
       }
+
+      // CRM / Messaging data from Railway backend
+      try {
+        const crmRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "https://repliq-production-e4aa.up.railway.app"}/api/v1/reports/overview?period=7d`);
+        if (crmRes.ok) {
+          const crm = await crmRes.json();
+          context += `\n\nMÜŞTERİ İLETİŞİMİ (son 7 gün):
+Toplam Görüşme: ${crm.total_conversations || 0}
+Açık: ${crm.open_conversations || 0}
+Çözülen: ${crm.resolved_count || 0}
+Ort. Yanıt Süresi: ${crm.avg_response_time_minutes ? Math.round(crm.avg_response_time_minutes) + " dakika" : "bilinmiyor"}`;
+        }
+      } catch {}
 
       const fullPrompt = `Sen LessandRomance kadın giyim markasının e-ticaret danışmanısın. Aşağıdaki gerçek Shopify mağaza verilerine erişimin var. Soruyu bu verilere dayanarak cevapla. Türkçe, kısa ve net cevap ver. Veri yoksa "bu veriyi göremiyorum" de, uydurma.
 

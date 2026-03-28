@@ -246,7 +246,7 @@ export default function InboxPage() {
                   {activeConversation.contact?.name || "Bilinmeyen"}
                 </h2>
                 <p className="text-xs text-gray-500 truncate">
-                  {activeConversation.subject || "Konu yok"}
+                  {activeConversation.last_message || activeConversation.subject || "Konu yok"}
                 </p>
               </div>
               <div className="flex items-center gap-2">

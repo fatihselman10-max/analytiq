@@ -353,15 +353,10 @@ export default function ConversationList({
                         {formatTime(conv.last_message_at)}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-700 truncate mb-1">
-                      {conv.subject || "Konu yok"}
+                    <p className="text-sm text-gray-700 dark:text-slate-300 truncate mb-1">
+                      {conv.last_message || conv.subject || "Konu yok"}
                     </p>
                     <div className="flex items-center gap-1.5">
-                      {conv.last_message && (
-                        <p className="text-xs text-gray-400 truncate flex-1">
-                          {conv.last_message}
-                        </p>
-                      )}
                       {conv.priority !== "normal" && (
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${priority.className}`}>
                           {priority.label}

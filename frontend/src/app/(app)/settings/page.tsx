@@ -969,218 +969,230 @@ export default function SettingsPage() {
           
           {activeTab === "costs" && (
             <div className="space-y-5 animate-fade-in">
-              {/* Header */}
-              <div className="card p-6">
-                <div className="flex items-center justify-between mb-1">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Maliyet & Kâr Analizi</h2>
-                  <span className="text-[10px] px-2.5 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 rounded-full font-semibold">Mart 2026</span>
-                </div>
-                <p className="text-sm text-gray-500">Ürün maliyetleri, sabit giderler ve reklam harcamalarını yöneterek kârlılığınızı takip edin.</p>
-              </div>
-
-              {/* P&L Summary - Triple Whale Style */}
+              {/* P&L Özet */}
               <div className="card overflow-hidden">
                 <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-5">
-                  <h3 className="text-sm font-semibold text-white/80 mb-4">Kâr & Zarar Tablosu</h3>
-                  <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-white/80">Kâr & Zarar Tablosu</h3>
+                    <span className="text-[10px] text-white/40">Shopify canlı ciro + girilen maliyetler</span>
+                  </div>
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                     <div className="p-3 rounded-xl bg-white/10 backdrop-blur-sm">
                       <p className="text-[10px] text-white/50">Brüt Gelir</p>
                       <p className="text-lg font-bold text-white">342.000 TL</p>
-                      <p className="text-[10px] text-emerald-400">Shopify canlı</p>
                     </div>
                     <div className="p-3 rounded-xl bg-white/10 backdrop-blur-sm">
                       <p className="text-[10px] text-white/50">COGS</p>
                       <p className="text-lg font-bold text-red-400">-136.800 TL</p>
-                      <p className="text-[10px] text-white/40">%40 ürün maliyeti</p>
                     </div>
                     <div className="p-3 rounded-xl bg-white/10 backdrop-blur-sm">
                       <p className="text-[10px] text-white/50">Brüt Kâr</p>
                       <p className="text-lg font-bold text-emerald-400">205.200 TL</p>
-                      <p className="text-[10px] text-white/40">%60 marj</p>
                     </div>
                     <div className="p-3 rounded-xl bg-white/10 backdrop-blur-sm">
-                      <p className="text-[10px] text-white/50">Reklam</p>
-                      <p className="text-lg font-bold text-amber-400">-67.000 TL</p>
-                      <p className="text-[10px] text-white/40">Meta + Google</p>
+                      <p className="text-[10px] text-white/50">Toplam Gider</p>
+                      <p className="text-lg font-bold text-amber-400">-162.500 TL</p>
                     </div>
-                    <div className="p-3 rounded-xl bg-white/10 backdrop-blur-sm">
-                      <p className="text-[10px] text-white/50">Sabit Gider</p>
-                      <p className="text-lg font-bold text-orange-400">-95.500 TL</p>
-                      <p className="text-[10px] text-white/40">Operasyon</p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-emerald-500/20 backdrop-blur-sm border border-emerald-500/30">
+                    <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30">
                       <p className="text-[10px] text-emerald-300">Net Kâr</p>
                       <p className="text-lg font-bold text-emerald-400">42.700 TL</p>
-                      <p className="text-[10px] text-emerald-300/70">%12.5 marj</p>
+                      <p className="text-[10px] text-emerald-300/60">%12.5 marj</p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* COGS - Ürün Maliyeti */}
-                <div className="card p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center"><span className="text-sm">📦</span></div>
-                      <div>
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">COGS (Ürün Maliyeti)</h3>
-                        <p className="text-[10px] text-gray-400">Satılan ürünlerin direkt maliyeti</p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-red-600">136.800 TL</span>
-                  </div>
-                  <div className="space-y-2">
-                    {[
-                      { label: "Ürün / Hammadde Alımı", value: "98.000", pct: "28.7%" },
-                      { label: "Üretim / Fason Dikim", value: "24.500", pct: "7.2%" },
-                      { label: "Paketleme & Etiket", value: "8.800", pct: "2.6%" },
-                      { label: "Kargo Maliyeti (Birim)", value: "5.500", pct: "1.6%" },
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                        <span className="text-xs text-gray-600 dark:text-slate-400 flex-1">{item.label}</span>
-                        <span className="text-[10px] text-gray-400 w-12 text-right">{item.pct}</span>
-                        <div className="flex items-center gap-1">
-                          <input defaultValue={item.value} className="w-20 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-xs text-right font-mono font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
-                          <span className="text-[10px] text-gray-400">TL</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-700 dark:text-slate-300">COGS Oranı</span>
-                    <span className="text-sm font-bold text-red-600">%40.0</span>
+              {/* COGS - Ürün Maliyeti */}
+              <div className="card p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-lg">📦</div>
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">Ürün Maliyeti (COGS)</h3>
+                    <p className="text-xs text-gray-500">Hammadde, üretim, fason dikim, paketleme, etiket dahil toplam ürün maliyeti</p>
                   </div>
                 </div>
 
-                {/* Sabit Giderler */}
-                <div className="card p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center"><span className="text-sm">🏢</span></div>
+                <div className="bg-gray-50 dark:bg-slate-800/50 rounded-xl p-5 mb-4">
+                  <p className="text-xs font-semibold text-gray-700 dark:text-slate-300 mb-3">Maliyet giriş yöntemi seçin:</p>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                    <label className="flex items-start gap-3 p-4 rounded-xl border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/20 cursor-pointer">
+                      <input type="radio" name="cogs_method" defaultChecked className="mt-1 accent-blue-600" />
                       <div>
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Sabit Giderler</h3>
-                        <p className="text-[10px] text-gray-400">Aylık operasyon maliyetleri</p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-orange-600">95.500 TL</span>
-                  </div>
-                  <div className="space-y-2">
-                    {[
-                      { label: "Personel Maaşları", value: "52.000" },
-                      { label: "Kira & Depo", value: "15.000" },
-                      { label: "Kargo Anlaşması (Aylık)", value: "12.000" },
-                      { label: "Yazılım & Abonelikler", value: "4.500" },
-                      { label: "Muhasebe & Hukuk", value: "3.500" },
-                      { label: "Diğer Giderler", value: "8.500" },
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                        <span className="text-xs text-gray-600 dark:text-slate-400 flex-1">{item.label}</span>
-                        <div className="flex items-center gap-1">
-                          <input defaultValue={item.value} className="w-20 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-xs text-right font-mono font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
-                          <span className="text-[10px] text-gray-400">TL</span>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Yüzdesel Oran</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Tüm siparişlere sabit bir % COGS oranı uygula</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs text-gray-500">%</span>
+                          <input defaultValue="40" className="w-16 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-sm text-center font-mono font-bold focus:ring-2 focus:ring-blue-500" />
+                          <span className="text-[10px] text-gray-400">ciro üzerinden</span>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 p-3 rounded-lg bg-orange-50 dark:bg-orange-950/20 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-700 dark:text-slate-300">Ciro Oranı</span>
-                    <span className="text-sm font-bold text-orange-600">%27.9</span>
+                    </label>
+                    <label className="flex items-start gap-3 p-4 rounded-xl border-2 border-gray-200 dark:border-slate-700 hover:border-blue-300 cursor-pointer transition-colors">
+                      <input type="radio" name="cogs_method" className="mt-1 accent-blue-600" />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Sabit Tutar</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Aylık toplam COGS tutarını manuel girin</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <input defaultValue="136.800" className="w-24 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500" />
+                          <span className="text-[10px] text-gray-400">TL / ay</span>
+                        </div>
+                      </div>
+                    </label>
+                    <label className="flex items-start gap-3 p-4 rounded-xl border-2 border-gray-200 dark:border-slate-700 hover:border-blue-300 cursor-pointer transition-colors">
+                      <input type="radio" name="cogs_method" className="mt-1 accent-blue-600" />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Ürün Bazlı</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Her ürün için ayrı maliyet girin</p>
+                        <button className="mt-2 text-[10px] font-medium text-blue-600 hover:text-blue-700">Ürün maliyetlerini düzenle →</button>
+                      </div>
+                    </label>
                   </div>
                 </div>
               </div>
 
-              {/* Reklam Harcaması - API'den otomatik */}
-              <div className="card p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center"><span className="text-sm">📣</span></div>
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Reklam Harcaması</h3>
-                      <p className="text-[10px] text-gray-400">Bağlı hesaplardan otomatik çekilir</p>
-                    </div>
+              {/* Kargo Maliyeti */}
+              <div className="card p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-lg">🚚</div>
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">Kargo Maliyeti</h3>
+                    <p className="text-xs text-gray-500">Sipariş başına kargo gideri</p>
                   </div>
-                  <span className="text-sm font-bold text-violet-600">67.000 TL</span>
                 </div>
+
+                <div className="bg-gray-50 dark:bg-slate-800/50 rounded-xl p-5">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <label className="flex items-start gap-3 p-4 rounded-xl border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/20 cursor-pointer">
+                      <input type="radio" name="shipping_method" defaultChecked className="mt-1 accent-blue-600" />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Manuel Tutar</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Sipariş başına ortalama kargo maliyeti</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <input defaultValue="45" className="w-20 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500" />
+                          <span className="text-[10px] text-gray-400">TL / sipariş</span>
+                        </div>
+                      </div>
+                    </label>
+                    <label className="flex items-start gap-3 p-4 rounded-xl border-2 border-gray-200 dark:border-slate-700 hover:border-blue-300 cursor-pointer transition-colors">
+                      <input type="radio" name="shipping_method" className="mt-1 accent-blue-600" />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Shopify'dan Çek</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Kargo ücretini otomatik olarak Shopify siparişlerinden al</p>
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                          <span className="text-[10px] text-emerald-600 font-medium">Shopify bağlı</span>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Komisyonlar */}
+              <div className="card p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-lg">💳</div>
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">Komisyonlar</h3>
+                    <p className="text-xs text-gray-500">Platform ve ödeme altyapısı kesintileri (ciro üzerinden %)</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {[
+                    { label: "E-ticaret Platformu Komisyonu", sub: "Shopify, ikas, Ticimax vb.", value: "2.0" },
+                    { label: "Ödeme Altyapısı Komisyonu", sub: "iyzico, PayTR, Stripe vb.", value: "2.49" },
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{item.label}</p>
+                        <p className="text-[10px] text-gray-400">{item.sub}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-500">%</span>
+                        <input defaultValue={item.value} className="w-20 px-3 py-2 border border-gray-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-sm text-center font-mono font-medium focus:ring-2 focus:ring-violet-500" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sabit Giderler */}
+              <div className="card p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-lg">🏢</div>
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">Sabit Giderler</h3>
+                    <p className="text-xs text-gray-500">Aylık operasyon maliyetleri</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {[
+                    { label: "Personel Maaşları", value: "52.000" },
+                    { label: "Kira & Depo", value: "15.000" },
+                    { label: "Yazılım & Abonelikler", value: "4.500" },
+                    { label: "Muhasebe & Hukuk", value: "3.500" },
+                    { label: "Diğer Giderler", value: "8.500" },
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
+                      <span className="text-sm text-gray-700 dark:text-slate-300 flex-1">{item.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <input defaultValue={item.value} className="w-24 px-3 py-2 border border-gray-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-sm text-right font-mono font-medium focus:ring-2 focus:ring-amber-500" />
+                        <span className="text-xs text-gray-400">TL</span>
+                      </div>
+                    </div>
+                  ))}
+                  <button className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium mt-2 ml-1">+ Yeni kalem ekle</button>
+                </div>
+              </div>
+
+              {/* Reklam Harcaması */}
+              <div className="card p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-10 h-10 rounded-xl bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center text-lg">📣</div>
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">Reklam Harcaması</h3>
+                    <p className="text-xs text-gray-500">Bağlı hesaplardan otomatik çekilir, diğerleri manuel girilir</p>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                   <div className="p-4 rounded-xl border border-pink-200 dark:border-pink-800 bg-pink-50/50 dark:bg-pink-950/10">
-                    <div className="flex items-center gap-2 mb-2">
-                      <svg viewBox="0 0 40 40" className="w-6 h-6"><defs><linearGradient id="mg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#0081FB"/><stop offset="100%" stopColor="#A020F0"/></linearGradient></defs><rect width="40" height="40" rx="8" fill="url(#mg)"/><text x="50%" y="56%" textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" fontWeight="700">META</text></svg>
-                      <span className="text-xs font-bold text-gray-900 dark:text-white">Meta Ads</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-pink-100 text-pink-600 dark:bg-pink-900 dark:text-pink-300 rounded-full">Otomatik</span>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">Meta Ads</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-pink-100 text-pink-600 rounded-full">Otomatik</span>
                     </div>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">32.000 TL</p>
-                    <div className="flex items-center gap-3 mt-2 text-[10px] text-gray-500">
-                      <span>ROAS: <b className="text-emerald-600">4.2x</b></span>
-                      <span>CPC: <b>1.35 TL</b></span>
-                      <span>Dönüşüm: <b className="text-emerald-600">28</b></span>
-                    </div>
+                    <p className="text-xl font-bold text-gray-900 dark:text-white">- TL</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Token yenilenmeli</p>
                   </div>
-                  <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/10">
-                    <div className="flex items-center gap-2 mb-2">
-                      <svg viewBox="0 0 40 40" className="w-6 h-6"><rect width="40" height="40" rx="8" fill="#fff" stroke="#E5E7EB"/><text x="50%" y="38%" textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="700"><tspan fill="#4285F4">G</tspan><tspan fill="#EA4335">o</tspan><tspan fill="#FBBC05">o</tspan><tspan fill="#4285F4">g</tspan></text><text x="50%" y="64%" textAnchor="middle" dominantBaseline="middle" fill="#5F6368" fontSize="7" fontWeight="600">Ads</text></svg>
-                      <span className="text-xs font-bold text-gray-900 dark:text-white">Google Ads</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300 rounded-full">Otomatik</span>
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-slate-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">Google Ads</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">Manuel</span>
                     </div>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">18.000 TL</p>
-                    <div className="flex items-center gap-3 mt-2 text-[10px] text-gray-500">
-                      <span>ROAS: <b className="text-emerald-600">3.1x</b></span>
-                      <span>CPC: <b>1.88 TL</b></span>
-                      <span>Dönüşüm: <b className="text-emerald-600">18</b></span>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <input defaultValue="18.000" className="w-24 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500" />
+                      <span className="text-[10px] text-gray-400">TL</span>
                     </div>
                   </div>
                   <div className="p-4 rounded-xl border border-gray-200 dark:border-slate-700">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-6 h-6 rounded-lg bg-gray-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-gray-500">+</div>
-                      <span className="text-xs font-bold text-gray-900 dark:text-white">Diğer Reklam</span>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">Diğer</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">Manuel</span>
                     </div>
-                    <div className="space-y-2 mt-2">
-                      {[
-                        { label: "TikTok Ads", value: "5.000" },
-                        { label: "Influencer", value: "12.000" },
-                      ].map((item, i) => (
+                    <div className="space-y-1.5 mt-1">
+                      {[{ label: "TikTok Ads", value: "5.000" }, { label: "Influencer", value: "12.000" }].map((item, i) => (
                         <div key={i} className="flex items-center justify-between">
                           <span className="text-[10px] text-gray-500">{item.label}</span>
                           <div className="flex items-center gap-1">
-                            <input defaultValue={item.value} className="w-16 px-1.5 py-1 border border-gray-200 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-[10px] text-right font-mono focus:ring-2 focus:ring-blue-500 transition-all" />
+                            <input defaultValue={item.value} className="w-16 px-1.5 py-1 border border-gray-200 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-[10px] text-right font-mono" />
                             <span className="text-[9px] text-gray-400">TL</span>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                </div>
-              </div>
-
-              {/* Diğer Giderler */}
-              <div className="card p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center"><span className="text-sm">📋</span></div>
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Diğer Giderler</h3>
-                      <p className="text-[10px] text-gray-400">Vergiler, komisyonlar ve beklenmeyen giderler</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-                  {[
-                    { label: "Shopify Komisyon", value: "6.840", note: "%2 işlem ücreti" },
-                    { label: "Banka Komisyon", value: "3.420", note: "%1 kredi kartı" },
-                    { label: "İade Maliyeti", value: "4.200", note: "Kargo + kayıp" },
-                    { label: "Vergi / KDV Farkı", value: "0", note: "Dahil" },
-                  ].map((item, i) => (
-                    <div key={i} className="p-3 rounded-lg bg-gray-50 dark:bg-slate-800">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-gray-600 dark:text-slate-400">{item.label}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <input defaultValue={item.value} className="w-20 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-xs text-right font-mono font-medium focus:ring-2 focus:ring-blue-500 transition-all" />
-                        <span className="text-[10px] text-gray-400">TL</span>
-                      </div>
-                      <p className="text-[9px] text-gray-400 mt-1">{item.note}</p>
-                    </div>
-                  ))}
                 </div>
               </div>
 

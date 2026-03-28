@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -281,36 +282,27 @@ func (h *AuthHandler) sendInviteEmail(toEmail, fullName, orgName, token string) 
 		return
 	}
 
-	smtpHost := "smtp.hostnet.nl"
-	smtpPort := "587"
-	smtpUser := "destek@lessandromance.com"
-	smtpPass := ""
-	fromAddr := "destek@lessandromance.com"
-
-	if strings.Contains(creds, "smtp_host") {
-		for _, part := range strings.Split(creds[1:len(creds)-1], ",") {
-			kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
-			if len(kv) != 2 {
-				continue
-			}
-			key := strings.Trim(strings.TrimSpace(kv[0]), "\"")
-			val := strings.Trim(strings.TrimSpace(kv[1]), "\"")
-			switch key {
-			case "smtp_host":
-				smtpHost = val
-			case "smtp_port":
-				smtpPort = val
-			case "smtp_user":
-				smtpUser = val
-			case "smtp_password":
-				smtpPass = val
-			case "from_address":
-				fromAddr = val
-			}
-		}
+	// Parse SMTP credentials from JSON
+	type smtpCreds struct {
+		Host     string `json:"smtp_host"`
+		Port     string `json:"smtp_port"`
+		User     string `json:"smtp_user"`
+		Password string `json:"smtp_password"`
+		From     string `json:"from_address"`
 	}
-
-	if smtpPass == "" {
+	var sc smtpCreds
+	if err := json.Unmarshal([]byte(creds), &sc); err != nil {
+		return
+	}
+	smtpHost := sc.Host
+	smtpPort := sc.Port
+	smtpUser := sc.User
+	smtpPass := sc.Password
+	fromAddr := sc.From
+	if fromAddr == "" {
+		fromAddr = smtpUser
+	}
+	if smtpPass == "" || smtpHost == "" {
 		return
 	}
 

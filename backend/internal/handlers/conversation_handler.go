@@ -31,7 +31,8 @@ func (h *ConversationHandler) List(c *gin.Context) {
 		       c.first_response_at, c.resolved_at, c.created_at, c.updated_at,
 		       co.name AS contact_name, co.email AS contact_email, co.avatar_url AS contact_avatar,
 		       ch.type AS channel_type,
-		       u.full_name AS assigned_name
+		       u.full_name AS assigned_name,
+		       COALESCE((SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1), c.subject) AS last_message
 		FROM conversations c
 		LEFT JOIN contacts co ON co.id = c.contact_id
 		LEFT JOIN channels ch ON ch.id = c.channel_id
@@ -79,7 +80,7 @@ func (h *ConversationHandler) List(c *gin.Context) {
 	conversations := []models.Conversation{}
 	for rows.Next() {
 		var conv models.Conversation
-		var contactName, contactEmail, contactAvatar, channelType, assignedName *string
+		var contactName, contactEmail, contactAvatar, channelType, assignedName, lastMessage *string
 		err := rows.Scan(
 			&conv.ID, &conv.OrgID, &conv.ChannelID, &conv.ContactID, &conv.AssignedTo,
 			&conv.Status, &conv.Priority, &conv.Subject, &conv.LastMessageAt,
@@ -87,6 +88,7 @@ func (h *ConversationHandler) List(c *gin.Context) {
 			&contactName, &contactEmail, &contactAvatar,
 			&channelType,
 			&assignedName,
+			&lastMessage,
 		)
 		if err != nil {
 			continue
@@ -105,6 +107,9 @@ func (h *ConversationHandler) List(c *gin.Context) {
 		}
 		if assignedName != nil {
 			conv.AssignedUser = &models.User{FullName: *assignedName}
+		}
+		if lastMessage != nil {
+			conv.LastMessage = *lastMessage
 		}
 		conversations = append(conversations, conv)
 	}

@@ -118,7 +118,7 @@ func (p *Provider) FetchUserProfile(ctx context.Context, userID string) (name st
 	return displayName, profile.ProfilePic, nil
 }
 
-// webhookPayload represents a simplified Instagram Messaging webhook structure.
+// webhookPayload represents Instagram Messaging webhook with attachments support.
 type webhookPayload struct {
 	Entry []struct {
 		ID        string `json:"id"`
@@ -131,9 +131,28 @@ type webhookPayload struct {
 			} `json:"recipient"`
 			Timestamp int64 `json:"timestamp"`
 			Message   struct {
-				MID  string `json:"mid"`
-				Text string `json:"text"`
+				MID         string `json:"mid"`
+				Text        string `json:"text"`
+				Attachments []struct {
+					Type    string `json:"type"`
+					Payload struct {
+						URL string `json:"url"`
+					} `json:"payload"`
+				} `json:"attachments"`
+				ReplyTo *struct {
+					MID   string `json:"mid"`
+					Story *struct {
+						URL string `json:"url"`
+						ID  string `json:"id"`
+					} `json:"story"`
+				} `json:"reply_to"`
+				IsDeleted bool `json:"is_deleted"`
 			} `json:"message"`
+			Referral *struct {
+				Ref    string `json:"ref"`
+				Source string `json:"source"`
+				Type   string `json:"type"`
+			} `json:"referral"`
 		} `json:"messaging"`
 	} `json:"entry"`
 }
@@ -153,15 +172,106 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 	// Check if this is an echo (sent by our own page)
 	isEcho := messaging.Sender.ID == p.pageID
 
+	// Skip deleted messages
+	if messaging.Message.IsDeleted {
+		return nil, fmt.Errorf("instagram: message was deleted")
+	}
+
 	senderName := ""
 	avatarURL := ""
 	if !isEcho {
-		// Fetch sender profile from Graph API for customer messages
 		name, avatar, err := p.FetchUserProfile(ctx, messaging.Sender.ID)
 		if err == nil {
 			senderName = name
 			avatarURL = avatar
 		}
+	}
+
+	content := messaging.Message.Text
+	contentType := "text"
+	var attachments []channel.IncomingAttachment
+
+	// Process attachments (images, videos, audio, stickers, files)
+	for _, att := range messaging.Message.Attachments {
+		attType := att.Type
+		attURL := att.Payload.URL
+
+		if attURL != "" {
+			attachments = append(attachments, channel.IncomingAttachment{
+				FileURL:  attURL,
+				FileType: attType,
+			})
+		}
+
+		// Set content type and fallback text based on attachment type
+		switch attType {
+		case "image":
+			contentType = "image"
+			if content == "" {
+				content = "[Gorsel]"
+			}
+		case "video":
+			contentType = "file"
+			if content == "" {
+				content = "[Video]"
+			}
+		case "audio":
+			contentType = "file"
+			if content == "" {
+				content = "[Sesli Mesaj]"
+			}
+		case "file":
+			contentType = "file"
+			if content == "" {
+				content = "[Dosya]"
+			}
+		case "sticker":
+			if content == "" {
+				content = "[Cikartma]"
+			}
+		case "story_mention":
+			if content == "" {
+				content = "[Hikayede bahsetti]"
+			}
+		case "share":
+			if content == "" {
+				content = "[Gonderi paylasimi]"
+			}
+		case "reel":
+			if content == "" {
+				content = "[Reels paylasimi]"
+			}
+		default:
+			if content == "" {
+				content = "[Ek: " + attType + "]"
+			}
+		}
+	}
+
+	// Handle story replies
+	if messaging.Message.ReplyTo != nil && messaging.Message.ReplyTo.Story != nil {
+		storyURL := messaging.Message.ReplyTo.Story.URL
+		if storyURL != "" {
+			attachments = append(attachments, channel.IncomingAttachment{
+				FileURL:  storyURL,
+				FileType: "story_reply",
+			})
+		}
+		if content == "" {
+			content = "[Hikayenize yanit verdi]"
+		} else {
+			content = "[Hikaye yaniti] " + content
+		}
+	}
+
+	// Handle referral (e.g., from ads or story)
+	if messaging.Referral != nil && content == "" {
+		content = "[Reklam/hikaye uzerinden mesaj gonderdi]"
+	}
+
+	// Final fallback
+	if content == "" {
+		content = "[Desteklenmeyen mesaj turu]"
 	}
 
 	return &channel.IncomingMessage{
@@ -170,9 +280,10 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 		RecipientID: messaging.Recipient.ID,
 		SenderName:  senderName,
 		AvatarURL:   avatarURL,
-		Content:     messaging.Message.Text,
-		ContentType: "text",
+		Content:     content,
+		ContentType: contentType,
 		IsEcho:      isEcho,
+		Attachments: attachments,
 	}, nil
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Message } from "@/types";
-import { Bot, StickyNote } from "lucide-react";
+import { Bot, StickyNote, Image, Film, Mic, FileText, Share2, BookOpen } from "lucide-react";
 
 interface MessageThreadProps {
   messages: Message[];
@@ -73,7 +73,53 @@ export default function MessageThread({ messages }: MessageThreadProps) {
                     <span className="text-[10px] text-gray-400">{formatMessageTime(msg.created_at)}</span>
                   </div>
                   <div className="bg-white rounded-2xl rounded-tl-md px-4 py-2.5 shadow-sm border border-gray-100">
-                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{msg.content}</p>
+                    {/* Attachment'lar */}
+                    {(msg as any).attachments?.length > 0 && (
+                      <div className="mb-2 space-y-2">
+                        {(msg as any).attachments.map((att: any, i: number) => (
+                          att.file_type === "image" || att.file_type === "story_reply" ? (
+                            <a key={i} href={att.file_url} target="_blank" rel="noopener noreferrer" className="block">
+                              <img src={att.file_url} alt="" className="max-w-full rounded-xl max-h-64 object-cover" />
+                              {att.file_type === "story_reply" && <span className="text-[10px] text-purple-500 mt-0.5 block">Hikaye yanıtı</span>}
+                            </a>
+                          ) : att.file_type === "video" || att.file_type === "reel" ? (
+                            <a key={i} href={att.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                              <Film className="h-4 w-4 text-blue-500" />
+                              <span className="text-xs text-blue-600 underline">{att.file_type === "reel" ? "Reels" : "Video"}</span>
+                            </a>
+                          ) : att.file_type === "audio" ? (
+                            <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50">
+                              <Mic className="h-4 w-4 text-violet-500" />
+                              <span className="text-xs text-gray-600">Sesli mesaj</span>
+                            </div>
+                          ) : att.file_type === "share" ? (
+                            <a key={i} href={att.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100">
+                              <Share2 className="h-4 w-4 text-pink-500" />
+                              <span className="text-xs text-pink-600 underline">Gönderi paylaşımı</span>
+                            </a>
+                          ) : att.file_type === "story_mention" ? (
+                            <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-purple-50">
+                              <BookOpen className="h-4 w-4 text-purple-500" />
+                              <span className="text-xs text-purple-600">Hikayede bahsetti</span>
+                            </div>
+                          ) : att.file_url ? (
+                            <a key={i} href={att.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100">
+                              <FileText className="h-4 w-4 text-gray-500" />
+                              <span className="text-xs text-blue-600 underline">Ek dosya</span>
+                            </a>
+                          ) : null
+                        ))}
+                      </div>
+                    )}
+                    {msg.content && !msg.content.startsWith("[") && (
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{msg.content}</p>
+                    )}
+                    {msg.content && msg.content.startsWith("[") && !(msg as any).attachments?.length && (
+                      <p className="text-sm text-gray-500 italic whitespace-pre-wrap">{msg.content}</p>
+                    )}
+                    {msg.content && msg.content.startsWith("[") && (msg as any).attachments?.length > 0 && (
+                      <p className="text-[10px] text-gray-400 mt-1">{msg.content}</p>
+                    )}
                   </div>
                 </div>
               </div>

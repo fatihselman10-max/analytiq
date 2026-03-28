@@ -1,18 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Save, ChevronDown, ChevronUp, Package, Truck, CreditCard, Building2, Megaphone, Calculator } from "lucide-react";
-
-type ProductCost = { id: number; title: string; cost: string; image: string };
+import { Save, Package, Truck, CreditCard, Building2, Megaphone, Calculator } from "lucide-react";
 
 export default function CostsTab() {
   // COGS
-  const [cogsMethod, setCogsMethod] = useState<"percent" | "fixed" | "product">("percent");
+  const [cogsMethod, setCogsMethod] = useState<"percent" | "fixed">("percent");
   const [cogsPercent, setCogsPercent] = useState("40");
   const [cogsFixed, setCogsFixed] = useState("0");
-  const [productCosts, setProductCosts] = useState<ProductCost[]>([]);
-  const [showProducts, setShowProducts] = useState(false);
-  const [productsLoading, setProductsLoading] = useState(false);
 
   // Kargo
   const [shippingMethod, setShippingMethod] = useState<"manual" | "shopify">("manual");
@@ -58,7 +53,6 @@ export default function CostsTab() {
         if (d.paymentCommission) setPaymentCommission(d.paymentCommission);
         if (d.fixedCosts) setFixedCosts(d.fixedCosts);
         if (d.adSpends) setAdSpends(d.adSpends);
-        if (d.productCosts) setProductCosts(d.productCosts);
       } catch {}
     }
 
@@ -79,33 +73,13 @@ export default function CostsTab() {
   }, []);
 
   const handleSave = () => {
-    const data = { cogsMethod, cogsPercent, cogsFixed, shippingMethod, shippingPerOrder, platformCommission, paymentCommission, fixedCosts, adSpends, productCosts };
+    const data = { cogsMethod, cogsPercent, cogsFixed, shippingMethod, shippingPerOrder, platformCommission, paymentCommission, fixedCosts, adSpends };
     localStorage.setItem("repliq-costs", JSON.stringify(data));
     alert("Maliyetler kaydedildi!");
   };
 
-  const loadProducts = async () => {
-    setProductsLoading(true);
-    try {
-      const res = await fetch("/api/shopify?action=products&limit=500");
-      const data = await res.json();
-      const products = data.products || [];
-      const existing = productCosts.reduce((m, p) => ({ ...m, [p.id]: p.cost }), {} as Record<number, string>);
-      setProductCosts(products.map((p: any) => ({
-        id: p.id,
-        title: p.title,
-        cost: existing[p.id] || "",
-        image: p.images?.[0]?.src || "",
-      })));
-    } catch {}
-    setProductsLoading(false);
-    setShowProducts(true);
-  };
-
   // Hesaplamalar
-  const cogsAmount = cogsMethod === "percent" ? revenue * (parseFloat(cogsPercent) || 0) / 100
-    : cogsMethod === "fixed" ? parseFloat(cogsFixed) || 0
-    : productCosts.reduce((s, p) => s + (parseFloat(p.cost) || 0), 0);
+  const cogsAmount = cogsMethod === "percent" ? revenue * (parseFloat(cogsPercent) || 0) / 100 : parseFloat(cogsFixed) || 0;
 
   const shippingAmount = shippingMethod === "manual" ? orderCount * (parseFloat(shippingPerOrder) || 0) : 0;
   const commissionAmount = revenue * ((parseFloat(platformCommission) || 0) + (parseFloat(paymentCommission) || 0)) / 100;
@@ -195,40 +169,7 @@ export default function CostsTab() {
               </div>
             </div>
           </label>
-          <label onClick={() => { setCogsMethod("product"); if (productCosts.length === 0) loadProducts(); }} className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${cogsMethod === "product" ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" : "border-gray-200 dark:border-slate-700 hover:border-blue-300"}`}>
-            <input type="radio" checked={cogsMethod === "product"} onChange={() => { setCogsMethod("product"); if (productCosts.length === 0) loadProducts(); }} className="mt-1 accent-blue-600" />
-            <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Ürün Bazlı</p>
-              <p className="text-[10px] text-gray-500 mt-0.5">Her ürün için ayrı maliyet</p>
-              <button onClick={(e) => { e.stopPropagation(); loadProducts(); }} className="mt-2 text-[10px] font-medium text-blue-600 hover:text-blue-700">
-                {productsLoading ? "Yükleniyor..." : "Ürün maliyetlerini düzenle →"}
-              </button>
-            </div>
-          </label>
         </div>
-
-        {/* Ürün Bazlı Maliyet Listesi */}
-        {cogsMethod === "product" && showProducts && productCosts.length > 0 && (
-          <div className="mt-4 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700">
-              <span className="text-xs font-semibold text-gray-700 dark:text-slate-300">Ürün Maliyetleri ({productCosts.length} ürün)</span>
-              <button onClick={() => setShowProducts(false)} className="text-xs text-gray-400 hover:text-gray-600"><ChevronUp className="h-4 w-4" /></button>
-            </div>
-            <div className="max-h-80 overflow-y-auto divide-y divide-gray-100 dark:divide-slate-800">
-              {productCosts.map((p, i) => (
-                <div key={p.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-slate-800/50">
-                  {p.image ? <img src={p.image} alt="" className="w-8 h-8 rounded-md object-cover" /> : <div className="w-8 h-8 rounded-md bg-gray-100 dark:bg-slate-800" />}
-                  <span className="text-xs text-gray-700 dark:text-slate-300 flex-1 truncate">{p.title}</span>
-                  <div className="flex items-center gap-1">
-                    <input value={p.cost} onChange={e => { const arr = [...productCosts]; arr[i].cost = e.target.value; setProductCosts(arr); }}
-                      placeholder="0" className="w-20 px-2 py-1 border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-xs text-right font-mono focus:ring-2 focus:ring-blue-500" />
-                    <span className="text-[9px] text-gray-400">TL</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Kargo */}

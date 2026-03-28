@@ -40,9 +40,17 @@ export default function DashboardPage() {
         today: "today", yesterday: "yesterday", "7d": "last_7d", "30d": "last_30d",
         "90d": "last_90d", "180d": "last_180d", "365d": "last_year",
       };
+      // Calculate date for Shopify order filter
+      const periodDays: Record<string, number> = { today: 0, yesterday: 1, "7d": 7, "30d": 30, "90d": 90, "180d": 180, "365d": 365 };
+      const days = periodDays[period] || 7;
+      const sinceDate = new Date();
+      sinceDate.setDate(sinceDate.getDate() - days);
+      if (period === "today") sinceDate.setHours(0, 0, 0, 0);
+      const dateParam = `&created_at_min=${sinceDate.toISOString()}`;
+
       const [statsRes, ordersRes, productsRes, convRes, metaRes] = await Promise.all([
         fetch("/api/shopify?action=stats").then(r => r.json()).catch(() => null),
-        fetch("/api/shopify?action=orders&limit=20").then(r => r.json()).catch(() => ({ orders: [] })),
+        fetch(`/api/shopify?action=orders&limit=250${dateParam}`).then(r => r.json()).catch(() => ({ orders: [] })),
         fetch("/api/shopify?action=products&limit=50").then(r => r.json()).catch(() => ({ products: [] })),
         reportsAPI.overview("7d").catch(() => ({ data: null })),
         fetch(`/api/shopify?action=meta-ads&date_preset=${periodToMeta[period] || "last_7d"}`).then(r => r.json()).catch(() => null),
@@ -188,7 +196,7 @@ KURALLAR:
   });
 
   const periodRevenue = filteredOrders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);
-  const totalRevenue = orders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);
+  const totalRevenue = filteredOrders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0);
   const unfulfilledCount = orders.filter(o => !o.fulfillment_status || o.fulfillment_status === "unfulfilled").length;
   const outOfStockCount = products.filter(p => p.variants?.every((v: any) => (v.inventory_quantity || 0) <= 0)).length;
   const lowStockCount = products.filter(p => p.variants?.some((v: any) => v.inventory_quantity > 0 && v.inventory_quantity < 10)).length;

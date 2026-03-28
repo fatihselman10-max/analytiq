@@ -76,6 +76,34 @@ func (h *MessageHandler) List(c *gin.Context) {
 		messages = append(messages, msg)
 	}
 
+	// Fetch attachments for all messages
+	if len(messages) > 0 {
+		msgIDs := make([]int64, len(messages))
+		msgMap := make(map[int64]int)
+		for i, m := range messages {
+			msgIDs[i] = m.ID
+			msgMap[m.ID] = i
+		}
+
+		attRows, err := h.db.Pool.Query(ctx,
+			`SELECT message_id, COALESCE(file_name, ''), COALESCE(file_url, ''), COALESCE(file_type, ''), file_size
+			 FROM attachments WHERE message_id = ANY($1)`,
+			msgIDs,
+		)
+		if err == nil {
+			defer attRows.Close()
+			for attRows.Next() {
+				var msgID int64
+				var att models.Attachment
+				if err := attRows.Scan(&msgID, &att.FileName, &att.FileURL, &att.FileType, &att.FileSize); err == nil {
+					if idx, ok := msgMap[msgID]; ok {
+						messages[idx].Attachments = append(messages[idx].Attachments, att)
+					}
+				}
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"messages": messages})
 }
 

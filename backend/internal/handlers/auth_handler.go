@@ -316,12 +316,48 @@ func (h *AuthHandler) sendInviteEmail(toEmail, fullName, orgName, token string) 
 
 	inviteURL := fmt.Sprintf("https://repliqsupport.com/accept-invite?token=%s&email=%s", token, toEmail)
 
-	subject := fmt.Sprintf("%s ekibine davet edildiniz - Repliq", orgName)
-	body := fmt.Sprintf("Merhaba %s,\r\n\r\n%s ekibine katilmaniz icin davet edildiniz.\r\n\r\nAsagidaki baglantiya tiklayarak sifrenizi belirleyip panele giris yapabilirsiniz:\r\n\r\n%s\r\n\r\nBu davet baglantisi 7 gun gecerlidir.\r\n\r\nIyi calismalar,\r\n%s Ekibi\r\nRepliq - repliqsupport.com",
-		fullName, orgName, inviteURL, orgName)
+	subject := fmt.Sprintf("%s ekibine davet edildiniz", orgName)
+	htmlBody := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;padding:40px 20px;">
+<tr><td align="center">
+<table width="520" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
+<tr><td style="background:linear-gradient(135deg,#3b82f6,#6366f1);padding:32px;text-align:center;">
+<div style="width:48px;height:48px;background:rgba(255,255,255,0.2);border-radius:12px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
+<span style="color:white;font-size:24px;font-weight:bold;">R</span>
+</div>
+<h1 style="color:white;margin:0;font-size:22px;font-weight:700;">Repliq</h1>
+</td></tr>
+<tr><td style="padding:32px;">
+<h2 style="color:#1e293b;font-size:20px;margin:0 0 8px;">Merhaba %s,</h2>
+<p style="color:#64748b;font-size:15px;line-height:1.6;margin:0 0 24px;">
+<strong style="color:#1e293b;">%s</strong> ekibine katilmaniz icin davet edildiniz. Asagidaki butona tiklayarak sifrenizi belirleyip hemen panele erisebilirsiniz.
+</p>
+<table width="100%%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<a href="%s" style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#6366f1);color:white;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:15px;font-weight:600;box-shadow:0 4px 12px rgba(59,130,246,0.3);">
+Daveti Kabul Et
+</a>
+</td></tr></table>
+<div style="margin-top:24px;padding:16px;background-color:#f1f5f9;border-radius:10px;">
+<p style="color:#94a3b8;font-size:12px;margin:0 0 4px;">Buton calismiyorsa bu linki kopyalayin:</p>
+<p style="color:#3b82f6;font-size:11px;word-break:break-all;margin:0;">%s</p>
+</div>
+<p style="color:#94a3b8;font-size:12px;margin:24px 0 0;text-align:center;">
+Bu davet 7 gun gecerlidir. Siz talep etmediyseniz bu maili gormezden gelebilirsiniz.
+</p>
+</td></tr>
+<tr><td style="padding:20px 32px;background-color:#f8fafc;text-align:center;border-top:1px solid #e2e8f0;">
+<p style="color:#94a3b8;font-size:11px;margin:0;">Repliq - Musteri Iletisim Platformu</p>
+<p style="color:#cbd5e1;font-size:11px;margin:4px 0 0;">repliqsupport.com</p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`, fullName, orgName, inviteURL, inviteURL)
 
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=\"utf-8\"\r\nDate: %s\r\n\r\n%s",
-		fromAddr, toEmail, subject, time.Now().Format(time.RFC1123Z), body)
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=\"utf-8\"\r\nDate: %s\r\n\r\n%s",
+		fromAddr, toEmail, subject, time.Now().Format(time.RFC1123Z), htmlBody)
 
 	addr := net.JoinHostPort(smtpHost, smtpPort)
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)

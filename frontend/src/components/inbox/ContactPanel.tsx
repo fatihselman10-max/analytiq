@@ -48,6 +48,9 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [showTagPicker, setShowTagPicker] = useState(false);
+  const [showNewTag, setShowNewTag] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#3b82f6");
 
   useEffect(() => {
     teamAPI.listMembers().then((res) => setMembers(res.data?.members || [])).catch(() => {});
@@ -244,21 +247,21 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
           {/* Add tag */}
           <div className="relative">
             {showTagPicker ? (
-              <div className="border border-gray-200 rounded-lg bg-white shadow-sm">
-                <div className="max-h-32 overflow-y-auto p-1">
-                  {availableTags.length === 0 ? (
+              <div className="border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 shadow-lg">
+                <div className="max-h-40 overflow-y-auto p-1.5">
+                  {availableTags.length === 0 && !showNewTag ? (
                     <p className="text-xs text-gray-400 p-2 text-center">
-                      Eklenebilecek etiket yok
+                      Tüm etiketler ekli
                     </p>
                   ) : (
                     availableTags.map((tag) => (
                       <button
                         key={tag.id}
                         onClick={() => handleAddTag(tag.id)}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-gray-50 text-left"
+                        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs hover:bg-gray-50 dark:hover:bg-slate-800 text-left transition-colors"
                       >
                         <span
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          className="w-3 h-3 rounded-full flex-shrink-0"
                           style={{ backgroundColor: tag.color }}
                         />
                         {tag.name}
@@ -266,12 +269,44 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
                     ))
                   )}
                 </div>
-                <button
-                  onClick={() => setShowTagPicker(false)}
-                  className="w-full text-xs text-gray-400 py-1.5 border-t border-gray-100 hover:text-gray-600"
-                >
-                  Kapat
-                </button>
+                {/* Yeni etiket oluştur */}
+                {showNewTag ? (
+                  <div className="p-2 border-t border-gray-100 dark:border-slate-800 space-y-2">
+                    <input value={newTagName} onChange={e => setNewTagName(e.target.value)} placeholder="Etiket adı..."
+                      className="w-full px-2.5 py-1.5 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-xs" />
+                    <div className="flex items-center gap-1.5">
+                      {["#10b981", "#3b82f6", "#ef4444", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#7c3aed"].map(c => (
+                        <button key={c} onClick={() => setNewTagColor(c)}
+                          className={`w-5 h-5 rounded-full border-2 ${newTagColor === c ? "border-gray-900 dark:border-white" : "border-transparent"}`}
+                          style={{ backgroundColor: c }} />
+                      ))}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button onClick={async () => {
+                        if (!newTagName.trim()) return;
+                        try {
+                          await tagsAPI.create({ name: newTagName.trim(), color: newTagColor });
+                          const res = await tagsAPI.list();
+                          setAllTags(res.data?.tags || []);
+                          setNewTagName("");
+                          setShowNewTag(false);
+                        } catch {}
+                      }} className="flex-1 px-2 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-medium">Oluştur</button>
+                      <button onClick={() => setShowNewTag(false)} className="px-2 py-1.5 text-gray-400 text-[10px]">İptal</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex border-t border-gray-100 dark:border-slate-800">
+                    <button onClick={() => setShowNewTag(true)}
+                      className="flex-1 text-xs text-blue-600 py-2 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors font-medium">
+                      + Yeni Etiket
+                    </button>
+                    <button onClick={() => setShowTagPicker(false)}
+                      className="flex-1 text-xs text-gray-400 py-2 border-l border-gray-100 dark:border-slate-800 hover:text-gray-600">
+                      Kapat
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <button

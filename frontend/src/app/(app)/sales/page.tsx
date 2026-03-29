@@ -152,7 +152,7 @@ export default function SalesPage() {
             {stats?.shop?.name || "Mağaza"} - Shopify + Site Analitik
           </p>
         </div>
-        <div className="flex flex-col lg:flex-row gap-2">
+        <div className="flex flex-col gap-2">
           <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1">
             {[
               { key: "today", label: "Bugün" },
@@ -168,17 +168,17 @@ export default function SalesPage() {
               </button>
             ))}
           </div>
-        <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1">
+        <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1 overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-1">
           {([
-            { key: "overview" as TabKey, label: "Genel Bakış" },
-            { key: "crm" as TabKey, label: "CRM Raporu" },
+            { key: "overview" as TabKey, label: "Genel" },
+            { key: "crm" as TabKey, label: "CRM" },
             { key: "ads" as TabKey, label: "Reklam" },
-            { key: "traffic" as TabKey, label: "Site Trafiği" },
+            { key: "traffic" as TabKey, label: "Trafik" },
             { key: "orders" as TabKey, label: "Siparişler" },
             { key: "returns" as TabKey, label: "İadeler" },
           ]).map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${activeTab === tab.key ? "bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm" : "text-gray-500"}`}>
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${activeTab === tab.key ? "bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm" : "text-gray-500"}`}>
               {tab.label}
             </button>
           ))}
@@ -800,17 +800,17 @@ export default function SalesPage() {
             const isExpanded = expandedOrder === o.id;
             return (
               <div key={o.id} className="card overflow-hidden">
-                <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors"
+                <div className="flex items-center gap-2 lg:gap-3 p-3 lg:p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors"
                   onClick={() => setExpandedOrder(isExpanded ? null : o.id)}>
-                  <div className={`w-2 h-10 rounded-full flex-shrink-0 ${fulfillment === "fulfilled" ? "bg-emerald-400" : "bg-amber-400"}`} />
+                  <div className={`w-1.5 lg:w-2 h-10 rounded-full flex-shrink-0 ${fulfillment === "fulfilled" ? "bg-emerald-400" : "bg-amber-400"}`} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 lg:gap-2 flex-wrap">
                       <span className="text-xs font-mono font-bold text-gray-900 dark:text-white">{o.name}</span>
-                      <span className="text-xs text-gray-500 truncate">{customerName}</span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${orderStatusColors[fulfillment]?.color || "bg-gray-100 text-gray-500"}`}>{orderStatusColors[fulfillment]?.label}</span>
-                      <span className={`text-[10px] font-medium ${paymentStatusColors[o.financial_status]?.color || "text-gray-500"}`}>{paymentStatusColors[o.financial_status]?.label}</span>
+                      <span className="text-xs text-gray-500 truncate hidden sm:inline">{customerName}</span>
+                      <span className={`text-[10px] px-1.5 lg:px-2 py-0.5 rounded-full font-semibold ${orderStatusColors[fulfillment]?.color || "bg-gray-100 text-gray-500"}`}>{orderStatusColors[fulfillment]?.label}</span>
+                      <span className={`text-[10px] font-medium hidden sm:inline ${paymentStatusColors[o.financial_status]?.color || "text-gray-500"}`}>{paymentStatusColors[o.financial_status]?.label}</span>
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{o.line_items?.length} ürün · {new Date(o.created_at).toLocaleDateString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5"><span className="sm:hidden">{customerName} · </span>{o.line_items?.length} ürün · {new Date(o.created_at).toLocaleDateString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
                   </div>
                   <span className="text-sm font-bold text-gray-900 dark:text-white flex-shrink-0">{parseFloat(o.total_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
                 </div>
@@ -948,17 +948,17 @@ export default function SalesPage() {
               const isExpanded = expandedOrder === o.id;
               return (
                 <div key={o.id} className="card overflow-hidden border-l-4 border-l-red-400">
-                  <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors"
+                  <div className="flex items-center gap-2 lg:gap-3 p-3 lg:p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors"
                     onClick={() => setExpandedOrder(isExpanded ? null : o.id)}>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 lg:gap-2 flex-wrap">
                         <span className="text-xs font-mono font-bold text-gray-900 dark:text-white">{o.name}</span>
-                        <span className="text-xs text-gray-500">{customerName}</span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${o.financial_status === "refunded" ? "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300" : "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"}`}>
+                        <span className="text-xs text-gray-500 truncate">{customerName}</span>
+                        <span className={`text-[10px] px-1.5 lg:px-2 py-0.5 rounded-full font-semibold ${o.financial_status === "refunded" ? "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300" : "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"}`}>
                           {o.financial_status === "refunded" ? "Tam İade" : "Kısmi İade"}
                         </span>
                       </div>
-                      <p className="text-[10px] text-gray-400 mt-0.5">{o.line_items?.map((l: any) => l.title).join(", ")}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5 truncate">{o.line_items?.map((l: any) => l.title).join(", ")}</p>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className="text-sm font-bold text-red-600">{parseFloat(o.total_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</p>

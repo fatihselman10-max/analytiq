@@ -42,9 +42,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastProvider>
-      <div className="flex min-h-screen bg-gray-50 dark:bg-slate-900">
+      <div className="flex h-[100dvh] lg:h-screen bg-gray-50 dark:bg-slate-900 overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-auto pt-12 pb-16 lg:pt-0 lg:pb-0">{children}</main>
+        <main className="flex-1 overflow-y-auto overscroll-contain pt-12 pb-16 lg:pt-0 lg:pb-0">{children}</main>
       </div>
     </ToastProvider>
   );

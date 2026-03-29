@@ -271,8 +271,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="p-4 sm:p-8 animate-fade-in">
-      <h1 className="text-2xl font-bold text-gray-900 mb-4 sm:mb-6">Ayarlar</h1>
+    <div className="p-4 lg:p-8 animate-fade-in">
+      <h1 className="text-xl lg:text-2xl font-bold text-gray-900 dark:text-white mb-4 lg:mb-6">Ayarlar</h1>
 
       {/* Mobile: horizontal scroll tabs */}
       <div className="flex lg:hidden gap-2 overflow-x-auto pb-4 mb-4 -mx-4 px-4">
@@ -280,8 +280,8 @@ export default function SettingsPage() {
           const isActive = activeTab === tab.key;
           return (
             <button key={tab.key} onClick={() => handleTabChange(tab.key)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-all whitespace-nowrap ${
-                isActive ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200" : "bg-gray-50 text-gray-500"
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-all whitespace-nowrap flex-shrink-0 ${
+                isActive ? "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800" : "bg-gray-50 dark:bg-slate-800 text-gray-500 dark:text-slate-400"
               }`}>
               <tab.icon className="h-3.5 w-3.5" />
               {tab.label}
@@ -298,7 +298,7 @@ export default function SettingsPage() {
             return (
               <button key={tab.key} onClick={() => handleTabChange(tab.key)}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all text-left ${
-                  isActive ? "bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-sm" : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                  isActive ? "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 text-blue-700 dark:text-blue-300 shadow-sm" : "text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-gray-700"
                 }`}>
                 <tab.icon className={`h-4 w-4 ${isActive ? "text-blue-600" : ""}`} />
                 {tab.label}
@@ -308,7 +308,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 max-w-2xl">
+        <div className="flex-1 max-w-2xl min-w-0">
           {activeTab === "profile" && (
             <div className="card p-6 animate-fade-in">
               <h2 className="text-lg font-semibold text-gray-900 mb-5">Profil Bilgileri</h2>

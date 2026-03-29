@@ -206,18 +206,18 @@ KURALLAR:
             {shopData?.shop?.name || organization?.name} - İşletme özeti
           </p>
         </div>
-        <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1">
+        <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1 overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-1">
           {[
             { key: "today", label: "Bugün" },
             { key: "yesterday", label: "Dün" },
-            { key: "7d", label: "7 Gün" },
-            { key: "30d", label: "30 Gün" },
-            { key: "90d", label: "3 Ay" },
-            { key: "180d", label: "6 Ay" },
-            { key: "365d", label: "1 Yıl" },
+            { key: "7d", label: "7G" },
+            { key: "30d", label: "30G" },
+            { key: "90d", label: "3A" },
+            { key: "180d", label: "6A" },
+            { key: "365d", label: "1Y" },
           ].map(p => (
             <button key={p.key} onClick={() => setPeriod(p.key)}
-              className={`px-2 lg:px-3 py-1 text-[10px] lg:text-xs font-medium rounded-lg transition-all ${period === p.key ? "bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+              className={`px-2 lg:px-3 py-1 text-[10px] lg:text-xs font-medium rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${period === p.key ? "bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
               {p.label}
             </button>
           ))}
@@ -233,7 +233,7 @@ KURALLAR:
               <Sparkles className="h-3.5 w-3.5 text-violet-300" />
               <span className="text-xs font-semibold text-white/80">Günlük Brifing</span>
             </div>
-            <span className="text-[9px] text-white/30">Her sabah 09:00 güncellenir · Detay için AI Asistan kullanın</span>
+            <span className="text-[9px] text-white/30 hidden sm:inline">Her sabah 09:00 güncellenir · Detay için AI Asistan kullanın</span>
           </div>
           {aiLoading ? (
             <div className="flex items-center gap-2 py-1">
@@ -378,7 +378,7 @@ KURALLAR:
       </div>
 
       {/* Kâr Özeti - Mini P&L */}
-      <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         {[
           { label: "Ciro", value: `${periodRevenue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL`, sub: periodLabel, color: "text-gray-900 dark:text-white" },
           { label: "COGS", value: `${Math.round(periodRevenue * 0.4).toLocaleString("tr-TR")} TL`, sub: "%40", color: "text-red-600" },

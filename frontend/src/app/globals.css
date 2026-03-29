@@ -119,13 +119,11 @@ input:focus, select:focus, textarea:focus {
   animation: slide-in-right 0.3s ease-out;
 }
 
-/* Prevent rubber band scroll on mobile - only for app pages */
+/* Mobile app shell - allow content scroll within main */
 @media (max-width: 1023px) {
   body.app-shell {
     overflow: hidden;
-    height: 100%;
-    position: fixed;
-    width: 100%;
+    height: 100dvh;
   }
 }
 

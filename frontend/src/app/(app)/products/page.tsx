@@ -155,18 +155,18 @@ export default function ProductsPage() {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Ürün veya SKU ara..."
             className="w-full pl-9 pr-4 py-2 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-sm" />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 lg:mx-0 lg:px-0">
           {[{ key: "all", label: `Tumu (${products.length})` }, { key: "active", label: "Aktif" }, { key: "low_stock", label: `Az Stok (${lowStock})` }, { key: "out_of_stock", label: `Tükenmis (${outOfStock})` }].map(f => (
             <button key={f.key} onClick={() => setStatusFilter(f.key)}
-              className={`px-3 py-2 rounded-xl text-xs font-medium transition-all ${statusFilter === f.key ? "bg-blue-600 text-white" : "bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400"}`}>
+              className={`px-3 py-2 rounded-xl text-xs font-medium transition-all whitespace-nowrap flex-shrink-0 ${statusFilter === f.key ? "bg-blue-600 text-white" : "bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400"}`}>
               {f.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Product Table */}
-      <div className="card overflow-hidden">
+      {/* Desktop: Product Table */}
+      <div className="hidden lg:block card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -222,6 +222,38 @@ export default function ProductsPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Mobile: Product Cards */}
+      <div className="lg:hidden space-y-2">
+        {filtered.map(p => (
+          <div key={p.id} className="card p-3">
+            <div className="flex items-center gap-3">
+              {p.image ? (
+                <img src={p.image} alt="" className="w-14 h-14 rounded-xl object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-14 h-14 rounded-xl bg-gray-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0"><Image className="h-5 w-5 text-gray-400" /></div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{p.name}</p>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${statusMap[p.status]?.color || ""}`}>{statusMap[p.status]?.label || p.status}</span>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-0.5">{p.category} {p.sku !== "-" ? `· ${p.sku}` : ""}</p>
+                <div className="flex items-center gap-3 mt-1.5">
+                  <span className="text-sm font-bold text-gray-900 dark:text-white">{parseFloat(p.price).toLocaleString()} TL</span>
+                  <span className={`text-xs font-medium ${p.stock === 0 ? "text-red-600" : p.stock < 10 ? "text-amber-600" : "text-gray-500"}`}>Stok: {p.stock}</span>
+                  {p.dailySales > 0 && <span className="text-[10px] text-gray-400">{p.dailySales}/gün</span>}
+                  {p.runway > 0 && p.runway < 999 && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${p.runway < 7 ? "bg-red-100 text-red-700" : p.runway < 30 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+                      {p.runway}g
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

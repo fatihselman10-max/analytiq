@@ -198,10 +198,10 @@ export default function ChannelsPage() {
   }
 
   return (
-    <div className="p-8 space-y-8 animate-fade-in">
+    <div className="p-4 lg:p-8 space-y-6 lg:space-y-8 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Kanallar</h1>
-        <p className="text-gray-500 mt-1">Sosyal medya ve mesajlaşma kanallarınızı bağlayarak mesajları tek panelden yönetin</p>
+        <h1 className="text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">Kanallar</h1>
+        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Sosyal medya ve mesajlaşma kanallarınızı bağlayarak mesajları tek panelden yönetin</p>
       </div>
 
       {/* Channel Grid */}

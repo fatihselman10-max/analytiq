@@ -72,9 +72,9 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 lg:p-8 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Ekip</h1>
+        <h1 className="text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">Ekip</h1>
         {isAdmin && (
           <button
             onClick={() => setShowInvite(true)}

@@ -72,7 +72,7 @@ export default function DashboardPage() {
     setLoading(false);
 
     // AI Insight - daily cache
-    const todayKey = `ai-briefing-${new Date().toISOString().slice(0, 10)}`;
+    const todayKey = `ai-briefing-v2-${new Date().toISOString().slice(0, 10)}`;
     const cached = typeof window !== "undefined" ? localStorage.getItem(todayKey) : null;
     if (cached) {
       setAiInsight(cached);
@@ -91,8 +91,13 @@ export default function DashboardPage() {
       ]);
 
       const recentOrders = ordersRes.orders || [];
-      const todayCount = recentOrders.filter((o: any) => o.created_at?.slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
-      const todayRev = recentOrders.filter((o: any) => o.created_at?.slice(0, 10) === new Date().toISOString().slice(0, 10)).reduce((s: number, o: any) => s + parseFloat(o.total_price || "0"), 0);
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const yesterdayOrders = recentOrders.filter((o: any) => o.created_at?.slice(0, 10) === yesterday);
+      const yesterdayCount = yesterdayOrders.length;
+      const yesterdayRev = yesterdayOrders.reduce((s: number, o: any) => s + parseFloat(o.total_price || "0"), 0);
+      const todayCount = recentOrders.filter((o: any) => o.created_at?.slice(0, 10) === todayStr).length;
+      const todayRev = recentOrders.filter((o: any) => o.created_at?.slice(0, 10) === todayStr).reduce((s: number, o: any) => s + parseFloat(o.total_price || "0"), 0);
 
       // En çok satılan ürünler
       const productSales: Record<string, number> = {};
@@ -116,16 +121,17 @@ export default function DashboardPage() {
       const resolvedConvs = msgRes?.resolved_count || 0;
       const avgResponseMin = msgRes?.avg_response_time_minutes || 0;
 
-      const prompt = `Sen LessandRomance kadın giyim markasının işletme danışmanısın. Her gün patrona kısa, aksiyon odaklı bir brifing veriyorsun. Hem satış verilerini hem müşteri mesajlarını değerlendirip somut öneriler sunuyorsun.
+      const prompt = `Sen LessandRomance kadın giyim markasının işletme danışmanısın. Her sabah patrona dünün performans özetini veriyorsun. Dünkü verileri değerlendirip bugün için aksiyon önerileri sunuyorsun.
 
-SATIŞ VERİLERİ:
-- Bugün ${todayCount} sipariş, ${todayRev.toLocaleString("tr-TR")} TL ciro.
+DÜNKÜ PERFORMANS (${yesterday}):
+- Dün ${yesterdayCount} sipariş geldi, ${yesterdayRev.toLocaleString("tr-TR")} TL ciro yapıldı.
+- Bugün şu ana kadar ${todayCount} sipariş, ${todayRev.toLocaleString("tr-TR")} TL ciro var.
 - Son 30 siparişte ortalama sepet: ${avgOrderValue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL.
 - ${unfulfilledOrders} sipariş henüz kargoya verilmedi.
 - ${refunded} iade/iptal var.
 - En çok satılanlar: ${topSelling || "veri yok"}.
 
-STOK:
+STOK DURUMU:
 - Tükenen (${outOfStock.length}): ${outOfStock.join(", ") || "yok"}.
 - Azalan: ${lowStock.join(", ") || "yok"}.
 
@@ -137,10 +143,10 @@ MÜŞTERİ İLETİŞİMİ:
 KURALLAR:
 - Tam 4 madde yaz. Her madde yeni satırda başlasın.
 - Her madde tam ve bitmiş bir cümle olsun, kesinlikle yarım bırakma.
-- 1. madde: Bugünün satış durumunu değerlendir, müşterilerin ne aldığına bak, bir trend varsa belirt.
-- 2. madde: Müşteri iletişim durumunu yorumla - yanıt süresi, bekleyen mesajlar, müşteri memnuniyeti açısından ne yapılmalı?
+- 1. madde: Dünün satış performansını değerlendir - dünkü ciro ve sipariş sayısını yorumla, müşterilerin ne aldığına bak.
+- 2. madde: Müşteri iletişim durumu - bekleyen mesajlar, yanıt süresi, bugün öncelikli yapılması gereken.
 - 3. madde: Stok veya ürün bazlı somut bir uyarı. Tükenen popüler ürün varsa dikkat çek.
-- 4. madde: Bu hafta alınması gereken en önemli aksiyon ne? Somut ve uygulanabilir bir öneri ver.
+- 4. madde: Bugün yapılması gereken en önemli aksiyon ne? Somut ve uygulanabilir bir öneri ver.
 - Patron bir kadın giyim markası sahibi, ona direkt hitap et. Samimi ama profesyonel ol.
 - Emoji kullanma, madde işareti kullanma, düz cümleler yaz.
 - Türkçe yaz, para birimi TL olsun.`;
@@ -233,7 +239,7 @@ KURALLAR:
               <Sparkles className="h-3.5 w-3.5 text-violet-300" />
               <span className="text-xs font-semibold text-white/80">Günlük Brifing</span>
             </div>
-            <span className="text-[9px] text-white/30 hidden sm:inline">Her sabah 09:00 güncellenir · Detay için AI Asistan kullanın</span>
+            <span className="text-[9px] text-white/30 hidden sm:inline">Dünün performans özeti · Detay için AI Asistan kullanın</span>
           </div>
           {aiLoading ? (
             <div className="flex items-center gap-2 py-1">
@@ -381,11 +387,11 @@ KURALLAR:
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         {[
           { label: "Ciro", value: `${periodRevenue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL`, sub: periodLabel, color: "text-gray-900 dark:text-white" },
-          { label: "COGS", value: `${Math.round(periodRevenue * 0.4).toLocaleString("tr-TR")} TL`, sub: "%40", color: "text-red-600" },
+          { label: "COGS", value: `${Math.round(periodRevenue * 0.4).toLocaleString("tr-TR")} TL`, sub: "%40 ürün maliyeti", color: "text-red-600" },
           { label: "Brüt Kâr", value: `${Math.round(periodRevenue * 0.6).toLocaleString("tr-TR")} TL`, sub: "%60 marj", color: "text-emerald-600" },
           { label: "Sipariş", value: `${filteredOrders.length}`, sub: `Ort: ${filteredOrders.length > 0 ? Math.round(periodRevenue / filteredOrders.length).toLocaleString("tr-TR") : 0} TL`, color: "text-blue-600" },
           { label: "Reklam", value: metaAds?.spend ? `${Math.round(metaAds.spend).toLocaleString("tr-TR")} TL` : "-", sub: metaAds?.roas ? `ROAS ${metaAds.roas.toFixed(1)}x` : "Meta bağla", color: "text-amber-600" },
-          { label: "Net Kâr", value: `${Math.round(periodRevenue * 0.6 - (metaAds?.spend || periodRevenue * 0.2) - periodRevenue * 0.28).toLocaleString("tr-TR")} TL`, sub: "tahmini", color: periodRevenue * 0.6 - (metaAds?.spend || periodRevenue * 0.2) - periodRevenue * 0.28 > 0 ? "text-emerald-600" : "text-red-600" },
+          { label: "Net Kâr", value: (() => { const brutKar = periodRevenue * 0.6; const reklam = metaAds?.spend || 0; const operasyonel = periodRevenue * 0.08; const net = brutKar - reklam - operasyonel; return `${Math.round(net).toLocaleString("tr-TR")} TL`; })(), sub: "brüt kâr - reklam - ops(%8)", color: (() => { const net = periodRevenue * 0.6 - (metaAds?.spend || 0) - periodRevenue * 0.08; return net > 0 ? "text-emerald-600" : "text-red-600"; })() },
         ].map((kpi, i) => (
           <Link key={i} href="/settings" className="card p-3 hover:shadow-sm transition-shadow text-center">
             <p className="text-[10px] text-gray-400">{kpi.label}</p>

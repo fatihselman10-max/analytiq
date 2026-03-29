@@ -19,6 +19,30 @@ async function shopifyFetch(endpoint: string) {
   return res.json();
 }
 
+async function shopifyFetchWithLink(endpoint: string): Promise<{ data: any; nextUrl: string | null }> {
+  const res = await fetch(
+    `https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/${endpoint}`,
+    {
+      headers: { "X-Shopify-Access-Token": SHOPIFY_TOKEN },
+      next: { revalidate: 60 },
+    }
+  );
+  if (!res.ok) throw new Error(`Shopify API error: ${res.status}`);
+  const data = await res.json();
+  // Parse Link header for cursor-based pagination
+  const linkHeader = res.headers.get("link") || "";
+  const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+  let nextUrl: string | null = null;
+  if (nextMatch) {
+    // Extract just the endpoint part from the full URL
+    const fullUrl = nextMatch[1];
+    const urlObj = new URL(fullUrl);
+    nextUrl = urlObj.pathname.replace(`/admin/api/${API_VERSION}/`, "") + urlObj.search;
+  }
+  return { data, nextUrl };
+}
+
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const action = searchParams.get("action");
@@ -84,10 +108,15 @@ export async function GET(req: NextRequest) {
     }
 
     if (action === "refunds") {
-      const limit = searchParams.get("limit") || "50";
-      // Get orders with refunds
-      const data = await shopifyFetch(`orders.json?limit=${limit}&status=any&financial_status=refunded,partially_refunded&order=created_at+desc`);
-      return NextResponse.json(data);
+      // Fetch all refunded orders with full refund details via Link-based pagination
+      let allOrders: any[] = [];
+      let url: string | null = "orders.json?limit=250&status=any&financial_status=refunded,partially_refunded&fields=id,name,created_at,total_price,financial_status,refunds,line_items,customer,email";
+      for (let page = 0; page < 10 && url; page++) {
+        const { data, nextUrl } = await shopifyFetchWithLink(url);
+        allOrders = allOrders.concat(data.orders || []);
+        url = nextUrl;
+      }
+      return NextResponse.json({ orders: allOrders });
     }
 
     if (action === "meta-ads") {
@@ -153,6 +182,144 @@ export async function GET(req: NextRequest) {
       );
       const data = await res.json();
       return NextResponse.json({ campaigns: data.data || [] });
+    }
+
+    if (action === "analytics") {
+      const days = parseInt(searchParams.get("days") || "30");
+      const now = new Date();
+      const periodStart = new Date(now);
+      periodStart.setDate(periodStart.getDate() - days);
+      const prevStart = new Date(periodStart);
+      prevStart.setDate(prevStart.getDate() - days);
+
+      // Fetch orders, customers, and abandoned checkouts in parallel
+      const fetchAllOrders = async (since: Date, until: Date) => {
+        let all: any[] = [];
+        const sinceISO = encodeURIComponent(since.toISOString());
+        const untilISO = encodeURIComponent(until.toISOString());
+        let url: string | null = `orders.json?limit=250&status=any&created_at_min=${sinceISO}&created_at_max=${untilISO}&fields=id,name,created_at,referring_site,landing_site,total_price,customer`;
+        for (let page = 0; page < 20 && url; page++) {
+          const { data, nextUrl } = await shopifyFetchWithLink(url);
+          const batch = data.orders || [];
+          all = all.concat(batch);
+          url = nextUrl;
+        }
+        return all;
+      };
+
+      const fetchAllCheckouts = async (since: Date) => {
+        let all: any[] = [];
+        const sinceISO = encodeURIComponent(since.toISOString());
+        let url: string | null = `checkouts.json?limit=250&created_at_min=${sinceISO}`;
+        for (let page = 0; page < 10 && url; page++) {
+          try {
+            const { data, nextUrl } = await shopifyFetchWithLink(url);
+            const batch = data.checkouts || [];
+            all = all.concat(batch);
+            url = nextUrl;
+          } catch { break; }
+        }
+        return all;
+      };
+
+      // For current period, don't use created_at_max to avoid timezone edge cases
+      const fetchCurrentOrders = async (since: Date) => {
+        let all: any[] = [];
+        const sinceISO = encodeURIComponent(since.toISOString());
+        let url: string | null = `orders.json?limit=250&status=any&created_at_min=${sinceISO}&fields=id,name,created_at,referring_site,landing_site,total_price,customer`;
+        for (let page = 0; page < 20 && url; page++) {
+          const { data, nextUrl } = await shopifyFetchWithLink(url);
+          const batch = data.orders || [];
+          all = all.concat(batch);
+          url = nextUrl;
+        }
+        return all;
+      };
+
+      const [currentOrders, prevOrders, abandonedCheckouts, newCustomers] = await Promise.all([
+        fetchCurrentOrders(periodStart),
+        fetchAllOrders(prevStart, periodStart),
+        fetchAllCheckouts(periodStart),
+        shopifyFetch(`customers/count.json?created_at_min=${encodeURIComponent(periodStart.toISOString())}`).catch(() => ({ count: 0 })),
+      ]);
+
+      const pctChange = (cur: number, prv: number) => {
+        if (prv === 0) return cur > 0 ? "+100%" : "0%";
+        const change = ((cur - prv) / prv) * 100;
+        return `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`;
+      };
+
+      // Unique customers (by email) = visitors proxy
+      const uniqueEmails = new Set(currentOrders.map((o: any) => o.customer?.email || o.email).filter(Boolean));
+      const prevUniqueEmails = new Set(prevOrders.map((o: any) => o.customer?.email || o.email).filter(Boolean));
+
+      // Traffic sources from referring_site
+      const sourceMap: Record<string, number> = {};
+      currentOrders.forEach((o: any) => {
+        const ref = (o.referring_site || "").toLowerCase();
+        let source = "Direkt";
+        if (ref.includes("instagram")) source = "Instagram";
+        else if (ref.includes("facebook") || ref.includes("fb.")) source = "Facebook";
+        else if (ref.includes("google")) source = "Google";
+        else if (ref.includes("tiktok")) source = "TikTok";
+        else if (ref.includes("twitter") || ref.includes("x.com")) source = "Twitter";
+        else if (ref.includes("youtube")) source = "YouTube";
+        else if (ref.includes("pinterest")) source = "Pinterest";
+        else if (ref) source = "Diğer";
+        sourceMap[source] = (sourceMap[source] || 0) + 1;
+      });
+
+      const sourceColors: Record<string, string> = {
+        "Instagram": "bg-pink-500", "Facebook": "bg-indigo-500",
+        "Google": "bg-blue-500", "Direkt": "bg-emerald-500",
+        "TikTok": "bg-gray-800", "Twitter": "bg-sky-500",
+        "YouTube": "bg-red-500", "Pinterest": "bg-red-400", "Diğer": "bg-gray-400",
+      };
+      const totalSourceOrders = Object.values(sourceMap).reduce((a, b) => a + b, 0);
+      const trafficSources = Object.entries(sourceMap)
+        .sort(([, a], [, b]) => b - a)
+        .map(([source, orders]) => ({
+          source,
+          visitors: orders,
+          pct: totalSourceOrders > 0 ? Math.round((orders / totalSourceOrders) * 100) : 0,
+          color: sourceColors[source] || "bg-gray-400",
+        }));
+
+      // Daily breakdown
+      const dailyMap: Record<string, { orders: number; revenue: number }> = {};
+      currentOrders.forEach((o: any) => {
+        const day = o.created_at?.slice(0, 10);
+        if (!day) return;
+        if (!dailyMap[day]) dailyMap[day] = { orders: 0, revenue: 0 };
+        dailyMap[day].orders++;
+        dailyMap[day].revenue += parseFloat(o.total_price || "0");
+      });
+      const daily = Object.entries(dailyMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, data]) => ({ day, visitors: data.orders, sessions: data.orders, revenue: Math.round(data.revenue) }));
+
+      // Conversion: orders / (orders + abandoned checkouts)
+      const totalCheckouts = abandonedCheckouts.length + currentOrders.length;
+      const conversionRate = totalCheckouts > 0
+        ? Math.round(((currentOrders.length / totalCheckouts) * 100) * 100) / 100
+        : 0;
+      const prevTotalCheckouts = prevOrders.length; // simplified for prev
+      const prevConversionRate = prevTotalCheckouts > 0 ? 100 : 0; // no abandoned data for prev
+
+      return NextResponse.json({
+        visitors: uniqueEmails.size,
+        sessions: currentOrders.length + abandonedCheckouts.length,
+        convertedSessions: currentOrders.length,
+        conversionRate,
+        visitorsChange: pctChange(uniqueEmails.size, prevUniqueEmails.size),
+        sessionsChange: pctChange(currentOrders.length, prevOrders.length),
+        conversionChange: pctChange(currentOrders.length, prevOrders.length),
+        abandonedCheckouts: abandonedCheckouts.length,
+        newCustomers: newCustomers.count || 0,
+        daily,
+        trafficSources,
+        devices: [],
+      });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

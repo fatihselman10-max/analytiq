@@ -128,13 +128,13 @@ export default function InboxPage() {
     async (content: string) => {
       if (!activeConversationId) return;
       if (isDemo) {
-        toast("Demo modunda mesaj gönderilemez", "info");
+        toast("Demo modunda mesaj gonderilemez", "info");
         return;
       }
       try {
         await messagesAPI.reply(activeConversationId, content);
       } catch {
-        toast("Mesaj gönderilemedi", "error");
+        toast("Mesaj gonderilemedi", "error");
         return;
       }
       await refreshMessages(activeConversationId);
@@ -246,7 +246,7 @@ export default function InboxPage() {
                   {activeConversation.contact?.name || "Bilinmeyen"}
                 </h2>
                 <p className="text-xs text-gray-500 truncate">
-                  {activeConversation.last_message || activeConversation.subject || "Konu yok"}
+                  {activeConversation.subject || "Konu yok"}
                 </p>
               </div>
               <div className="flex items-center gap-2">

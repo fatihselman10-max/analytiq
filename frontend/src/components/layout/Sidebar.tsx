@@ -7,7 +7,7 @@ import {
   Inbox, BarChart3, Bot, Radio, Users, UserCircle, Settings, LogOut,
   MessageSquare, Menu, X, Workflow, BookOpen, Moon, Sun, Target,
   Megaphone, ClipboardList, PieChart, LayoutDashboard, TrendingUp,
-  ChevronsLeft, ChevronsRight, Package,
+  ChevronsLeft, ChevronsRight, Package, FileBox, Palette, Tent,
 } from "lucide-react";
 import { useState } from "react";
 import { useThemeStore } from "@/store/theme";
@@ -15,10 +15,15 @@ import { useThemeStore } from "@/store/theme";
 const navItems = [
   { href: "/dashboard", label: "Ana Sayfa", icon: LayoutDashboard },
   { href: "/inbox", label: "Gelen Kutusu", icon: Inbox },
-  { href: "/sales", label: "Mağaza Analizi", icon: TrendingUp },
-  { href: "/products", label: "Ürünler", icon: Package },
-  { href: "/bot", label: "AI Bot", icon: Bot },
-  { href: "/tasks", label: "Görevler", icon: ClipboardList },
+  { href: "/crm", label: "Musteri CRM", icon: Target },
+  { href: "/sales", label: "Satis Analizi", icon: TrendingUp },
+  { href: "/orders", label: "Siparisler", icon: FileBox },
+  { href: "/samples", label: "Numuneler", icon: Palette },
+  { href: "/products", label: "Urunler & Insight", icon: Package },
+  { href: "/fairs", label: "Fuarlar", icon: Tent },
+  { href: "/campaigns", label: "Kampanyalar", icon: Megaphone },
+  { href: "/tasks", label: "Gorevler", icon: ClipboardList },
+  { href: "/reports", label: "Raporlar", icon: BarChart3 },
   { href: "/automations", label: "Otomasyonlar", icon: Workflow },
   { href: "/settings", label: "Ayarlar", icon: Settings },
 ];
@@ -26,9 +31,9 @@ const navItems = [
 const mobileNavItems = [
   { href: "/dashboard", label: "Ana Sayfa", icon: LayoutDashboard },
   { href: "/inbox", label: "Gelen Kutusu", icon: Inbox },
-  { href: "/sales", label: "Analiz", icon: BarChart3 },
+  { href: "/reports", label: "Raporlar", icon: BarChart3 },
   { href: "/bot", label: "Bot", icon: Bot },
-  { href: "/contacts", label: "Kişiler", icon: UserCircle },
+  { href: "/contacts", label: "Kisiler", icon: UserCircle },
 ];
 
 export default function Sidebar() {

@@ -53,7 +53,7 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 		return nil, fmt.Errorf("failed to upsert contact: %w", err)
 	}
 
-	// Find existing open conversation or create new
+	// Find existing open/pending conversation or reopen a resolved one
 	var conversationID int64
 	isNew := false
 	err = s.db.Pool.QueryRow(ctx,
@@ -63,20 +63,35 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 		orgID, contactID, channelID,
 	).Scan(&conversationID)
 	if err != nil {
-		// Create new conversation
-		isNew = true
-		subject := msg.Content
-		if len(subject) > 100 {
-			subject = subject[:100]
-		}
+		// No open/pending conversation — check if there's a recently resolved one to reopen
 		err = s.db.Pool.QueryRow(ctx,
-			`INSERT INTO conversations (org_id, channel_id, contact_id, status, priority, subject, last_message_at)
-			 VALUES ($1, $2, $3, 'open', 'normal', $4, NOW())
-			 RETURNING id`,
-			orgID, channelID, contactID, subject,
+			`SELECT id FROM conversations
+			 WHERE org_id = $1 AND contact_id = $2 AND channel_id = $3 AND status = 'resolved'
+			 ORDER BY last_message_at DESC LIMIT 1`,
+			orgID, contactID, channelID,
 		).Scan(&conversationID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create conversation: %w", err)
+		if err == nil {
+			// Reopen the resolved conversation
+			_, _ = s.db.Pool.Exec(ctx,
+				`UPDATE conversations SET status = 'open', resolved_at = NULL, updated_at = NOW() WHERE id = $1`,
+				conversationID,
+			)
+		} else {
+			// Create new conversation
+			isNew = true
+			subject := msg.Content
+			if len(subject) > 100 {
+				subject = subject[:100]
+			}
+			err = s.db.Pool.QueryRow(ctx,
+				`INSERT INTO conversations (org_id, channel_id, contact_id, status, priority, subject, last_message_at)
+				 VALUES ($1, $2, $3, 'open', 'normal', $4, NOW())
+				 RETURNING id`,
+				orgID, channelID, contactID, subject,
+			).Scan(&conversationID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create conversation: %w", err)
+			}
 		}
 	}
 
@@ -187,7 +202,8 @@ func (s *Service) HandleEchoMessage(ctx context.Context, channelID int64, msg *I
 	now := time.Now()
 	s.db.Pool.Exec(ctx,
 		`UPDATE conversations SET last_message_at = $1, updated_at = $1,
-		 first_response_at = COALESCE(first_response_at, $1)
+		 first_response_at = COALESCE(first_response_at, $1),
+		 status = 'resolved', resolved_at = $1
 		 WHERE id = $2`,
 		now, conversationID,
 	)

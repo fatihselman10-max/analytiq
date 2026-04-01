@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { automationsAPI, teamAPI, tagsAPI } from "@/lib/api";
+import { automationsAPI, teamAPI, tagsAPI, cannedAPI } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { isDemoOrg, DEMO_AUTOMATIONS, DEMO_TEAM, DEMO_TAGS } from "@/lib/demo-data";
 import {
@@ -17,6 +17,10 @@ import {
   Tag,
   AlertTriangle,
   ArrowRight,
+  Edit3,
+  Send,
+  Search,
+  FileText,
 } from "lucide-react";
 
 const TRIGGERS = [
@@ -67,7 +71,16 @@ interface Automation {
   last_executed_at: string | null;
 }
 
+interface CannedResponse {
+  id: number;
+  shortcut: string;
+  title: string;
+  content: string;
+}
+
 export default function AutomationsPage() {
+  const [activeTab, setActiveTab] = useState<"automations" | "templates">("automations");
+
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -84,13 +97,77 @@ export default function AutomationsPage() {
   const [agents, setAgents] = useState<{ id: number; full_name: string }[]>([]);
   const [tags, setTags] = useState<{ id: number; name: string }[]>([]);
 
+  // Templates state
+  const [templates, setTemplates] = useState<CannedResponse[]>([]);
+  const [tplLoading, setTplLoading] = useState(false);
+  const [tplSearch, setTplSearch] = useState("");
+  const [tplShowForm, setTplShowForm] = useState(false);
+  const [tplEditingId, setTplEditingId] = useState<number | null>(null);
+  const [tplSaving, setTplSaving] = useState(false);
+  const [tplForm, setTplForm] = useState({ shortcut: "", title: "", content: "" });
+
   const { organization } = useAuthStore();
   const isDemo = isDemoOrg(organization?.name);
 
   useEffect(() => {
     if (!organization) return;
-    fetchAll();
-  }, [isDemo, organization]);
+    if (activeTab === "automations") fetchAll();
+    if (activeTab === "templates") fetchTemplates();
+  }, [isDemo, organization, activeTab]);
+
+  const fetchTemplates = async () => {
+    setTplLoading(true);
+    try {
+      const { data } = await cannedAPI.list();
+      setTemplates(data.canned_responses || []);
+    } catch { setTemplates([]); }
+    setTplLoading(false);
+  };
+
+  const resetTplForm = () => {
+    setTplForm({ shortcut: "", title: "", content: "" });
+    setTplEditingId(null);
+    setTplShowForm(false);
+  };
+
+  const handleSaveTpl = async () => {
+    if (!tplForm.shortcut.trim() || !tplForm.title.trim() || !tplForm.content.trim()) return;
+    setTplSaving(true);
+    try {
+      if (tplEditingId) {
+        await cannedAPI.update(tplEditingId, tplForm);
+      } else {
+        await cannedAPI.create(tplForm);
+      }
+      await fetchTemplates();
+      resetTplForm();
+    } catch {}
+    setTplSaving(false);
+  };
+
+  const handleDeleteTpl = async (id: number) => {
+    try {
+      await cannedAPI.delete(id);
+      setTemplates(prev => prev.filter(t => t.id !== id));
+    } catch {}
+  };
+
+  const TEMPLATE_CATEGORIES: Record<string, { label: string; color: string }> = {
+    kargo: { label: "Kargo", color: "bg-blue-100 text-blue-700" },
+    iade: { label: "Iade", color: "bg-red-100 text-red-700" },
+    degisim: { label: "Degisim", color: "bg-orange-100 text-orange-700" },
+    inf: { label: "Influencer", color: "bg-pink-100 text-pink-700" },
+    siparis: { label: "Siparis", color: "bg-emerald-100 text-emerald-700" },
+  };
+
+  const getTplCategory = (shortcut: string) => {
+    const prefix = shortcut.split("-")[0];
+    return TEMPLATE_CATEGORIES[prefix] || { label: "Genel", color: "bg-gray-100 text-gray-600" };
+  };
+
+  const filteredTemplates = templates.filter(t =>
+    !tplSearch || t.shortcut.includes(tplSearch.toLowerCase()) || t.title.toLowerCase().includes(tplSearch.toLowerCase()) || t.content.toLowerCase().includes(tplSearch.toLowerCase())
+  );
 
   const fetchAll = async () => {
     setLoading(true);
@@ -231,19 +308,126 @@ export default function AutomationsPage() {
 
   return (
     <div className="p-4 sm:p-8 animate-fade-in">
+      {/* Tab Header */}
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Otomasyonlar</h1>
-          <p className="text-sm text-gray-500 mt-1">Tetikleyici-eylem iş akışları oluştürün</p>
+        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+          <button onClick={() => setActiveTab("automations")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === "automations" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+            <Workflow className="h-4 w-4" /> Otomasyonlar
+          </button>
+          <button onClick={() => setActiveTab("templates")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === "templates" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+            <FileText className="h-4 w-4" /> Sablonlar
+            {templates.length > 0 && <span className="text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full">{templates.length}</span>}
+          </button>
         </div>
-        <button
-          onClick={() => { resetForm(); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2.5 text-sm btn-gradient"
-        >
-          <Plus className="h-4 w-4" />
-          Yeni Otomasyon
-        </button>
+        {activeTab === "automations" ? (
+          <button onClick={() => { resetForm(); setShowForm(true); }} className="flex items-center gap-2 px-4 py-2.5 text-sm btn-gradient">
+            <Plus className="h-4 w-4" /> Yeni Otomasyon
+          </button>
+        ) : (
+          <button onClick={() => { resetTplForm(); setTplShowForm(true); }} className="flex items-center gap-2 px-4 py-2.5 text-sm btn-gradient">
+            <Plus className="h-4 w-4" /> Yeni Sablon
+          </button>
+        )}
       </div>
+
+      {/* ==================== SABLONLAR TAB ==================== */}
+      {activeTab === "templates" && (
+        <div>
+          {/* Template Form */}
+          {tplShowForm && (
+            <div className="card p-5 mb-5 border-2 border-blue-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-gray-900">{tplEditingId ? "Sablonu Duzenle" : "Yeni Sablon"}</h3>
+                <button onClick={resetTplForm} className="p-1 text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Kisayol</label>
+                  <div className="flex items-center">
+                    <span className="px-2.5 py-2 bg-gray-100 border border-r-0 border-gray-200 rounded-l-xl text-sm text-gray-500">/</span>
+                    <input value={tplForm.shortcut} onChange={e => setTplForm(p => ({ ...p, shortcut: e.target.value.replace(/\s/g, "").toLowerCase() }))}
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-r-xl text-sm" placeholder="inf-isbirligi" />
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">Kategori icin tire kullanin: kargo-takip, inf-urun, iade-bilgi</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Sablon Adi</label>
+                  <input value={tplForm.title} onChange={e => setTplForm(p => ({ ...p, title: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm" placeholder="Influencer Is Birligi Teklifi" />
+                </div>
+              </div>
+              <div className="mb-4">
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Mesaj Icerigi</label>
+                <textarea value={tplForm.content} onChange={e => setTplForm(p => ({ ...p, content: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm" rows={4}
+                  placeholder="Merhaba! LessandRomance olarak sizinle is birligi yapmak istiyoruz..." />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button onClick={resetTplForm} className="px-4 py-2 text-sm text-gray-500">Iptal</button>
+                <button onClick={handleSaveTpl} disabled={tplSaving || !tplForm.shortcut || !tplForm.title || !tplForm.content}
+                  className="flex items-center gap-2 px-5 py-2 text-sm btn-gradient disabled:opacity-50">
+                  {tplSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {tplEditingId ? "Guncelle" : "Kaydet"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Search */}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input value={tplSearch} onChange={e => setTplSearch(e.target.value)} placeholder="Sablon ara..."
+              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white" />
+          </div>
+
+          {/* Template List */}
+          {tplLoading ? (
+            <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-blue-500" /></div>
+          ) : filteredTemplates.length === 0 ? (
+            <div className="text-center py-20">
+              <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500 font-medium">{tplSearch ? "Sonuc bulunamadi" : "Henuz sablon yok"}</p>
+              <p className="text-sm text-gray-400 mt-1">Chat icinde &quot;Sablonlar&quot; butonundan hizlica erisebilirsiniz.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredTemplates.map(t => {
+                const cat = getTplCategory(t.shortcut);
+                return (
+                  <div key={t.id} className="card p-4 hover:shadow-md transition-all">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${cat.color}`}>{cat.label}</span>
+                          <code className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">/{t.shortcut}</code>
+                          <span className="text-sm font-medium text-gray-900">{t.title}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 leading-relaxed">{t.content}</p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onClick={() => { setTplEditingId(t.id); setTplForm({ shortcut: t.shortcut, title: t.title, content: t.content }); setTplShowForm(true); }}
+                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                          <Edit3 className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => handleDeleteTpl(t.id)}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== OTOMASYONLAR TAB ==================== */}
+      {activeTab === "automations" && (
+      <div>
 
       {/* Form Modal */}
       {showForm && (
@@ -434,6 +618,8 @@ export default function AutomationsPage() {
             </div>
           ))}
         </div>
+      )}
+      </div>
       )}
     </div>
   );

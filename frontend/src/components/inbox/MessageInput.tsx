@@ -102,6 +102,26 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
       cr.title.toLowerCase().includes(cannedFilter)
   );
 
+  // Kategorilere ayır (shortcut prefix'ine göre: kargo-xxx, iade-xxx, inf-xxx, genel)
+  const CATEGORIES: Record<string, { label: string; color: string }> = {
+    kargo: { label: "Kargo", color: "bg-blue-100 text-blue-700" },
+    iade: { label: "Iade", color: "bg-red-100 text-red-700" },
+    degisim: { label: "Degisim", color: "bg-orange-100 text-orange-700" },
+    inf: { label: "Influencer", color: "bg-pink-100 text-pink-700" },
+  };
+
+  const getCannedCategory = (shortcut: string) => {
+    const prefix = shortcut.split("-")[0];
+    return CATEGORIES[prefix] ? prefix : "genel";
+  };
+
+  const groupedCanned = filteredCanned.reduce<Record<string, CannedResponse[]>>((acc, cr) => {
+    const cat = getCannedCategory(cr.shortcut);
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(cr);
+    return acc;
+  }, {});
+
   const adjustHeight = useCallback(() => {
     const textarea = textareaRef.current;
     if (textarea) { textarea.style.height = "auto"; textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`; }
@@ -125,6 +145,12 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
     setContent(cr.content);
     setShowCanned(false);
     textareaRef.current?.focus();
+  };
+
+  const sendCannedDirect = (cr: CannedResponse) => {
+    onSend(cr.content);
+    setShowCanned(false);
+    setContent("");
   };
 
   return (
@@ -163,26 +189,47 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
         </div>
       )}
 
-      {/* Canned responses popup */}
+      {/* Canned responses popup - kategorili */}
       {showCanned && filteredCanned.length > 0 && (
-        <div ref={cannedRef} className="absolute bottom-full left-0 right-0 mx-4 mb-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto z-10">
-          <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+        <div ref={cannedRef} className="absolute bottom-full left-0 right-0 mx-4 mb-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-y-auto z-10">
+          <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 sticky top-0 bg-white z-10">
             <Zap className="h-3.5 w-3.5 text-amber-500" />
-            <span className="text-xs font-medium text-gray-500">Hazır Yanıtlar</span>
+            <span className="text-xs font-medium text-gray-500">Hazir Yanitlar</span>
+            <span className="text-[10px] text-gray-400 ml-auto">{filteredCanned.length} sonuc</span>
           </div>
-          {filteredCanned.map((cr) => (
-            <button
-              key={cr.id}
-              onClick={() => selectCanned(cr)}
-              className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">/{cr.shortcut}</span>
-                <span className="text-xs font-medium text-gray-700">{cr.title}</span>
+          {Object.entries(groupedCanned).map(([cat, items]) => {
+            const catInfo = CATEGORIES[cat] || { label: "Genel", color: "bg-gray-100 text-gray-600" };
+            return (
+              <div key={cat}>
+                <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 sticky top-[33px] z-[5]">
+                  <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${catInfo.color}`}>
+                    {catInfo.label}
+                  </span>
+                </div>
+                {items.map((cr) => (
+                  <div key={cr.id} className="flex items-center border-b border-gray-50 last:border-0 hover:bg-blue-50 transition-colors">
+                    <button
+                      onClick={() => selectCanned(cr)}
+                      className="flex-1 text-left px-3 py-2 min-w-0"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">/{cr.shortcut}</span>
+                        <span className="text-xs font-medium text-gray-700 truncate">{cr.title}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-1">{cr.content}</p>
+                    </button>
+                    <button
+                      onClick={() => sendCannedDirect(cr)}
+                      className="px-3 py-2 text-gray-300 hover:text-blue-600 hover:bg-blue-100 rounded-lg mr-1 flex-shrink-0 transition-colors"
+                      title="Direkt gonder"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
-              <p className="text-xs text-gray-400 mt-0.5 truncate">{cr.content}</p>
-            </button>
-          ))}
+            );
+          })}
         </div>
       )}
 

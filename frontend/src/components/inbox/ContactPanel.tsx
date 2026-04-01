@@ -19,6 +19,8 @@ import {
   Package,
   Loader2,
   ExternalLink,
+  Truck,
+  Clock,
 } from "lucide-react";
 
 interface ContactPanelProps {
@@ -48,6 +50,14 @@ const priorityOptions = [
   { value: "urgent", label: "Acil", className: "bg-red-100 text-red-700" },
 ];
 
+interface ShopifyFulfillment {
+  status: string;
+  tracking_number: string | null;
+  tracking_url: string | null;
+  tracking_company: string | null;
+  created_at: string;
+}
+
 interface ShopifyOrder {
   id: number;
   name: string;
@@ -57,6 +67,7 @@ interface ShopifyOrder {
   total_price: string;
   currency: string;
   line_items: { title: string; quantity: number }[];
+  fulfillments: ShopifyFulfillment[];
 }
 
 export default function ContactPanel({ conversation, onUpdate }: ContactPanelProps) {
@@ -393,10 +404,26 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
                   refunded: "bg-red-100 text-red-700",
                   partially_refunded: "bg-orange-100 text-orange-700",
                 };
-                const fulfillColors: Record<string, string> = {
-                  fulfilled: "bg-blue-100 text-blue-700",
-                  partial: "bg-cyan-100 text-cyan-700",
-                };
+                const latestFulfillment = order.fulfillments?.length > 0
+                  ? order.fulfillments[order.fulfillments.length - 1]
+                  : null;
+
+                // Kargo durumu belirleme
+                let shippingLabel = "";
+                let shippingClass = "";
+                if (order.fulfillment_status === "fulfilled" && latestFulfillment) {
+                  shippingLabel = "Kargoya Verildi";
+                  shippingClass = "bg-blue-100 text-blue-700";
+                } else if (order.fulfillment_status === "partial") {
+                  shippingLabel = "Kismi Kargo";
+                  shippingClass = "bg-cyan-100 text-cyan-700";
+                } else if (order.financial_status === "paid") {
+                  shippingLabel = "Hazirlaniyor";
+                  shippingClass = "bg-amber-100 text-amber-700";
+                } else {
+                  shippingLabel = "";
+                }
+
                 return (
                   <div key={order.id} className="p-2 rounded-lg bg-gray-50 dark:bg-slate-800/50">
                     <div className="flex items-center justify-between mb-1">
@@ -413,15 +440,47 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
                          order.financial_status === "partially_refunded" ? "Kismi Iade" :
                          order.financial_status}
                       </span>
-                      {order.fulfillment_status && (
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${fulfillColors[order.fulfillment_status] || "bg-gray-100 text-gray-600"}`}>
-                          {order.fulfillment_status === "fulfilled" ? "Kargoda" : order.fulfillment_status}
+                      {shippingLabel && (
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${shippingClass}`}>
+                          {shippingLabel}
                         </span>
                       )}
                       <span className="text-[10px] font-medium text-gray-700 ml-auto">
                         {parseFloat(order.total_price).toLocaleString("tr-TR")} TL
                       </span>
                     </div>
+
+                    {/* Kargo takip bilgisi */}
+                    {latestFulfillment && latestFulfillment.tracking_number && (
+                      <div className="mb-1.5 p-1.5 rounded bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30">
+                        <div className="flex items-center gap-1 text-[10px]">
+                          <Truck className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                          <span className="text-blue-700 dark:text-blue-300 font-medium">
+                            {latestFulfillment.tracking_company || "Kargo"}
+                          </span>
+                          <span className="text-blue-600 dark:text-blue-400 font-mono">
+                            {latestFulfillment.tracking_number}
+                          </span>
+                          {latestFulfillment.tracking_url && (
+                            <a href={latestFulfillment.tracking_url} target="_blank" rel="noopener noreferrer"
+                              className="ml-auto text-blue-500 hover:text-blue-700">
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Odendi ama kargoya verilmedi uyarisi */}
+                    {order.financial_status === "paid" && !order.fulfillment_status && (
+                      <div className="mb-1.5 p-1.5 rounded bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
+                        <p className="text-[10px] text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                          <Clock className="h-3 w-3 flex-shrink-0" />
+                          Siparis hazirlaniyor, henuz kargoya verilmedi
+                        </p>
+                      </div>
+                    )}
+
                     <div className="text-[10px] text-gray-500 space-y-0.5">
                       {order.line_items?.slice(0, 2).map((item, i) => (
                         <p key={i} className="truncate">

@@ -229,6 +229,19 @@ export const kbAPI = {
   deleteArticle: (id: number) => api.delete(`/kb/articles/${id}`),
 };
 
+// Tasks
+export const tasksAPI = {
+  list: () => api.get("/tasks"),
+  create: (data: {
+    title: string; assignee?: string; department?: string;
+    priority?: string; due_date?: string; tags?: string[]; kpi_weight?: number;
+  }) => api.post("/tasks", data),
+  update: (id: number, data: Record<string, unknown>) => api.put(`/tasks/${id}`, data),
+  delete: (id: number) => api.delete(`/tasks/${id}`),
+  addNote: (id: number, note: string) => api.post(`/tasks/${id}/notes`, { note }),
+  moveStatus: (id: number, status: string) => api.patch(`/tasks/${id}/status`, { status }),
+};
+
 // Tags
 export const tagsAPI = {
   list: () => api.get("/tags"),

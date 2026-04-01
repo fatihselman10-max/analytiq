@@ -154,6 +154,7 @@ func main() {
 	csatHandler := handlers.NewCSATHandler(db)
 	automationHandler := handlers.NewAutomationHandler(db)
 	kbHandler := handlers.NewKBHandler(db)
+	taskHandler := handlers.NewTaskHandler(db)
 	wsHandler := handlers.NewWSHandler(hub, authService)
 
 	// Router
@@ -295,6 +296,14 @@ func main() {
 		api.POST("/kb/articles", kbHandler.CreateArticle)
 		api.PUT("/kb/articles/:id", kbHandler.UpdateArticle)
 		api.DELETE("/kb/articles/:id", kbHandler.DeleteArticle)
+
+		// Tasks
+		api.GET("/tasks", taskHandler.List)
+		api.POST("/tasks", taskHandler.Create)
+		api.PUT("/tasks/:id", taskHandler.Update)
+		api.DELETE("/tasks/:id", taskHandler.Delete)
+		api.POST("/tasks/:id/notes", taskHandler.AddNote)
+		api.PATCH("/tasks/:id/status", taskHandler.MoveStatus)
 
 		// Tags
 		api.GET("/tags", tagHandler.List)

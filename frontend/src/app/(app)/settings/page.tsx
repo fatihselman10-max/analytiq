@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { teamAPI, businessHoursAPI, slaAPI, csatAPI } from "@/lib/api";
+import { teamAPI, businessHoursAPI, slaAPI, csatAPI, cannedAPI } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
-import { Building2, User, Bell, Key, CreditCard, Check, Copy, Clock, Loader2, ShieldCheck, Star, Radio, Users, BookOpen, Bot, Globe2 } from "lucide-react";
+import { Building2, User, Bell, Key, CreditCard, Check, Copy, Clock, Loader2, ShieldCheck, Star, Radio, Users, BookOpen, Bot, Globe2, Zap, Plus, Trash2, Edit3, X, Save } from "lucide-react";
 import { isDemoOrg, DEMO_BUSINESS_HOURS, DEMO_SLA_POLICY, DEMO_CSAT_CONFIG, DEMO_CSAT_RESPONSES } from "@/lib/demo-data";
 import CostsTab from "@/components/settings/CostsTab";
 
@@ -37,6 +37,7 @@ const tabs = [
   { key: "business-hours", label: "Is Saatleri", icon: Clock },
   { key: "sla", label: "SLA Yönetimi", icon: ShieldCheck },
   { key: "csat", label: "CSAT Anketleri", icon: Star },
+  { key: "canned", label: "Hazir Yanitlar", icon: Zap },
   { key: "notifications", label: "Bildirimler", icon: Bell },
   { key: "integrations", label: "Entegrasyonlar", icon: Globe2 },
   { key: "costs", label: "Maliyetler", icon: CreditCard },
@@ -92,6 +93,14 @@ export default function SettingsPage() {
   const [csatStats, setCsatStats] = useState<{ avg_rating: number; total_count: number; satisfaction_rate: number; rating_distribution: number[] } | null>(null);
   const [csatResponses, setCsatResponses] = useState<{ id: number; rating: number; comment: string; contact_name: string; agent_name: string; created_at: string }[]>([]);
 
+  // Canned Responses state
+  const [cannedList, setCannedList] = useState<{ id: number; shortcut: string; title: string; content: string }[]>([]);
+  const [cannedLoading, setCannedLoading] = useState(false);
+  const [cannedEditing, setCannedEditing] = useState<number | null>(null);
+  const [cannedForm, setCannedForm] = useState({ shortcut: "", title: "", content: "" });
+  const [cannedShowAdd, setCannedShowAdd] = useState(false);
+  const [cannedSaving, setCannedSaving] = useState(false);
+
   const isDemo = isDemoOrg(organization?.name);
 
   useEffect(() => {
@@ -99,6 +108,7 @@ export default function SettingsPage() {
     if (activeTab === "business-hours") loadBusinessHours();
     if (activeTab === "sla") loadSLA();
     if (activeTab === "csat") loadCSAT();
+    if (activeTab === "canned") loadCanned();
   }, [activeTab, organization]);
 
   const loadBusinessHours = async () => {
@@ -248,6 +258,39 @@ export default function SettingsPage() {
       setCsatMessage("Hata oluştu");
     }
     setCsatSaving(false);
+  };
+
+  const loadCanned = async () => {
+    setCannedLoading(true);
+    try {
+      const { data } = await cannedAPI.list();
+      setCannedList(data.canned_responses || []);
+    } catch { setCannedList([]); }
+    setCannedLoading(false);
+  };
+
+  const handleSaveCanned = async () => {
+    if (!cannedForm.shortcut.trim() || !cannedForm.title.trim() || !cannedForm.content.trim()) return;
+    setCannedSaving(true);
+    try {
+      if (cannedEditing) {
+        await cannedAPI.update(cannedEditing, cannedForm);
+      } else {
+        await cannedAPI.create(cannedForm);
+      }
+      await loadCanned();
+      setCannedForm({ shortcut: "", title: "", content: "" });
+      setCannedEditing(null);
+      setCannedShowAdd(false);
+    } catch {}
+    setCannedSaving(false);
+  };
+
+  const handleDeleteCanned = async (id: number) => {
+    try {
+      await cannedAPI.delete(id);
+      setCannedList(prev => prev.filter(c => c.id !== id));
+    } catch {}
   };
 
   const handleSaveOrg = async (e: React.FormEvent) => {
@@ -799,6 +842,92 @@ export default function SettingsPage() {
                     )}
                   </div>
                 </>
+              )}
+            </div>
+          )}
+
+          {activeTab === "canned" && (
+            <div className="card p-6 animate-fade-in">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Hazir Yanitlar</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">Inbox&apos;ta <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">/kisayol</code> yazarak hizli yanit gonderin</p>
+                </div>
+                <button onClick={() => { setCannedShowAdd(true); setCannedEditing(null); setCannedForm({ shortcut: "", title: "", content: "" }); }}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm btn-gradient">
+                  <Plus className="h-4 w-4" /> Yeni Yanit
+                </button>
+              </div>
+
+              {(cannedShowAdd || cannedEditing) && (
+                <div className="mb-5 p-4 border-2 border-blue-200 rounded-xl bg-blue-50/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-900">{cannedEditing ? "Yaniti Duzenle" : "Yeni Hazir Yanit"}</h3>
+                    <button onClick={() => { setCannedShowAdd(false); setCannedEditing(null); }} className="p-1 text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">Kisayol</label>
+                      <div className="flex items-center">
+                        <span className="px-2 py-2 bg-gray-100 border border-r-0 border-gray-200 rounded-l-lg text-sm text-gray-500">/</span>
+                        <input value={cannedForm.shortcut} onChange={e => setCannedForm(p => ({ ...p, shortcut: e.target.value.replace(/\s/g, "").toLowerCase() }))}
+                          className="flex-1 px-3 py-2 border border-gray-200 rounded-r-lg text-sm" placeholder="merhaba" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">Baslik</label>
+                      <input value={cannedForm.title} onChange={e => setCannedForm(p => ({ ...p, title: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="Hosgeldin mesaji" />
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">Yanit Icerigi</label>
+                    <textarea value={cannedForm.content} onChange={e => setCannedForm(p => ({ ...p, content: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" rows={3} placeholder="Merhaba! Size nasil yardimci olabilirim?" />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => { setCannedShowAdd(false); setCannedEditing(null); }} className="px-3 py-1.5 text-sm text-gray-500">Iptal</button>
+                    <button onClick={handleSaveCanned} disabled={cannedSaving || !cannedForm.shortcut || !cannedForm.title || !cannedForm.content}
+                      className="flex items-center gap-1.5 px-4 py-1.5 text-sm btn-gradient disabled:opacity-50">
+                      {cannedSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {cannedEditing ? "Guncelle" : "Kaydet"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {cannedLoading ? (
+                <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-blue-500" /></div>
+              ) : cannedList.length === 0 ? (
+                <div className="text-center py-10">
+                  <Zap className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">Henuz hazir yanit yok</p>
+                  <p className="text-sm text-gray-400 mt-1">Sik kullandiginiz yanitlari kaydedin, inbox&apos;ta / yazarak hizla erisin.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {cannedList.map(c => (
+                    <div key={c.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <code className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-mono">/{c.shortcut}</code>
+                          <span className="text-sm font-medium text-gray-900">{c.title}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 line-clamp-2">{c.content}</p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onClick={() => { setCannedEditing(c.id); setCannedForm({ shortcut: c.shortcut, title: c.title, content: c.content }); setCannedShowAdd(false); }}
+                          className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleDeleteCanned(c.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}

@@ -5,8 +5,9 @@ import {
   Plus, Calendar, Flag, X, Trash2, MessageSquare, ChevronRight, Check,
   Users, BarChart3, Clock, Target, AlertCircle, CheckCircle, Search,
   Palette, FileText, Truck, Headphones, Megaphone, Code, Filter,
-  TrendingUp, ArrowUpRight, ArrowDownRight, Edit3, Save,
+  TrendingUp, ArrowUpRight, ArrowDownRight, Edit3, Save, Loader2,
 } from "lucide-react";
+import { tasksAPI } from "@/lib/api";
 
 type Priority = "high" | "normal" | "low";
 type TaskStatus = "todo" | "in_progress" | "done";
@@ -57,33 +58,6 @@ const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string }> = {
   done: { label: "Tamamlandı", color: "border-emerald-400 dark:border-emerald-600" },
 };
 
-const STORAGE_KEY = "repliq_tasks";
-
-const DEFAULT_TASKS: Task[] = [
-  // Kreatif
-  { id: 1, title: "Yeni sezon lookbook fotoğraf çekimi", assignee: "Merve K.", department: "creative", priority: "high", status: "in_progress", dueDate: "2026-04-02", createdAt: "2026-03-25", tags: ["Fotoğraf"], notes: ["Stüdyo ayarlandı, 15 kombin hazır"], kpiWeight: 5 },
-  { id: 2, title: "Instagram Reels - 5 adet ürün tanıtım videosu", assignee: "Merve K.", department: "creative", priority: "normal", status: "todo", dueDate: "2026-04-05", createdAt: "2026-03-28", tags: ["Video", "Instagram"], notes: [], kpiWeight: 4 },
-  { id: 3, title: "Web sitesi banner tasarımı - Bahar kampanyası", assignee: "Merve K.", department: "creative", priority: "normal", status: "done", dueDate: "2026-03-28", createdAt: "2026-03-22", completedAt: "2026-03-27", tags: ["Tasarım"], notes: ["3 varyant hazırlandı"], kpiWeight: 3 },
-  // Content
-  { id: 4, title: "Blog yazısı - Bahar trendleri 2026", assignee: "Selin T.", department: "content", priority: "normal", status: "in_progress", dueDate: "2026-04-01", createdAt: "2026-03-26", tags: ["Blog"], notes: ["Taslak hazır, son kontrol yapılacak"], kpiWeight: 3 },
-  { id: 5, title: "142 ürün açıklamasını SEO uyumlu güncelle", assignee: "Selin T.", department: "content", priority: "high", status: "todo", dueDate: "2026-04-10", createdAt: "2026-03-28", tags: ["SEO", "Ürün"], notes: [], kpiWeight: 5 },
-  { id: 6, title: "E-posta kampanya metni - Hoş geldin serisi", assignee: "Selin T.", department: "content", priority: "normal", status: "done", dueDate: "2026-03-27", createdAt: "2026-03-20", completedAt: "2026-03-26", tags: ["E-posta"], notes: ["3 e-posta tamamlandı"], kpiWeight: 4 },
-  // Operasyon
-  { id: 7, title: "Bekleyen 18 siparişi kargoya ver", assignee: "Elif A.", department: "operations", priority: "high", status: "in_progress", dueDate: "2026-03-29", createdAt: "2026-03-29", tags: ["Kargo"], notes: ["12 tanesi paketlendi"], kpiWeight: 5 },
-  { id: 8, title: "Stok sayımı - depo kontrolü", assignee: "Elif A.", department: "operations", priority: "normal", status: "todo", dueDate: "2026-04-03", createdAt: "2026-03-28", tags: ["Stok"], notes: [], kpiWeight: 4 },
-  { id: 9, title: "Tedarikçi sipariş takibi - tükenen ürünler", assignee: "Elif A.", department: "operations", priority: "high", status: "todo", dueDate: "2026-03-31", createdAt: "2026-03-28", tags: ["Tedarik"], notes: ["5 ürün tükenmiş, tedarikçiye mail atıldı"], kpiWeight: 5 },
-  // Müşteri Destek
-  { id: 10, title: "Açık müşteri şikayetlerini çöz (8 adet)", assignee: "Dilara A.", department: "support", priority: "high", status: "in_progress", dueDate: "2026-03-30", createdAt: "2026-03-28", tags: ["Şikayet"], notes: ["5 tanesi cevaplandı, 3 bekliyor"], kpiWeight: 5 },
-  { id: 11, title: "İade talepleri - beden değişim sürecini başlat", assignee: "Dilara A.", department: "support", priority: "normal", status: "todo", dueDate: "2026-03-31", createdAt: "2026-03-29", tags: ["İade"], notes: [], kpiWeight: 3 },
-  { id: 12, title: "Bot cevap şablonlarını güncelle", assignee: "Dilara A.", department: "support", priority: "low", status: "done", dueDate: "2026-03-28", createdAt: "2026-03-24", completedAt: "2026-03-28", tags: ["Bot"], notes: ["15 şablon güncellendi"], kpiWeight: 3 },
-  // Pazarlama
-  { id: 13, title: "Meta Ads - yeni kampanya kur (Bahar)", assignee: "Akif D.", department: "marketing", priority: "high", status: "in_progress", dueDate: "2026-04-01", createdAt: "2026-03-27", tags: ["Reklam", "Meta"], notes: ["Hedefleme hazır, görseller bekleniyor"], kpiWeight: 5 },
-  { id: 14, title: "Google Ads hesabı aç ve ilk kampanyayı kur", assignee: "Akif D.", department: "marketing", priority: "normal", status: "todo", dueDate: "2026-04-07", createdAt: "2026-03-29", tags: ["Reklam", "Google"], notes: [], kpiWeight: 4 },
-  { id: 15, title: "Influencer iş birliği - 3 mikro influencer bul", assignee: "Akif D.", department: "marketing", priority: "normal", status: "todo", dueDate: "2026-04-10", createdAt: "2026-03-29", tags: ["Influencer"], notes: [], kpiWeight: 3 },
-  // Teknik
-  { id: 16, title: "Site hız optimizasyonu - görsel sıkıştırma", assignee: "Fatih S.", department: "tech", priority: "normal", status: "todo", dueDate: "2026-04-05", createdAt: "2026-03-29", tags: ["Performans"], notes: [], kpiWeight: 3 },
-  { id: 17, title: "WhatsApp Business API entegrasyonu", assignee: "Fatih S.", department: "tech", priority: "high", status: "in_progress", dueDate: "2026-04-03", createdAt: "2026-03-25", tags: ["Entegrasyon"], notes: ["Twilio hesabı kuruldu"], kpiWeight: 5 },
-];
 
 function daysBetween(a: string, b: string) {
   return Math.ceil((new Date(b).getTime() - new Date(a).getTime()) / (1000 * 60 * 60 * 24));
@@ -96,6 +70,7 @@ function isOverdue(task: Task) {
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeDept, setActiveDept] = useState("all");
   const [activeView, setActiveView] = useState<"board" | "kpi">("board");
   const [expandedTask, setExpandedTask] = useState<number | null>(null);
@@ -108,58 +83,65 @@ export default function TasksPage() {
     title: "", assignee: "", department: "operations", priority: "normal" as Priority, dueDate: "", kpiWeight: 3,
   });
 
-  // Load from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try { setTasks(JSON.parse(saved)); } catch { setTasks(DEFAULT_TASKS); }
-    } else {
-      setTasks(DEFAULT_TASKS);
-    }
-  }, []);
-
-  // Save to localStorage
-  useEffect(() => {
-    if (tasks.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-  }, [tasks]);
-
-  const updateTask = (id: number, updates: Partial<Task>) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  const fetchTasks = async () => {
+    try {
+      const { data } = await tasksAPI.list();
+      const items = (data.tasks || []).map((t: Record<string, unknown>) => ({
+        id: t.id as number,
+        title: t.title as string,
+        assignee: t.assignee as string || "Atanmadi",
+        department: t.department as string || "operations",
+        priority: t.priority as Priority,
+        status: t.status as TaskStatus,
+        dueDate: t.due_date as string || "",
+        createdAt: (t.created_at as string || "").slice(0, 10),
+        completedAt: t.completed_at as string || undefined,
+        tags: t.tags as string[] || [],
+        notes: t.notes as string[] || [],
+        kpiWeight: t.kpi_weight as number || 3,
+      }));
+      setTasks(items);
+    } catch { setTasks([]); }
+    setLoading(false);
   };
 
-  const moveStatus = (id: number, to: TaskStatus) => {
+  useEffect(() => { fetchTasks(); }, []);
+
+  const moveStatus = async (id: number, to: TaskStatus) => {
     setTasks(prev => prev.map(t =>
       t.id === id ? { ...t, status: to, completedAt: to === "done" ? new Date().toISOString().slice(0, 10) : undefined } : t
     ));
+    try { await tasksAPI.moveStatus(id, to); } catch { fetchTasks(); }
   };
 
-  const deleteTask = (id: number) => {
+  const deleteTask = async (id: number) => {
     setTasks(prev => prev.filter(t => t.id !== id));
     setExpandedTask(null);
+    try { await tasksAPI.delete(id); } catch { fetchTasks(); }
   };
 
-  const addNote = (id: number) => {
+  const addNote = async (id: number) => {
     if (!newNote.trim()) return;
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, notes: [...t.notes, newNote.trim()] } : t));
+    const note = newNote.trim();
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, notes: [...t.notes, note] } : t));
     setNewNote("");
+    try { await tasksAPI.addNote(id, note); } catch { fetchTasks(); }
   };
 
-  const addTask = () => {
+  const addTask = async () => {
     if (!newTask.title.trim()) return;
-    const task: Task = {
-      id: Date.now(),
-      title: newTask.title,
-      assignee: newTask.assignee || "Atanmadı",
-      department: newTask.department,
-      priority: newTask.priority,
-      status: "todo",
-      dueDate: newTask.dueDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-      createdAt: new Date().toISOString().slice(0, 10),
-      tags: [],
-      notes: [],
-      kpiWeight: newTask.kpiWeight,
-    };
-    setTasks(prev => [task, ...prev]);
+    try {
+      await tasksAPI.create({
+        title: newTask.title,
+        assignee: newTask.assignee || "Atanmadi",
+        department: newTask.department,
+        priority: newTask.priority,
+        due_date: newTask.dueDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+        tags: [],
+        kpi_weight: newTask.kpiWeight,
+      });
+      await fetchTasks();
+    } catch {}
     setNewTask({ title: "", assignee: "", department: "operations", priority: "normal", dueDate: "", kpiWeight: 3 });
     setShowAdd(false);
   };
@@ -302,6 +284,14 @@ export default function TasksPage() {
       </div>
     );
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 lg:p-6 max-w-[1400px] mx-auto animate-fade-in">

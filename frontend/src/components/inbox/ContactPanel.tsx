@@ -15,6 +15,10 @@ import {
   X,
   Plus,
   Tag as TagIcon,
+  ShoppingBag,
+  Package,
+  Loader2,
+  ExternalLink,
 } from "lucide-react";
 
 interface ContactPanelProps {
@@ -44,6 +48,17 @@ const priorityOptions = [
   { value: "urgent", label: "Acil", className: "bg-red-100 text-red-700" },
 ];
 
+interface ShopifyOrder {
+  id: number;
+  name: string;
+  created_at: string;
+  financial_status: string;
+  fulfillment_status: string | null;
+  total_price: string;
+  currency: string;
+  line_items: { title: string; quantity: number }[];
+}
+
 export default function ContactPanel({ conversation, onUpdate }: ContactPanelProps) {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -51,11 +66,26 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
   const [showNewTag, setShowNewTag] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#3b82f6");
+  const [orders, setOrders] = useState<ShopifyOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [showOrders, setShowOrders] = useState(true);
 
   useEffect(() => {
     teamAPI.listMembers().then((res) => setMembers(res.data?.members || [])).catch(() => {});
     tagsAPI.list().then((res) => setAllTags(res.data?.tags || [])).catch(() => {});
   }, []);
+
+  // Fetch Shopify orders by contact email or name
+  useEffect(() => {
+    const email = conversation.contact?.email;
+    if (!email) { setOrders([]); return; }
+    setOrdersLoading(true);
+    fetch(`/api/shopify?action=customer-orders&email=${encodeURIComponent(email)}`)
+      .then(r => r.json())
+      .then(data => setOrders(data.orders || []))
+      .catch(() => setOrders([]))
+      .finally(() => setOrdersLoading(false));
+  }, [conversation.contact?.email]);
 
   const contact = conversation.contact;
   const channel = channelLabels[conversation.channel_type || "web"] || channelLabels.web;
@@ -319,6 +349,93 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
             )}
           </div>
         </div>
+      </div>
+
+      {/* Shopify Orders */}
+      <div className="p-4 border-t border-gray-200">
+        <button
+          onClick={() => setShowOrders(!showOrders)}
+          className="flex items-center justify-between w-full mb-2"
+        >
+          <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+            <ShoppingBag className="h-3.5 w-3.5" />
+            Siparis Gecmisi
+          </h4>
+          <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform ${showOrders ? "rotate-180" : ""}`} />
+        </button>
+        {showOrders && (
+          ordersLoading ? (
+            <div className="flex justify-center py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+            </div>
+          ) : orders.length === 0 ? (
+            <p className="text-[11px] text-gray-400 text-center py-2">
+              {conversation.contact?.email ? "Siparis bulunamadi" : "E-posta adresi yok"}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
+                <span>{orders.length} siparis</span>
+                <span className="font-medium text-gray-700">
+                  {orders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0).toLocaleString("tr-TR", { style: "currency", currency: "TRY" })}
+                </span>
+              </div>
+              {orders.slice(0, 5).map((order) => {
+                const statusColors: Record<string, string> = {
+                  paid: "bg-green-100 text-green-700",
+                  pending: "bg-yellow-100 text-yellow-700",
+                  refunded: "bg-red-100 text-red-700",
+                  partially_refunded: "bg-orange-100 text-orange-700",
+                };
+                const fulfillColors: Record<string, string> = {
+                  fulfilled: "bg-blue-100 text-blue-700",
+                  partial: "bg-cyan-100 text-cyan-700",
+                };
+                return (
+                  <div key={order.id} className="p-2 rounded-lg bg-gray-50 dark:bg-slate-800/50">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-gray-900 dark:text-white">{order.name}</span>
+                      <span className="text-[10px] text-gray-400">
+                        {new Date(order.created_at).toLocaleDateString("tr-TR")}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mb-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${statusColors[order.financial_status] || "bg-gray-100 text-gray-600"}`}>
+                        {order.financial_status === "paid" ? "Odendi" :
+                         order.financial_status === "pending" ? "Bekliyor" :
+                         order.financial_status === "refunded" ? "Iade" :
+                         order.financial_status === "partially_refunded" ? "Kismi Iade" :
+                         order.financial_status}
+                      </span>
+                      {order.fulfillment_status && (
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${fulfillColors[order.fulfillment_status] || "bg-gray-100 text-gray-600"}`}>
+                          {order.fulfillment_status === "fulfilled" ? "Kargoda" : order.fulfillment_status}
+                        </span>
+                      )}
+                      <span className="text-[10px] font-medium text-gray-700 ml-auto">
+                        {parseFloat(order.total_price).toLocaleString("tr-TR")} TL
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-gray-500 space-y-0.5">
+                      {order.line_items?.slice(0, 2).map((item, i) => (
+                        <p key={i} className="truncate">
+                          <Package className="h-2.5 w-2.5 inline mr-1" />
+                          {item.quantity}x {item.title}
+                        </p>
+                      ))}
+                      {(order.line_items?.length || 0) > 2 && (
+                        <p className="text-gray-400">+{order.line_items.length - 2} urun daha</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {orders.length > 5 && (
+                <p className="text-[10px] text-center text-gray-400">+{orders.length - 5} siparis daha</p>
+              )}
+            </div>
+          )
+        )}
       </div>
 
       {/* Conversation details */}

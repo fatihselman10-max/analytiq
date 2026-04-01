@@ -11,14 +11,19 @@ interface CannedResponse {
   content: string;
 }
 
+interface ConversationMessage {
+  sender_type: string;
+  content: string;
+}
+
 interface MessageInputProps {
   onSend: (content: string) => void;
   onNote: (content: string) => void;
-  lastCustomerMessage?: string;
+  conversationMessages?: ConversationMessage[];
   contactName?: string;
 }
 
-export default function MessageInput({ onSend, onNote, lastCustomerMessage, contactName }: MessageInputProps) {
+export default function MessageInput({ onSend, onNote, conversationMessages, contactName }: MessageInputProps) {
   const [content, setContent] = useState("");
   const [isNoteMode, setIsNoteMode] = useState(false);
   const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
@@ -40,26 +45,51 @@ export default function MessageInput({ onSend, onNote, lastCustomerMessage, cont
     }).catch(() => {});
   }, []);
 
-  // Generate AI suggestions when new customer message arrives
+  // Generate AI suggestions based on full conversation context
   useEffect(() => {
-    if (!lastCustomerMessage || lastCustomerMessage === lastSuggestedMsg.current) return;
-    if (suggestDismissed) setSuggestDismissed(false);
-    lastSuggestedMsg.current = lastCustomerMessage;
+    const msgs = conversationMessages || [];
+    const lastCustomerMsg = [...msgs].reverse().find(m => m.sender_type === "contact");
+    if (!lastCustomerMsg) return;
+    const msgKey = lastCustomerMsg.content;
+    if (msgKey === lastSuggestedMsg.current) return;
+    setSuggestDismissed(false);
+    lastSuggestedMsg.current = msgKey;
     setSuggestLoading(true);
     setSuggestions([]);
+
+    // Son 8 mesaji konusma gecmisi olarak hazirla
+    const history = msgs.slice(-8).map(m => {
+      const role = m.sender_type === "contact" ? "Musteri" : "Temsilci";
+      return `${role}: ${m.content}`;
+    }).join("\n");
 
     fetch("/api/shopify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat: `Musteri "${contactName || "Musteri"}" su mesaji gonderdi: "${lastCustomerMessage}"
+        chat: `Asagida bir musteri destek konusmasi var. Sen LessandRomance musteri hizmetleri temsilcisisin.
 
-Sen LessandRomance musteri hizmetleri temsilcisisin. Bu mesaja 2 farkli kisa yanit onerisi uret.
-- Yanitlar kisa, samimi ve profesyonel olsun (max 2 cumle)
-- Turkce yaz
-- Siparis/kargo sorusu ise bilgilendirici ol
-- Her yaniti ayri satirda yaz, baska bir sey yazma
-- Yanit 1: ve Yanit 2: seklinde baslat`
+KONUSMA GECMISI:
+${history}
+
+MARKA BILGISI:
+- LessandRomance: Kadin giyim markasi
+- Urunlerin cogu on siparis (preorder) ile satilir, teslimat 14-21 is gunu
+- Iade/degisim: 14 gun icinde, etiketi sokukmemis urunler kabul edilir
+- Kargo: Ucretsiz kargo 500 TL ustu, standart 49.90 TL
+- Musteri memnuniyeti onceliklidir
+
+GOREV:
+Musterinin SON mesajina uygun 2 yanit onerisi uret.
+- Musterinin duygusal tonunu oku (kizgin mi, merakli mi, sikayetci mi, mutlu mu)
+- Kizgin/sikayetci musteriye empati goster, ozur dile, cozum sun
+- Soru sorana net bilgi ver
+- Genel mesaja samimi ama kisa yanit ver
+- Her yanit max 2-3 cumle
+- Sadece asagidaki formatta yaz, baska hicbir sey yazma:
+
+Yanit 1: [yanit metni]
+Yanit 2: [yanit metni]`
       }),
     })
       .then(r => r.json())
@@ -74,7 +104,7 @@ Sen LessandRomance musteri hizmetleri temsilcisisin. Bu mesaja 2 farkli kisa yan
       })
       .catch(() => setSuggestions([]))
       .finally(() => setSuggestLoading(false));
-  }, [lastCustomerMessage, contactName]);
+  }, [conversationMessages, contactName]);
 
   // Close canned panel on outside click
   useEffect(() => {

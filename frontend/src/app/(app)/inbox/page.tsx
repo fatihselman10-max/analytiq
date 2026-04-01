@@ -287,9 +287,7 @@ export default function InboxPage() {
               <MessageInput
                 onSend={handleSend}
                 onNote={handleNote}
-                lastCustomerMessage={
-                  [...activeMessages].reverse().find((m: any) => m.sender_type === "contact")?.content
-                }
+                conversationMessages={activeMessages}
                 contactName={activeConversation.contact?.name}
               />
             </div>

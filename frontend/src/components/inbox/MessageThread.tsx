@@ -24,10 +24,23 @@ function formatMessageDate(dateStr: string): string {
 
 export default function MessageThread({ messages }: MessageThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
+  // Scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Re-scroll when container resizes (e.g. AI suggestions appear/disappear)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   if (messages.length === 0) {
     return (
@@ -40,7 +53,7 @@ export default function MessageThread({ messages }: MessageThreadProps) {
   let lastDate = "";
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1 bg-gray-50/30">
+    <div ref={containerRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-1 bg-gray-50/30">
       {messages.map((msg) => {
         const msgDate = formatMessageDate(msg.created_at);
         let showDate = false;

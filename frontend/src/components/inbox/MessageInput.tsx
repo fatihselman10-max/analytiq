@@ -131,7 +131,7 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
     <div className={`border-t relative ${isNoteMode ? "border-amber-200 bg-amber-50/50" : "border-gray-100 bg-white"}`}>
       {/* AI Suggested Replies */}
       {!isNoteMode && !suggestDismissed && (suggestLoading || suggestions.length > 0) && (
-        <div className="px-4 pt-2 pb-1">
+        <div className="px-4 pt-2 pb-1 max-h-24 overflow-hidden">
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-1.5">
               <Sparkles className="h-3 w-3 text-violet-500" />

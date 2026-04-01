@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react";
-import { Send, StickyNote, MessageSquare, Zap } from "lucide-react";
+import { Send, StickyNote, MessageSquare, Zap, Sparkles, Loader2, X } from "lucide-react";
 import { cannedAPI } from "@/lib/api";
 
 interface CannedResponse {
@@ -14,9 +14,11 @@ interface CannedResponse {
 interface MessageInputProps {
   onSend: (content: string) => void;
   onNote: (content: string) => void;
+  lastCustomerMessage?: string;
+  contactName?: string;
 }
 
-export default function MessageInput({ onSend, onNote }: MessageInputProps) {
+export default function MessageInput({ onSend, onNote, lastCustomerMessage, contactName }: MessageInputProps) {
   const [content, setContent] = useState("");
   const [isNoteMode, setIsNoteMode] = useState(false);
   const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
@@ -25,12 +27,54 @@ export default function MessageInput({ onSend, onNote }: MessageInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const cannedRef = useRef<HTMLDivElement>(null);
 
+  // AI Suggested Reply state
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestDismissed, setSuggestDismissed] = useState(false);
+  const lastSuggestedMsg = useRef<string>("");
+
   // Load canned responses once
   useEffect(() => {
     cannedAPI.list().then((res) => {
       setCannedResponses(res.data?.canned_responses || res.data || []);
     }).catch(() => {});
   }, []);
+
+  // Generate AI suggestions when new customer message arrives
+  useEffect(() => {
+    if (!lastCustomerMessage || lastCustomerMessage === lastSuggestedMsg.current) return;
+    if (suggestDismissed) setSuggestDismissed(false);
+    lastSuggestedMsg.current = lastCustomerMessage;
+    setSuggestLoading(true);
+    setSuggestions([]);
+
+    fetch("/api/shopify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat: `Musteri "${contactName || "Musteri"}" su mesaji gonderdi: "${lastCustomerMessage}"
+
+Sen LessandRomance musteri hizmetleri temsilcisisin. Bu mesaja 2 farkli kisa yanit onerisi uret.
+- Yanitlar kisa, samimi ve profesyonel olsun (max 2 cumle)
+- Turkce yaz
+- Siparis/kargo sorusu ise bilgilendirici ol
+- Her yaniti ayri satirda yaz, baska bir sey yazma
+- Yanit 1: ve Yanit 2: seklinde baslat`
+      }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        const text = data.insight || "";
+        const replies = text
+          .split("\n")
+          .filter((line: string) => line.match(/^Yanit \d:/i))
+          .map((line: string) => line.replace(/^Yanit \d:\s*/i, "").trim())
+          .filter((r: string) => r.length > 0);
+        setSuggestions(replies.slice(0, 2));
+      })
+      .catch(() => setSuggestions([]))
+      .finally(() => setSuggestLoading(false));
+  }, [lastCustomerMessage, contactName]);
 
   // Close canned panel on outside click
   useEffect(() => {
@@ -86,6 +130,40 @@ export default function MessageInput({ onSend, onNote }: MessageInputProps) {
 
   return (
     <div className={`border-t relative ${isNoteMode ? "border-amber-200 bg-amber-50/50" : "border-gray-100 bg-white"}`}>
+      {/* AI Suggested Replies */}
+      {!isNoteMode && !suggestDismissed && (suggestLoading || suggestions.length > 0) && (
+        <div className="px-4 pt-2 pb-1">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3 text-violet-500" />
+              <span className="text-[10px] font-medium text-violet-600">AI Yanit Onerisi</span>
+            </div>
+            <button onClick={() => setSuggestDismissed(true)} className="p-0.5 text-gray-400 hover:text-gray-600">
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+          {suggestLoading ? (
+            <div className="flex items-center gap-2 py-2">
+              <Loader2 className="h-3 w-3 animate-spin text-violet-400" />
+              <span className="text-[10px] text-gray-400">Yanit olusturuluyor...</span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => { onSend(s); setSuggestDismissed(true); }}
+                  className="group flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-200 text-xs text-violet-800 hover:bg-violet-100 hover:border-violet-300 transition-all text-left max-w-full"
+                >
+                  <span className="line-clamp-2 flex-1">{s}</span>
+                  <Send className="h-3 w-3 text-violet-400 group-hover:text-violet-600 flex-shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Canned responses popup */}
       {showCanned && filteredCanned.length > 0 && (
         <div ref={cannedRef} className="absolute bottom-full left-0 right-0 mx-4 mb-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto z-10">

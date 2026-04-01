@@ -21,11 +21,15 @@ import {
   ExternalLink,
   Truck,
   Clock,
+  Send,
+  Copy,
+  CheckCircle,
 } from "lucide-react";
 
 interface ContactPanelProps {
   conversation: Conversation;
   onUpdate: (id: number, updates: Partial<Conversation>) => void;
+  onSendMessage?: (content: string) => void;
 }
 
 const channelLabels: Record<string, { label: string; icon: React.ElementType }> = {
@@ -70,7 +74,7 @@ interface ShopifyOrder {
   fulfillments: ShopifyFulfillment[];
 }
 
-export default function ContactPanel({ conversation, onUpdate }: ContactPanelProps) {
+export default function ContactPanel({ conversation, onUpdate, onSendMessage }: ContactPanelProps) {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [showTagPicker, setShowTagPicker] = useState(false);
@@ -450,7 +454,7 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
                       </span>
                     </div>
 
-                    {/* Kargo takip bilgisi */}
+                    {/* Kargo takip bilgisi + hizli aksiyonlar */}
                     {latestFulfillment && latestFulfillment.tracking_number && (
                       <div className="mb-1.5 p-1.5 rounded bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30">
                         <div className="flex items-center gap-1 text-[10px]">
@@ -468,6 +472,30 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
                             </a>
                           )}
                         </div>
+                        {/* Hizli aksiyonlar */}
+                        {onSendMessage && (
+                          <div className="flex gap-1 mt-1.5">
+                            <button
+                              onClick={() => {
+                                const msg = `Merhaba! ${order.name} numarali siparissiniz kargoya verilmistir. 📦\n\nKargo: ${latestFulfillment.tracking_company || "Kargo"}\nTakip No: ${latestFulfillment.tracking_number}${latestFulfillment.tracking_url ? `\nTakip: ${latestFulfillment.tracking_url}` : ""}`;
+                                onSendMessage(msg);
+                              }}
+                              className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-600 text-white text-[9px] font-medium hover:bg-blue-700 transition-colors"
+                            >
+                              <Send className="h-2.5 w-2.5" />
+                              Takip Bilgisi Gonder
+                            </button>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(latestFulfillment.tracking_number || "");
+                              }}
+                              className="flex items-center gap-1 px-2 py-1 rounded-md bg-gray-200 text-gray-700 text-[9px] font-medium hover:bg-gray-300 transition-colors"
+                            >
+                              <Copy className="h-2.5 w-2.5" />
+                              Kopyala
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -478,6 +506,18 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
                           <Clock className="h-3 w-3 flex-shrink-0" />
                           Siparis hazirlaniyor, henuz kargoya verilmedi
                         </p>
+                        {onSendMessage && (
+                          <button
+                            onClick={() => {
+                              const msg = `Merhaba! ${order.name} numarali siparissiniz hazirlanmaktadir. Kargoya verildikten sonra takip bilginizi paylasacagiz. Tesekkurler! 🙏`;
+                              onSendMessage(msg);
+                            }}
+                            className="flex items-center gap-1 mt-1.5 px-2 py-1 rounded-md bg-amber-500 text-white text-[9px] font-medium hover:bg-amber-600 transition-colors"
+                          >
+                            <Send className="h-2.5 w-2.5" />
+                            Hazirlaniyor Bilgisi Gonder
+                          </button>
+                        )}
                       </div>
                     )}
 

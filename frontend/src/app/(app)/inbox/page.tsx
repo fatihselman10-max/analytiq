@@ -284,7 +284,14 @@ export default function InboxPage() {
 
             {/* Input */}
             <div className="mb-14 lg:mb-0">
-              <MessageInput onSend={handleSend} onNote={handleNote} />
+              <MessageInput
+                onSend={handleSend}
+                onNote={handleNote}
+                lastCustomerMessage={
+                  [...activeMessages].reverse().find((m: any) => m.sender_type === "contact")?.content
+                }
+                contactName={activeConversation.contact?.name}
+              />
             </div>
           </>
         ) : (
@@ -306,6 +313,7 @@ export default function InboxPage() {
             <ContactPanel
               conversation={activeConversation}
               onUpdate={handleUpdate}
+              onSendMessage={handleSend}
             />
           </div>
           {/* Mobile overlay */}

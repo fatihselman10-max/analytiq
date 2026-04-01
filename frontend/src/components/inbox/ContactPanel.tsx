@@ -75,17 +75,23 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
     tagsAPI.list().then((res) => setAllTags(res.data?.tags || [])).catch(() => {});
   }, []);
 
-  // Fetch Shopify orders by contact email or name
+  // Fetch Shopify orders by contact name, email, or phone
   useEffect(() => {
-    const email = conversation.contact?.email;
-    if (!email) { setOrders([]); return; }
+    const contact = conversation.contact;
+    if (!contact) { setOrders([]); return; }
+    const params = new URLSearchParams({ action: "customer-orders" });
+    if (contact.email) params.set("email", contact.email);
+    if (contact.name) params.set("name", contact.name);
+    if (contact.phone) params.set("phone", contact.phone);
+    // En az bir parametre olmalı
+    if (!contact.email && !contact.name && !contact.phone) { setOrders([]); return; }
     setOrdersLoading(true);
-    fetch(`/api/shopify?action=customer-orders&email=${encodeURIComponent(email)}`)
+    fetch(`/api/shopify?${params.toString()}`)
       .then(r => r.json())
       .then(data => setOrders(data.orders || []))
       .catch(() => setOrders([]))
       .finally(() => setOrdersLoading(false));
-  }, [conversation.contact?.email]);
+  }, [conversation.contact?.email, conversation.contact?.name, conversation.contact?.phone]);
 
   const contact = conversation.contact;
   const channel = channelLabels[conversation.channel_type || "web"] || channelLabels.web;
@@ -370,7 +376,7 @@ export default function ContactPanel({ conversation, onUpdate }: ContactPanelPro
             </div>
           ) : orders.length === 0 ? (
             <p className="text-[11px] text-gray-400 text-center py-2">
-              {conversation.contact?.email ? "Siparis bulunamadi" : "E-posta adresi yok"}
+              Shopify&apos;da eslesme bulunamadi
             </p>
           ) : (
             <div className="space-y-2">

@@ -102,9 +102,46 @@ export async function GET(req: NextRequest) {
 
     if (action === "customer-orders") {
       const email = searchParams.get("email");
-      if (!email) return NextResponse.json({ error: "email required" }, { status: 400 });
-      const data = await shopifyFetch(`orders.json?email=${encodeURIComponent(email)}&status=any&limit=10`);
-      return NextResponse.json(data);
+      const name = searchParams.get("name");
+      const phone = searchParams.get("phone");
+
+      let orders: any[] = [];
+
+      // 1. Email ile ara (en güvenilir eşleşme)
+      if (email) {
+        const data = await shopifyFetch(`orders.json?email=${encodeURIComponent(email)}&status=any&limit=10`);
+        orders = data.orders || [];
+      }
+
+      // 2. Email yoksa veya sonuç boşsa, müşteri adıyla Shopify customer search
+      if (orders.length === 0 && name) {
+        try {
+          const cleanName = name.trim();
+          const searchData = await shopifyFetch(`customers/search.json?query=${encodeURIComponent(cleanName)}&limit=5`);
+          const customers = searchData.customers || [];
+          if (customers.length > 0) {
+            // İlk eşleşen müşterinin siparişlerini getir
+            const custId = customers[0].id;
+            const ordData = await shopifyFetch(`customers/${custId}/orders.json?status=any&limit=10`);
+            orders = ordData.orders || [];
+          }
+        } catch { /* customer search failed, continue */ }
+      }
+
+      // 3. Telefon ile ara
+      if (orders.length === 0 && phone) {
+        try {
+          const searchData = await shopifyFetch(`customers/search.json?query=phone:${encodeURIComponent(phone)}&limit=3`);
+          const customers = searchData.customers || [];
+          if (customers.length > 0) {
+            const custId = customers[0].id;
+            const ordData = await shopifyFetch(`customers/${custId}/orders.json?status=any&limit=10`);
+            orders = ordData.orders || [];
+          }
+        } catch { /* phone search failed */ }
+      }
+
+      return NextResponse.json({ orders });
     }
 
     if (action === "refunds") {

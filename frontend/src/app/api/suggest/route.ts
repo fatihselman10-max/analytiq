@@ -23,9 +23,9 @@ export async function POST(req: NextRequest) {
 
     // 1. Konuşmadan sipariş numaralarını çıkar (#1234 veya 1234 formatı)
     const allText = messages.map((m: any) => m.content).join(" ");
-    const orderNumbers = [...new Set(
+    const orderNumbers = Array.from(new Set(
       (allText.match(/#?\d{4,6}/g) || []).map((n: string) => n.replace("#", ""))
-    )];
+    ));
 
     // 2. Müşterinin Shopify siparişlerini çek (isim/email/telefon ile)
     let customerOrders: any[] = [];

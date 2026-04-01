@@ -21,9 +21,11 @@ interface MessageInputProps {
   onNote: (content: string) => void;
   conversationMessages?: ConversationMessage[];
   contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
 }
 
-export default function MessageInput({ onSend, onNote, conversationMessages, contactName }: MessageInputProps) {
+export default function MessageInput({ onSend, onNote, conversationMessages, contactName, contactEmail, contactPhone }: MessageInputProps) {
   const [content, setContent] = useState("");
   const [isNoteMode, setIsNoteMode] = useState(false);
   const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
@@ -45,7 +47,7 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
     }).catch(() => {});
   }, []);
 
-  // Generate AI suggestions based on full conversation context
+  // Generate AI suggestions via dedicated fast endpoint
   useEffect(() => {
     const msgs = conversationMessages || [];
     const lastCustomerMsg = [...msgs].reverse().find(m => m.sender_type === "contact");
@@ -57,54 +59,21 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
     setSuggestLoading(true);
     setSuggestions([]);
 
-    // Son 8 mesaji konusma gecmisi olarak hazirla
-    const history = msgs.slice(-8).map(m => {
-      const role = m.sender_type === "contact" ? "Musteri" : "Temsilci";
-      return `${role}: ${m.content}`;
-    }).join("\n");
-
-    fetch("/api/shopify", {
+    fetch("/api/suggest", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat: `Asagida bir musteri destek konusmasi var. Sen LessandRomance musteri hizmetleri temsilcisisin.
-
-KONUSMA GECMISI:
-${history}
-
-MARKA BILGISI:
-- LessandRomance: Kadin giyim markasi
-- Urunlerin cogu on siparis (preorder) ile satilir, teslimat 14-21 is gunu
-- Iade/degisim: 14 gun icinde, etiketi sokukmemis urunler kabul edilir
-- Kargo: Ucretsiz kargo 500 TL ustu, standart 49.90 TL
-- Musteri memnuniyeti onceliklidir
-
-GOREV:
-Musterinin SON mesajina uygun 2 yanit onerisi uret.
-- Musterinin duygusal tonunu oku (kizgin mi, merakli mi, sikayetci mi, mutlu mu)
-- Kizgin/sikayetci musteriye empati goster, ozur dile, cozum sun
-- Soru sorana net bilgi ver
-- Genel mesaja samimi ama kisa yanit ver
-- Her yanit max 2-3 cumle
-- Sadece asagidaki formatta yaz, baska hicbir sey yazma:
-
-Yanit 1: [yanit metni]
-Yanit 2: [yanit metni]`
+        messages: msgs.slice(-10),
+        contactName,
+        contactEmail,
+        contactPhone,
       }),
     })
       .then(r => r.json())
-      .then(data => {
-        const text = data.insight || "";
-        const replies = text
-          .split("\n")
-          .filter((line: string) => line.match(/^Yanit \d:/i))
-          .map((line: string) => line.replace(/^Yanit \d:\s*/i, "").trim())
-          .filter((r: string) => r.length > 0);
-        setSuggestions(replies.slice(0, 2));
-      })
+      .then(data => setSuggestions(data.suggestions || []))
       .catch(() => setSuggestions([]))
       .finally(() => setSuggestLoading(false));
-  }, [conversationMessages, contactName]);
+  }, [conversationMessages, contactName, contactEmail, contactPhone]);
 
   // Close canned panel on outside click
   useEffect(() => {

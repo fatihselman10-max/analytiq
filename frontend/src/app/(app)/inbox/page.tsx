@@ -289,6 +289,8 @@ export default function InboxPage() {
                 onNote={handleNote}
                 conversationMessages={activeMessages}
                 contactName={activeConversation.contact?.name}
+                contactEmail={activeConversation.contact?.email}
+                contactPhone={activeConversation.contact?.phone}
               />
             </div>
           </>

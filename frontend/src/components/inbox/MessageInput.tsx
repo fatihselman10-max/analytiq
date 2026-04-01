@@ -86,13 +86,14 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showCanned]);
 
-  // Detect / shortcut trigger
+  // Detect / shortcut trigger (secondary, for power users)
   useEffect(() => {
     if (content.startsWith("/") && !isNoteMode) {
       setCannedFilter(content.slice(1).toLowerCase());
       if (cannedResponses.length > 0) setShowCanned(true);
-    } else {
-      setShowCanned(false);
+    } else if (content.startsWith("/") === false && cannedFilter !== "") {
+      // Only close if it was opened by typing /
+      setCannedFilter("");
     }
   }, [content, isNoteMode, cannedResponses.length]);
 
@@ -190,46 +191,64 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
       )}
 
       {/* Canned responses popup - kategorili */}
-      {showCanned && filteredCanned.length > 0 && (
-        <div ref={cannedRef} className="absolute bottom-full left-0 right-0 mx-4 mb-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-y-auto z-10">
-          <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 sticky top-0 bg-white z-10">
+      {showCanned && (
+        <div ref={cannedRef} className="absolute bottom-full left-0 right-0 mx-4 mb-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-80 overflow-hidden z-10 flex flex-col">
+          <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 flex-shrink-0">
             <Zap className="h-3.5 w-3.5 text-amber-500" />
-            <span className="text-xs font-medium text-gray-500">Hazir Yanitlar</span>
-            <span className="text-[10px] text-gray-400 ml-auto">{filteredCanned.length} sonuc</span>
+            <input
+              type="text"
+              value={cannedFilter}
+              onChange={e => setCannedFilter(e.target.value.toLowerCase())}
+              placeholder="Sablon ara..."
+              className="flex-1 text-xs bg-transparent outline-none placeholder-gray-400"
+              autoFocus
+            />
+            <span className="text-[10px] text-gray-400">{filteredCanned.length}</span>
+            <button onClick={() => setShowCanned(false)} className="p-0.5 text-gray-400 hover:text-gray-600">
+              <X className="h-3 w-3" />
+            </button>
           </div>
-          {Object.entries(groupedCanned).map(([cat, items]) => {
-            const catInfo = CATEGORIES[cat] || { label: "Genel", color: "bg-gray-100 text-gray-600" };
-            return (
-              <div key={cat}>
-                <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 sticky top-[33px] z-[5]">
-                  <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${catInfo.color}`}>
-                    {catInfo.label}
-                  </span>
-                </div>
-                {items.map((cr) => (
-                  <div key={cr.id} className="flex items-center border-b border-gray-50 last:border-0 hover:bg-blue-50 transition-colors">
-                    <button
-                      onClick={() => selectCanned(cr)}
-                      className="flex-1 text-left px-3 py-2 min-w-0"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">/{cr.shortcut}</span>
-                        <span className="text-xs font-medium text-gray-700 truncate">{cr.title}</span>
+          <div className="overflow-y-auto flex-1">
+            {filteredCanned.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-4">Sonuc bulunamadi</p>
+            ) : (
+              <>
+                {Object.entries(groupedCanned).map(([cat, items]) => {
+                  const catInfo = CATEGORIES[cat] || { label: "Genel", color: "bg-gray-100 text-gray-600" };
+                  return (
+                    <div key={cat}>
+                      <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 sticky top-0">
+                        <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${catInfo.color}`}>
+                          {catInfo.label}
+                        </span>
                       </div>
-                      <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-1">{cr.content}</p>
-                    </button>
-                    <button
-                      onClick={() => sendCannedDirect(cr)}
-                      className="px-3 py-2 text-gray-300 hover:text-blue-600 hover:bg-blue-100 rounded-lg mr-1 flex-shrink-0 transition-colors"
-                      title="Direkt gonder"
-                    >
-                      <Send className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            );
-          })}
+                      {items.map((cr) => (
+                        <div key={cr.id} className="flex items-center border-b border-gray-50 last:border-0 hover:bg-blue-50 transition-colors">
+                          <button
+                            onClick={() => selectCanned(cr)}
+                            className="flex-1 text-left px-3 py-2 min-w-0"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">/{cr.shortcut}</span>
+                              <span className="text-xs font-medium text-gray-700 truncate">{cr.title}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-1">{cr.content}</p>
+                          </button>
+                          <button
+                            onClick={() => sendCannedDirect(cr)}
+                            className="px-3 py-2 text-gray-300 hover:text-blue-600 hover:bg-blue-100 rounded-lg mr-1 flex-shrink-0 transition-colors"
+                            title="Direkt gonder"
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -237,12 +256,12 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
         <button onClick={() => setIsNoteMode(false)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
             !isNoteMode ? "bg-blue-100 text-blue-700" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}>
-          <MessageSquare className="h-3.5 w-3.5" /> Yanıt
+          <MessageSquare className="h-3.5 w-3.5" /> Yanit
         </button>
         <button onClick={() => setIsNoteMode(true)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
             isNoteMode ? "bg-amber-200 text-amber-800" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}>
-          <StickyNote className="h-3.5 w-3.5" /> Dahili Not
+          <StickyNote className="h-3.5 w-3.5" /> Not
         </button>
         {!isNoteMode && cannedResponses.length > 0 && (
           <button
@@ -250,7 +269,7 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               showCanned ? "bg-amber-100 text-amber-700" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
           >
-            <Zap className="h-3.5 w-3.5" /> Hazır Yanıt
+            <Zap className="h-3.5 w-3.5" /> Sablonlar
           </button>
         )}
       </div>

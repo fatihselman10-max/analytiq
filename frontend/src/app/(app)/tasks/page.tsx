@@ -29,21 +29,13 @@ type Task = {
 
 const DEPARTMENTS = [
   { key: "all", label: "Tümü", icon: Users, color: "text-gray-600" },
-  { key: "creative", label: "Kreatif", icon: Palette, color: "text-pink-600" },
-  { key: "content", label: "Content", icon: FileText, color: "text-violet-600" },
-  { key: "operations", label: "Operasyon", icon: Truck, color: "text-blue-600" },
   { key: "support", label: "Müşteri Destek", icon: Headphones, color: "text-emerald-600" },
-  { key: "marketing", label: "Pazarlama", icon: Megaphone, color: "text-orange-600" },
-  { key: "tech", label: "Teknik", icon: Code, color: "text-cyan-600" },
+  { key: "operations", label: "Operasyon", icon: Truck, color: "text-blue-600" },
 ];
 
 const DEPARTMENT_COLORS: Record<string, string> = {
-  creative: "bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300",
-  content: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
-  operations: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
   support: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
-  marketing: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
-  tech: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
+  operations: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
 };
 
 const PRIORITY_CONFIG: Record<Priority, { color: string; label: string; bg: string }> = {

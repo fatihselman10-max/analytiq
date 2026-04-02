@@ -3,12 +3,11 @@
 import { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/auth";
 import {
-  TrendingUp, DollarSign, ShoppingCart, Package,
-  ArrowUpRight, ArrowDownRight, BarChart3, CreditCard,
-  Eye, Target, Truck, Loader2, RefreshCw, Globe,
-  CheckCircle, Clock, AlertCircle, Users, MousePointer,
-  Smartphone, Monitor, Search, Instagram, Facebook,
-  MessageSquare, Inbox, Bot, Mail,
+  ShoppingCart, Package,
+  ArrowUpRight, BarChart3, CreditCard,
+  Target, Truck, Loader2,
+  CheckCircle, Clock, AlertCircle, Users,
+  Search, MessageSquare, Inbox,
 } from "lucide-react";
 import { reportsAPI } from "@/lib/api";
 
@@ -38,30 +37,15 @@ const paymentStatusColors: Record<string, { label: string; color: string }> = {
   voided: { label: "İptal", color: "text-gray-500" },
 };
 
-type SiteAnalytics = {
-  visitors: number;
-  sessions: number;
-  convertedSessions: number;
-  conversionRate: number;
-  visitorsChange: string;
-  sessionsChange: string;
-  conversionChange: string;
-  daily: { day: string; visitors: number; sessions: number }[];
-  trafficSources: { source: string; visitors: number; pct: number; color: string }[];
-  devices: { device: string; pct: number; color: string }[];
-};
-
-type TabKey = "overview" | "crm" | "ads" | "traffic" | "orders" | "returns";
+type TabKey = "crm" | "orders" | "returns";
 
 export default function SalesPage() {
   const { organization } = useAuthStore();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabKey>("overview");
+  const [activeTab, setActiveTab] = useState<TabKey>("crm");
   const [orders, setOrders] = useState<ShopifyOrder[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [crmData, setCrmData] = useState<any>(null);
-  const [metaAds, setMetaAds] = useState<any>(null);
-  const [siteAnalytics, setSiteAnalytics] = useState<SiteAnalytics | null>(null);
   const [crmMessages, setCrmMessages] = useState<any>(null);
   const [crmAgents, setCrmAgents] = useState<any[]>([]);
   const [crmChannels, setCrmChannels] = useState<any[]>([]);
@@ -70,11 +54,6 @@ export default function SalesPage() {
   const [refundOrders, setRefundOrders] = useState<any[]>([]);
   const [orderSearch, setOrderSearch] = useState("");
   const [returnSearch, setReturnSearch] = useState("");
-
-  const periodToMeta: Record<string, string> = {
-    today: "today", yesterday: "yesterday", "7d": "last_7d", "30d": "last_30d",
-    "90d": "last_90d", "180d": "last_180d", "365d": "last_year",
-  };
 
   const periodToDays: Record<string, number> = {
     today: 1, yesterday: 1, "7d": 7, "30d": 30, "90d": 90, "180d": 180, "365d": 365,
@@ -95,30 +74,26 @@ export default function SalesPage() {
 
     // Fase 1: Siparis + stats + analytics paralel
     try {
-      const [statsRes, ordersRes, analyticsRes] = await Promise.all([
+      const [statsRes, ordersRes] = await Promise.all([
         fetch("/api/shopify?action=stats").then(r => r.json()).catch(() => null),
         fetch(`/api/shopify?action=orders&limit=250&created_at_min=${encodeURIComponent(dateMin)}`).then(r => r.json()).catch(() => ({ orders: [] })),
-        fetch(`/api/shopify?action=analytics&days=${days}`).then(r => r.json()).catch(() => null),
       ]);
       setStats(statsRes);
       setOrders(ordersRes.orders || []);
-      if (analyticsRes && !analyticsRes.error) setSiteAnalytics(analyticsRes);
     } catch {}
     setLoading(false);
     setRefreshing(false);
 
     // Fase 2: CRM + reklam + iadeler arka planda
     try {
-      const [crmRes, metaRes, refundsRes, messagesRes, agentsRes, channelsRes] = await Promise.all([
+      const [crmRes, refundsRes, messagesRes, agentsRes, channelsRes] = await Promise.all([
         reportsAPI.overview(crmPeriod).catch(() => ({ data: null })),
-        fetch(`/api/shopify?action=meta-ads&date_preset=${periodToMeta[period] || "last_30d"}`).then(r => r.json()).catch(() => null),
         fetch("/api/shopify?action=refunds").then(r => r.json()).catch(() => ({ orders: [] })),
         reportsAPI.messages(crmPeriod).catch(() => ({ data: null })),
         reportsAPI.agents(crmPeriod).catch(() => ({ data: null })),
         reportsAPI.channels(crmPeriod).catch(() => ({ data: null })),
       ]);
       setCrmData(crmRes.data);
-      setMetaAds(metaRes);
       setRefundOrders(refundsRes.orders || []);
       setCrmMessages(messagesRes.data);
       setCrmAgents(agentsRes.data?.agents || []);
@@ -137,24 +112,16 @@ export default function SalesPage() {
   const periodStart = new Date(Date.now() - (periodToDays[period] || 30) * 86400000);
   // Orders zaten period'a gore cekildi, dogrudan kullan
   const filteredOrders = orders;
-  // Analytics API varsa onu kullan (daha dogru, tum siparisleri kapsar)
-  const periodRevenue = siteAnalytics?.daily
-    ? siteAnalytics.daily.reduce((s: number, d: any) => s + (d.revenue || 0), 0)
-    : filteredOrders.reduce((s, o) => s + parseFloat(o.total_price), 0);
-  const periodOrderCount = siteAnalytics?.convertedSessions || filteredOrders.length;
-  const avgOrder = periodOrderCount > 0 ? periodRevenue / periodOrderCount : 0;
-  const unfulfilledCount = filteredOrders.filter(o => !o.fulfillment_status || o.fulfillment_status === "unfulfilled").length;
   const periodLabels: Record<string, string> = { today: "Bugün", yesterday: "Dün", "7d": "7 Gün", "30d": "30 Gün", "90d": "3 Ay", "180d": "6 Ay", "365d": "1 Yıl" };
-  const site = siteAnalytics;
 
   return (
     <div className="p-4 lg:p-8 space-y-6 animate-fade-in">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">Mağaza Analizi</h1>
+          <h1 className="text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">Müşteri Analizi</h1>
           <p className="text-sm text-gray-500 mt-1 flex items-center gap-1.5">
             <CheckCircle className="h-3.5 w-3.5 text-green-500" />
-            {stats?.shop?.name || "Mağaza"} - Shopify + Site Analitik
+            Müşteri iletişim analizi ve sipariş takibi
             {refreshing && <Loader2 className="h-3 w-3 animate-spin text-blue-500 ml-2" />}
           </p>
         </div>
@@ -176,10 +143,7 @@ export default function SalesPage() {
           </div>
         <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1 overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-1">
           {([
-            { key: "overview" as TabKey, label: "Genel" },
-            { key: "crm" as TabKey, label: "CRM" },
-            { key: "ads" as TabKey, label: "Reklam" },
-            { key: "traffic" as TabKey, label: "Trafik" },
+            { key: "crm" as TabKey, label: "Genel" },
             { key: "orders" as TabKey, label: "Siparişler" },
             { key: "returns" as TabKey, label: "İadeler" },
           ]).map(tab => (
@@ -191,94 +155,6 @@ export default function SalesPage() {
         </div>
         </div>
       </div>
-
-      {/* ==================== GENEL BAKIŞ ==================== */}
-      {activeTab === "overview" && (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-            <div className="card p-4">
-              <div className="flex items-center gap-2 mb-1"><TrendingUp className="h-4 w-4 text-emerald-500" /><span className="text-[10px] text-gray-500">{periodLabels[period]} Ciro</span></div>
-              <p className="text-lg font-bold text-gray-900 dark:text-white">{periodRevenue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</p>
-              <p className="text-[10px] text-emerald-600 flex items-center gap-0.5"><ArrowUpRight className="h-3 w-3" />{periodOrderCount} sipariş</p>
-            </div>
-            <div className="card p-4">
-              <div className="flex items-center gap-2 mb-1"><Users className="h-4 w-4 text-blue-500" /><span className="text-[10px] text-gray-500">Müşteri</span></div>
-              <p className="text-lg font-bold text-gray-900 dark:text-white">{(site?.visitors || 0).toLocaleString("tr-TR")}</p>
-              <p className="text-[10px] text-emerald-600 flex items-center gap-0.5"><ArrowUpRight className="h-3 w-3" />{site?.visitorsChange || "-"}</p>
-            </div>
-            <div className="card p-4">
-              <div className="flex items-center gap-2 mb-1"><Target className="h-4 w-4 text-violet-500" /><span className="text-[10px] text-gray-500">Dönüşüm</span></div>
-              <p className="text-lg font-bold text-gray-900 dark:text-white">%{site?.conversionRate || 0}</p>
-              <p className="text-[10px] text-emerald-600 flex items-center gap-0.5"><ArrowUpRight className="h-3 w-3" />{site?.conversionChange || "-"}</p>
-            </div>
-            <div className="card p-4">
-              <div className="flex items-center gap-2 mb-1"><ShoppingCart className="h-4 w-4 text-amber-500" /><span className="text-[10px] text-gray-500">Ort. Sepet</span></div>
-              <p className="text-lg font-bold text-gray-900 dark:text-white">{avgOrder.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</p>
-            </div>
-            <div className="card p-4">
-              <div className="flex items-center gap-2 mb-1"><Truck className="h-4 w-4 text-orange-500" /><span className="text-[10px] text-gray-500">Bekleyen Kargo</span></div>
-              <p className="text-lg font-bold text-orange-600">{unfulfilledCount}</p>
-            </div>
-            <div className="card p-4">
-              <div className="flex items-center gap-2 mb-1"><MousePointer className="h-4 w-4 text-orange-500" /><span className="text-[10px] text-gray-500">Terk Edilen Sepet</span></div>
-              <p className="text-lg font-bold text-orange-600">{((site as any)?.abandonedCheckouts || 0).toLocaleString("tr-TR")}</p>
-              <p className="text-[10px] text-gray-400">ödeme başlatıp tamamlamayan</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Trafik Kaynakları */}
-            <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <Globe className="h-4 w-4 text-blue-500" /> Trafik Kaynakları
-              </h3>
-              <div className="space-y-3">
-                {(site?.trafficSources || []).map(s => (
-                  <div key={s.source} className="flex items-center gap-3">
-                    <div className={`w-2.5 h-2.5 rounded-full ${s.color}`} />
-                    <span className="text-xs font-medium text-gray-700 dark:text-slate-300 w-24">{s.source}</span>
-                    <div className="flex-1 h-2 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${s.color}`} style={{ width: `${s.pct}%` }} />
-                    </div>
-                    <span className="text-xs text-gray-500 w-14 text-right">{s.visitors.toLocaleString("tr-TR")}</span>
-                    <span className="text-[10px] text-gray-400 w-10 text-right">%{s.pct}</span>
-                  </div>
-                ))}
-                {(!site?.trafficSources || site.trafficSources.length === 0) && (
-                  <p className="text-xs text-gray-400 text-center py-4">Trafik verisi yüklenemedi</p>
-                )}
-              </div>
-            </div>
-
-            {/* Günlük Sipariş Trendi */}
-            <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-indigo-500" /> Günlük Sipariş Trendi
-              </h3>
-              <div className="space-y-1.5">
-                {(() => {
-                  const daily = site?.daily || [];
-                  const maxV = Math.max(...daily.map((d: any) => d.visitors || 0), 1);
-                  const recentDays = daily.slice(-14);
-                  return recentDays.map((d: any, i: number) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-[10px] text-gray-400 w-16 text-right font-mono">{d.day?.slice(5) || ""}</span>
-                      <div className="flex-1 h-3 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${((d.visitors || 0) / maxV) * 100}%` }} />
-                      </div>
-                      <span className="text-[10px] font-medium text-gray-700 dark:text-slate-300 w-12 text-right">{(d.visitors || 0).toLocaleString("tr-TR")}</span>
-                    </div>
-                  ));
-                })()}
-                {(!site?.daily || site.daily.length === 0) && (
-                  <p className="text-xs text-gray-400 text-center py-4">Günlük veri yüklenemedi</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-        </>
-      )}
 
       {/* ==================== CRM RAPORU ==================== */}
       {activeTab === "crm" && (() => {
@@ -535,254 +411,6 @@ export default function SalesPage() {
         </>
         );
       })()}
-
-      {/* ==================== SİTE TRAFİĞİ ==================== */}
-      {activeTab === "traffic" && (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="card p-4">
-              <span className="text-[10px] text-gray-500">Tekil Müşteri</span>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">{(site?.visitors || 0).toLocaleString("tr-TR")}</p>
-              <p className="text-[10px] text-emerald-600">{site?.visitorsChange || "-"} önceki döneme göre</p>
-            </div>
-            <div className="card p-4">
-              <span className="text-[10px] text-gray-500">Terk Edilen Sepet</span>
-              <p className="text-xl font-bold text-orange-600">{((site as any)?.abandonedCheckouts || 0).toLocaleString("tr-TR")}</p>
-              <p className="text-[10px] text-gray-400">ödeme başlatıp bırakanlar</p>
-            </div>
-            <div className="card p-4">
-              <span className="text-[10px] text-gray-500">Dönüşüm Oranı</span>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">%{site?.conversionRate || 0}</p>
-              <p className="text-[10px] text-emerald-600">{site?.conversionChange || "-"}</p>
-            </div>
-            <div className="card p-4">
-              <span className="text-[10px] text-gray-500">Dönüşen Oturum</span>
-              <p className="text-xl font-bold text-emerald-600">{(site?.convertedSessions || 0).toLocaleString("tr-TR")}</p>
-              <p className="text-[10px] text-gray-400">satışa dönüşen oturum</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Trafik Kaynağı Detayı</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead><tr className="border-b border-gray-100 dark:border-slate-700">
-                    <th className="text-left py-2 font-medium text-gray-500">Kaynak</th>
-                    <th className="text-right py-2 font-medium text-gray-500">Ziyaretçi</th>
-                    <th className="text-right py-2 font-medium text-gray-500">Oran</th>
-                  </tr></thead>
-                  <tbody>
-                    {(site?.trafficSources || []).map(s => (
-                      <tr key={s.source} className="border-b border-gray-50 dark:border-slate-800">
-                        <td className="py-2.5 font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${s.color}`} />{s.source}
-                        </td>
-                        <td className="py-2.5 text-right text-gray-600">{s.visitors.toLocaleString("tr-TR")}</td>
-                        <td className="py-2.5 text-right font-medium text-gray-600">%{s.pct}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Günlük Sipariş Trendi */}
-            <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Günlük Sipariş</h3>
-              <div className="space-y-1.5 max-h-80 overflow-y-auto">
-                {(() => {
-                  const daily = site?.daily || [];
-                  const maxV = Math.max(...daily.map((d: any) => d.visitors || 0), 1);
-                  return daily.map((d: any, i: number) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-[10px] text-gray-400 w-16 text-right font-mono">{d.day?.slice(5) || ""}</span>
-                      <div className="flex-1 h-3 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full bg-blue-500" style={{ width: `${((d.visitors || 0) / maxV) * 100}%` }} />
-                      </div>
-                      <span className="text-[10px] font-medium text-gray-700 dark:text-slate-300 w-12 text-right">{(d.visitors || 0).toLocaleString("tr-TR")}</span>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ==================== REKLAM ==================== */}
-      {activeTab === "ads" && (
-        <>
-          {metaAds?.error ? (
-            <div className="card p-6 border-l-4 border-l-red-400 text-center">
-              <AlertCircle className="h-8 w-8 text-red-400 mx-auto mb-2" />
-              <p className="text-sm font-medium text-gray-700">Meta Reklam Verisi Alinamiyor</p>
-              <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">{metaAds.error.includes("access token") ? "Access token suresi dolmus. Meta Business Suite'ten yeni token alinmali." : metaAds.error}</p>
-            </div>
-          ) : metaAds ? (
-            <>
-              {/* Meta Ads - Canlı Veri */}
-              <div className="card p-5 border-l-4 border-l-pink-500">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Instagram className="h-5 w-5 text-pink-500" />
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">Meta Reklamları</h3>
-                    <span className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 rounded-full font-semibold flex items-center gap-1">
-                      <CheckCircle className="h-3 w-3" /> Canlı Veri
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-gray-400">{metaAds.dateStart} → {metaAds.dateEnd}</span>
-                </div>
-
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800">
-                    <p className="text-[10px] text-gray-400">Harcama</p>
-                    <p className="text-lg font-bold text-gray-900 dark:text-white">{Math.round(metaAds.spend).toLocaleString("tr-TR")} TL</p>
-                  </div>
-                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800">
-                    <p className="text-[10px] text-gray-400">Gösterim</p>
-                    <p className="text-lg font-bold text-gray-900 dark:text-white">{metaAds.impressions.toLocaleString("tr-TR")}</p>
-                  </div>
-                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800">
-                    <p className="text-[10px] text-gray-400">Tıklama</p>
-                    <p className="text-lg font-bold text-gray-900 dark:text-white">{metaAds.clicks.toLocaleString("tr-TR")}</p>
-                    <p className="text-[10px] text-gray-400">CTR: %{metaAds.ctr.toFixed(2)}</p>
-                  </div>
-                  <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/20">
-                    <p className="text-[10px] text-gray-400">Satın Alma</p>
-                    <p className="text-lg font-bold text-emerald-600">{metaAds.purchases}</p>
-                    <p className="text-[10px] text-gray-400">CPC: {metaAds.cpc.toFixed(2)} TL</p>
-                  </div>
-                </div>
-
-                {/* Dönüşüm Hunisi */}
-                <div className="mb-4">
-                  <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Dönüşüm Hunisi</h4>
-                  <div className="space-y-1.5">
-                    {[
-                      { label: "Gösterim", value: metaAds.impressions, color: "bg-gray-400" },
-                      { label: "Link Tıklama", value: metaAds.linkClicks, color: "bg-blue-400" },
-                      { label: "İçerik Görüntüleme", value: metaAds.viewContent, color: "bg-indigo-400" },
-                      { label: "Sepete Ekleme", value: metaAds.addToCart, color: "bg-violet-400" },
-                      { label: "Ödeme Başlatma", value: metaAds.initiateCheckout, color: "bg-purple-400" },
-                      { label: "Satın Alma", value: metaAds.purchases, color: "bg-emerald-500" },
-                    ].map((step, i) => {
-                      const maxVal = metaAds.impressions || 1;
-                      const pct = Math.max(1, (step.value / maxVal) * 100);
-                      const prevVal = i > 0 ? [metaAds.impressions, metaAds.linkClicks, metaAds.viewContent, metaAds.addToCart, metaAds.initiateCheckout, metaAds.purchases][i - 1] : 0;
-                      const dropoff = i > 0 && prevVal > 0 ? Math.round(((prevVal - step.value) / prevVal) * 100) : 0;
-                      return (
-                        <div key={step.label} className="flex items-center gap-2">
-                          <span className="text-[10px] text-gray-500 w-28 text-right">{step.label}</span>
-                          <div className="flex-1 h-3 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${step.color} transition-all`} style={{ width: `${pct}%` }} />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 dark:text-slate-300 w-16 text-right">{step.value.toLocaleString("tr-TR")}</span>
-                          {dropoff > 0 && <span className="text-[9px] text-red-400 w-10">-{dropoff}%</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Ek Metrikler */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="p-2.5 rounded-lg bg-pink-50 dark:bg-pink-950/20 text-center">
-                    <p className="text-sm font-bold text-pink-600">{metaAds.videoViews.toLocaleString("tr-TR")}</p>
-                    <p className="text-[9px] text-gray-500">Video İzleme</p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/20 text-center">
-                    <p className="text-sm font-bold text-blue-600">{metaAds.postEngagement.toLocaleString("tr-TR")}</p>
-                    <p className="text-[9px] text-gray-500">Etkileşim</p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-violet-50 dark:bg-violet-950/20 text-center">
-                    <p className="text-sm font-bold text-violet-600">{metaAds.messaging}</p>
-                    <p className="text-[9px] text-gray-500">Mesaj Başlatma</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Performans Özeti - Gerçek ROAS */}
-              <div className="card p-5">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Performans Özeti</h3>
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                  <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-800 text-center">
-                    <p className="text-[10px] text-gray-500">ROAS</p>
-                    <p className="text-2xl font-bold text-emerald-600">{metaAds.roas ? metaAds.roas.toFixed(2) : "-"}x</p>
-                    <p className="text-[9px] text-gray-400">Meta pixel verisi</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 text-center">
-                    <p className="text-[10px] text-gray-500">Dönüşüm Cirosu</p>
-                    <p className="text-xl font-bold text-blue-600">{metaAds.purchaseValue ? Math.round(metaAds.purchaseValue).toLocaleString("tr-TR") : "-"} TL</p>
-                    <p className="text-[9px] text-gray-400">Reklam kaynaklı satış</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800 text-center">
-                    <p className="text-[10px] text-gray-500">Müşteri Edinme</p>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">{metaAds.costPerPurchase ? Math.round(metaAds.costPerPurchase).toLocaleString("tr-TR") : metaAds.purchases > 0 ? Math.round(metaAds.spend / metaAds.purchases).toLocaleString("tr-TR") : "-"} TL</p>
-                    <p className="text-[9px] text-gray-400">Satış başına maliyet</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800 text-center">
-                    <p className="text-[10px] text-gray-500">Sepet Dönüşüm</p>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">{metaAds.addToCart > 0 ? ((metaAds.purchases / metaAds.addToCart) * 100).toFixed(1) : "-"}%</p>
-                    <p className="text-[9px] text-gray-400">Sepet → Satın Alma</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800 text-center">
-                    <p className="text-[10px] text-gray-500">Tıklama → Sepet</p>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">{metaAds.linkClicks > 0 ? ((metaAds.addToCart / metaAds.linkClicks) * 100).toFixed(1) : "-"}%</p>
-                    <p className="text-[9px] text-gray-400">Link → Sepete ekleme</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Harcama vs Ciro Karşılaştırma */}
-              <div className="card p-5">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Harcama vs Dönüşüm</h3>
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-red-600 font-medium">Reklam Harcaması</span>
-                      <span className="font-bold text-gray-900 dark:text-white">{Math.round(metaAds.spend).toLocaleString("tr-TR")} TL</span>
-                    </div>
-                    <div className="w-full h-4 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full bg-red-400" style={{ width: `${metaAds.purchaseValue > 0 ? Math.min(100, (metaAds.spend / metaAds.purchaseValue) * 100) : 50}%` }} />
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-emerald-600 font-medium">Dönüşüm Cirosu</span>
-                      <span className="font-bold text-gray-900 dark:text-white">{metaAds.purchaseValue ? Math.round(metaAds.purchaseValue).toLocaleString("tr-TR") : "-"} TL</span>
-                    </div>
-                    <div className="w-full h-4 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full bg-emerald-500" style={{ width: "100%" }} />
-                    </div>
-                  </div>
-                </div>
-                <p className="text-[10px] text-gray-400 mt-3 text-center">
-                  Her 1 TL reklam harcamasına karşılık {metaAds.roas ? metaAds.roas.toFixed(2) : "-"} TL gelir elde ediliyor.
-                  Net kâr: {metaAds.purchaseValue ? Math.round(metaAds.purchaseValue - metaAds.spend).toLocaleString("tr-TR") : "-"} TL
-                </p>
-              </div>
-            </>
-          ) : (
-            <div className="card p-8 text-center">
-              <Instagram className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-500">Meta Ads verisi yukleniyor...</p>
-            </div>
-          )}
-
-          {/* Google Ads - Henüz bağlı değil */}
-          <div className="card p-5 border border-dashed border-gray-200 dark:border-slate-700">
-            <div className="flex items-center gap-2 mb-2">
-              <Search className="h-5 w-5 text-blue-500" />
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white">Google Ads</h3>
-              <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">Bağlantı Bekleniyor</span>
-            </div>
-            <p className="text-xs text-gray-500">Google Ads hesabınızı bağlayarak Search ve Shopping reklam verilerinizi burada görüntüleyebilirsiniz.</p>
-          </div>
-        </>
-      )}
 
       {/* ==================== SİPARİŞLER ==================== */}
       {activeTab === "orders" && (

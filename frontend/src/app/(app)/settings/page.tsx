@@ -6,7 +6,7 @@ import { teamAPI, businessHoursAPI, slaAPI, csatAPI, cannedAPI } from "@/lib/api
 import { useAuthStore } from "@/store/auth";
 import { Building2, User, Bell, Key, CreditCard, Check, Copy, Clock, Loader2, ShieldCheck, Star, Radio, Users, BookOpen, Bot, Globe2, Zap, Plus, Trash2, Edit3, X, Save } from "lucide-react";
 import { isDemoOrg, DEMO_BUSINESS_HOURS, DEMO_SLA_POLICY, DEMO_CSAT_CONFIG, DEMO_CSAT_RESPONSES } from "@/lib/demo-data";
-import CostsTab from "@/components/settings/CostsTab";
+
 
 const DAYS = [
   { key: "monday", label: "Pazartesi" },
@@ -40,7 +40,6 @@ const tabs = [
   { key: "canned", label: "Hazir Yanitlar", icon: Zap },
   { key: "notifications", label: "Bildirimler", icon: Bell },
   { key: "integrations", label: "Entegrasyonlar", icon: Globe2 },
-  { key: "costs", label: "Maliyetler", icon: CreditCard },
   { key: "api", label: "API", icon: Key },
   { key: "billing", label: "Plan & Faturalandirma", icon: CreditCard },
 ];
@@ -1097,7 +1096,7 @@ export default function SettingsPage() {
           
 
           
-          {activeTab === "costs" && <CostsTab />}
+
 
           {activeTab === "billing" && (
             <div className="space-y-4 animate-fade-in">

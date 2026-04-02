@@ -6,8 +6,8 @@ import { useAuthStore } from "@/store/auth";
 import {
   Inbox, BarChart3, Bot, Radio, Users, UserCircle, Settings, LogOut,
   MessageSquare, Menu, X, Workflow, BookOpen, Moon, Sun, Target,
-  Megaphone, ClipboardList, PieChart, LayoutDashboard, TrendingUp,
-  ChevronsLeft, ChevronsRight, Package,
+  Megaphone, ClipboardList, PieChart, LayoutDashboard,
+  ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { useState } from "react";
 import { useThemeStore } from "@/store/theme";
@@ -15,8 +15,7 @@ import { useThemeStore } from "@/store/theme";
 const navItems = [
   { href: "/dashboard", label: "Ana Sayfa", icon: LayoutDashboard },
   { href: "/inbox", label: "Gelen Kutusu", icon: Inbox },
-  { href: "/sales", label: "Mağaza Analizi", icon: TrendingUp },
-  { href: "/products", label: "Ürünler", icon: Package },
+  { href: "/sales", label: "Müşteri Analizi", icon: Users },
   { href: "/bot", label: "AI Bot", icon: Bot },
   { href: "/tasks", label: "Görevler", icon: ClipboardList },
   { href: "/automations", label: "Otomasyonlar", icon: Workflow },
@@ -26,7 +25,7 @@ const navItems = [
 const mobileNavItems = [
   { href: "/dashboard", label: "Ana Sayfa", icon: LayoutDashboard },
   { href: "/inbox", label: "Gelen Kutusu", icon: Inbox },
-  { href: "/sales", label: "Analiz", icon: BarChart3 },
+  { href: "/sales", label: "Müşteri", icon: Users },
   { href: "/bot", label: "Bot", icon: Bot },
   { href: "/contacts", label: "Kişiler", icon: UserCircle },
 ];

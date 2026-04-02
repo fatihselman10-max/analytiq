@@ -133,6 +133,8 @@ export default function SalesPage() {
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
 
+  // Period baslangic tarihi (iadeler ve diger filtreler icin)
+  const periodStart = new Date(Date.now() - (periodToDays[period] || 30) * 86400000);
   // Orders zaten period'a gore cekildi, dogrudan kullan
   const filteredOrders = orders;
   // Analytics API varsa onu kullan (daha dogru, tum siparisleri kapsar)

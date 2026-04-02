@@ -3,9 +3,8 @@
 import { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/auth";
 import {
-  ShoppingCart, Package,
-  ArrowUpRight, BarChart3, CreditCard,
-  Target, Truck, Loader2,
+  Package, BarChart3, CreditCard,
+  Target, Loader2,
   CheckCircle, Clock, AlertCircle, Users,
   Search, MessageSquare, Inbox,
 } from "lucide-react";
@@ -44,7 +43,6 @@ export default function SalesPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabKey>("crm");
   const [orders, setOrders] = useState<ShopifyOrder[]>([]);
-  const [stats, setStats] = useState<any>(null);
   const [crmData, setCrmData] = useState<any>(null);
   const [crmMessages, setCrmMessages] = useState<any>(null);
   const [crmAgents, setCrmAgents] = useState<any[]>([]);
@@ -54,65 +52,76 @@ export default function SalesPage() {
   const [refundOrders, setRefundOrders] = useState<any[]>([]);
   const [orderSearch, setOrderSearch] = useState("");
   const [returnSearch, setReturnSearch] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [returnsLoaded, setReturnsLoaded] = useState(false);
 
   const periodToDays: Record<string, number> = {
-    today: 1, yesterday: 1, "7d": 7, "30d": 30, "90d": 90, "180d": 180, "365d": 365,
+    "7d": 7, "30d": 30, "90d": 90,
   };
 
   const periodToCrm: Record<string, string> = {
-    today: "today", yesterday: "7d", "7d": "7d", "30d": "30d", "90d": "90d", "180d": "all", "365d": "all",
+    "7d": "7d", "30d": "30d", "90d": "90d",
   };
 
-  const [refreshing, setRefreshing] = useState(false);
-
-  const fetchData = async (isRefresh = false) => {
-    const days = periodToDays[period] || 30;
+  // CRM verisi - her zaman yukle (ana veri)
+  const fetchCrmData = async (isRefresh = false) => {
     const crmPeriod = periodToCrm[period] || "30d";
-    const dateMin = new Date(Date.now() - days * 86400000).toISOString();
-
     if (isRefresh) setRefreshing(true);
-
-    // Fase 1: Siparis + stats + analytics paralel
     try {
-      const [statsRes, ordersRes] = await Promise.all([
-        fetch("/api/shopify?action=stats").then(r => r.json()).catch(() => null),
-        fetch(`/api/shopify?action=orders&limit=250&created_at_min=${encodeURIComponent(dateMin)}`).then(r => r.json()).catch(() => ({ orders: [] })),
-      ]);
-      setStats(statsRes);
-      setOrders(ordersRes.orders || []);
-    } catch {}
-    setLoading(false);
-    setRefreshing(false);
-
-    // Fase 2: CRM + reklam + iadeler arka planda
-    try {
-      const [crmRes, refundsRes, messagesRes, agentsRes, channelsRes] = await Promise.all([
+      const [crmRes, messagesRes, agentsRes, channelsRes] = await Promise.all([
         reportsAPI.overview(crmPeriod).catch(() => ({ data: null })),
-        fetch("/api/shopify?action=refunds").then(r => r.json()).catch(() => ({ orders: [] })),
         reportsAPI.messages(crmPeriod).catch(() => ({ data: null })),
         reportsAPI.agents(crmPeriod).catch(() => ({ data: null })),
         reportsAPI.channels(crmPeriod).catch(() => ({ data: null })),
       ]);
       setCrmData(crmRes.data);
-      setRefundOrders(refundsRes.orders || []);
       setCrmMessages(messagesRes.data);
       setCrmAgents(agentsRes.data?.agents || []);
       setCrmChannels(channelsRes.data?.channels || []);
     } catch {}
+    setLoading(false);
+    setRefreshing(false);
+  };
+
+  // Siparisler - sadece tab acildiginda yukle
+  const fetchOrders = async () => {
+    if (ordersLoaded) return;
+    const days = periodToDays[period] || 30;
+    const dateMin = new Date(Date.now() - days * 86400000).toISOString();
+    try {
+      const res = await fetch(`/api/shopify?action=orders&limit=250&created_at_min=${encodeURIComponent(dateMin)}`).then(r => r.json());
+      setOrders(res.orders || []);
+    } catch {}
+    setOrdersLoaded(true);
+  };
+
+  // Iadeler - sadece tab acildiginda yukle
+  const fetchReturns = async () => {
+    if (returnsLoaded) return;
+    try {
+      const res = await fetch("/api/shopify?action=refunds").then(r => r.json());
+      setRefundOrders(res.orders || []);
+    } catch {}
+    setReturnsLoaded(true);
   };
 
   useEffect(() => {
     if (!organization) return;
-    if (loading) { fetchData(); } else { fetchData(true); }
+    setOrdersLoaded(false);
+    setReturnsLoaded(false);
+    fetchCrmData(!loading);
   }, [organization, period]);
+
+  useEffect(() => {
+    if (activeTab === "orders") fetchOrders();
+    if (activeTab === "returns") fetchReturns();
+  }, [activeTab]);
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
 
-  // Period baslangic tarihi (iadeler ve diger filtreler icin)
   const periodStart = new Date(Date.now() - (periodToDays[period] || 30) * 86400000);
-  // Orders zaten period'a gore cekildi, dogrudan kullan
-  const filteredOrders = orders;
-  const periodLabels: Record<string, string> = { today: "Bugün", yesterday: "Dün", "7d": "7 Gün", "30d": "30 Gün", "90d": "3 Ay", "180d": "6 Ay", "365d": "1 Yıl" };
+  const periodLabels: Record<string, string> = { "7d": "7 Gun", "30d": "30 Gun", "90d": "3 Ay" };
 
   return (
     <div className="p-4 lg:p-8 space-y-6 animate-fade-in">
@@ -128,12 +137,9 @@ export default function SalesPage() {
         <div className="flex flex-col gap-2">
           <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1">
             {[
-              { key: "today", label: "Bugün" },
-              { key: "7d", label: "7G" },
-              { key: "30d", label: "30G" },
-              { key: "90d", label: "3A" },
-              { key: "180d", label: "6A" },
-              { key: "365d", label: "1Y" },
+              { key: "7d", label: "7 Gun" },
+              { key: "30d", label: "30 Gun" },
+              { key: "90d", label: "3 Ay" },
             ].map(p => (
               <button key={p.key} onClick={() => setPeriod(p.key)}
                 className={`px-2 py-1 text-[10px] font-medium rounded-lg transition-all ${period === p.key ? "bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm" : "text-gray-500"}`}>
@@ -421,7 +427,12 @@ export default function SalesPage() {
               placeholder="Sipariş no, müşteri adı veya telefon ara..."
               className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-sm" />
           </div>
-          {(filteredOrders.length > 0 ? filteredOrders : orders).filter(o => {
+          {!ordersLoaded ? (
+            <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-blue-500" /></div>
+          ) : orders.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-10">Bu donemde siparis bulunamadi</p>
+          ) : null}
+          {orders.filter(o => {
             if (!orderSearch.trim()) return true;
             const q = orderSearch.toLowerCase();
             const name = o.customer ? `${o.customer.first_name || ""} ${o.customer.last_name || ""}`.toLowerCase() : "";
@@ -516,7 +527,10 @@ export default function SalesPage() {
       )}
 
       {/* ==================== İADELER ==================== */}
-      {activeTab === "returns" && (() => {
+      {activeTab === "returns" && !returnsLoaded && (
+        <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-blue-500" /></div>
+      )}
+      {activeTab === "returns" && returnsLoaded && (() => {
         // Calculate real refund amounts from refund transactions
         const getRefundAmount = (o: any) => {
           const refunds = o.refunds || [];
@@ -597,7 +611,7 @@ export default function SalesPage() {
             </div>
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-1"><Target className="h-4 w-4 text-amber-500" /><span className="text-[10px] text-gray-500">İade Oranı</span></div>
-              <p className="text-xl font-bold text-amber-600">%{stats?.ordersCount > 0 ? ((refundOrders.length / stats.ordersCount) * 100).toFixed(1) : 0}</p>
+              <p className="text-xl font-bold text-amber-600">%{periodRefunds.length > 0 && orders.length > 0 ? ((periodRefunds.length / orders.length) * 100).toFixed(1) : 0}</p>
             </div>
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-1"><CheckCircle className="h-4 w-4 text-red-500" /><span className="text-[10px] text-gray-500">Tam İade</span></div>

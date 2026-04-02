@@ -181,7 +181,7 @@ export default function InboxPage() {
   const showMobileThread = activeConversationId && activeConversation;
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] lg:h-screen">
+    <div className="flex h-[calc(100dvh-3rem-3.5rem)] lg:h-screen">
       {/* Left Panel - Conversation List */}
       <div className={`${showMobileThread ? "hidden lg:flex" : "flex"} w-full lg:w-80 border-r border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-col`}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200">
@@ -283,7 +283,7 @@ export default function InboxPage() {
             <MessageThread messages={activeMessages} />
 
             {/* Input */}
-            <div className="flex-shrink-0 pb-14 lg:pb-0">
+            <div className="flex-shrink-0">
               <MessageInput
                 onSend={handleSend}
                 onNote={handleNote}

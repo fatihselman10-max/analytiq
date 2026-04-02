@@ -158,7 +158,7 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
     <div className={`border-t relative ${isNoteMode ? "border-amber-200 bg-amber-50/50" : "border-gray-100 bg-white"}`}>
       {/* AI Suggested Replies */}
       {!isNoteMode && !suggestDismissed && (suggestLoading || suggestions.length > 0) && (
-        <div className="px-4 pt-2 pb-1 max-h-24 overflow-hidden">
+        <div className="px-4 pt-2 pb-1">
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-1.5">
               <Sparkles className="h-3 w-3 text-violet-500" />
@@ -174,12 +174,12 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
               <span className="text-[10px] text-gray-400">Yanit olusturuluyor...</span>
             </div>
           ) : (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex gap-1.5">
               {suggestions.map((s, i) => (
                 <button
                   key={i}
                   onClick={() => { onSend(s); setSuggestDismissed(true); }}
-                  className="group flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-200 text-xs text-violet-800 hover:bg-violet-100 hover:border-violet-300 transition-all text-left max-w-full"
+                  className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-violet-50 border border-violet-200 text-[11px] text-violet-800 hover:bg-violet-100 hover:border-violet-300 transition-all text-left flex-1 min-w-0"
                 >
                   <span className="line-clamp-2 flex-1">{s}</span>
                   <Send className="h-3 w-3 text-violet-400 group-hover:text-violet-600 flex-shrink-0" />

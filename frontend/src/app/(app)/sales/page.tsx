@@ -81,72 +81,61 @@ export default function SalesPage() {
   };
 
   const periodToCrm: Record<string, string> = {
-    today: "7d", yesterday: "7d", "7d": "7d", "30d": "30d", "90d": "90d", "180d": "all", "365d": "all",
+    today: "today", yesterday: "7d", "7d": "7d", "30d": "30d", "90d": "90d", "180d": "all", "365d": "all",
   };
 
-  const fetchData = async () => {
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchData = async (isRefresh = false) => {
     const days = periodToDays[period] || 30;
     const crmPeriod = periodToCrm[period] || "30d";
+    const dateMin = new Date(Date.now() - days * 86400000).toISOString();
 
-    // Fase 1: Kritik veri - hemen yukle
+    if (isRefresh) setRefreshing(true);
+
+    // Fase 1: Siparis + stats + analytics paralel
     try {
-      const [statsRes, ordersRes] = await Promise.all([
+      const [statsRes, ordersRes, analyticsRes] = await Promise.all([
         fetch("/api/shopify?action=stats").then(r => r.json()).catch(() => null),
-        fetch("/api/shopify?action=orders&limit=250").then(r => r.json()).catch(() => ({ orders: [] })),
+        fetch(`/api/shopify?action=orders&limit=250&created_at_min=${encodeURIComponent(dateMin)}`).then(r => r.json()).catch(() => ({ orders: [] })),
+        fetch(`/api/shopify?action=analytics&days=${days}`).then(r => r.json()).catch(() => null),
       ]);
       setStats(statsRes);
       setOrders(ordersRes.orders || []);
+      if (analyticsRes && !analyticsRes.error) setSiteAnalytics(analyticsRes);
     } catch {}
     setLoading(false);
+    setRefreshing(false);
 
-    // Fase 2: Ikincil veri - arka planda yukle
+    // Fase 2: CRM + reklam + iadeler arka planda
     try {
-      const [crmRes, analyticsRes, messagesRes, agentsRes, channelsRes] = await Promise.all([
+      const [crmRes, metaRes, refundsRes, messagesRes, agentsRes, channelsRes] = await Promise.all([
         reportsAPI.overview(crmPeriod).catch(() => ({ data: null })),
-        fetch(`/api/shopify?action=analytics&days=${days}`).then(r => r.json()).catch(() => null),
+        fetch(`/api/shopify?action=meta-ads&date_preset=${periodToMeta[period] || "last_30d"}`).then(r => r.json()).catch(() => null),
+        fetch("/api/shopify?action=refunds").then(r => r.json()).catch(() => ({ orders: [] })),
         reportsAPI.messages(crmPeriod).catch(() => ({ data: null })),
         reportsAPI.agents(crmPeriod).catch(() => ({ data: null })),
         reportsAPI.channels(crmPeriod).catch(() => ({ data: null })),
       ]);
       setCrmData(crmRes.data);
-      if (analyticsRes && !analyticsRes.error) setSiteAnalytics(analyticsRes);
+      setMetaAds(metaRes);
+      setRefundOrders(refundsRes.orders || []);
       setCrmMessages(messagesRes.data);
       setCrmAgents(agentsRes.data?.agents || []);
       setCrmChannels(channelsRes.data?.channels || []);
     } catch {}
-
-    // Fase 3: Agir veri - en son yukle
-    try {
-      const [metaRes, refundsRes] = await Promise.all([
-        fetch(`/api/shopify?action=meta-ads&date_preset=${periodToMeta[period] || "last_30d"}`).then(r => r.json()).catch(() => null),
-        fetch("/api/shopify?action=refunds").then(r => r.json()).catch(() => ({ orders: [] })),
-      ]);
-      setMetaAds(metaRes);
-      setRefundOrders(refundsRes.orders || []);
-    } catch {}
   };
 
-  useEffect(() => { if (organization) fetchData(); }, [organization, period]);
+  useEffect(() => {
+    if (!organization) return;
+    if (loading) { fetchData(); } else { fetchData(true); }
+  }, [organization, period]);
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
 
-  const now = new Date();
-  const getPeriodStart = (p: string) => {
-    const d = new Date(now);
-    switch (p) {
-      case "today": d.setHours(0, 0, 0, 0); return d;
-      case "yesterday": d.setDate(d.getDate() - 1); d.setHours(0, 0, 0, 0); return d;
-      case "7d": d.setDate(d.getDate() - 7); return d;
-      case "30d": d.setDate(d.getDate() - 30); return d;
-      case "90d": d.setDate(d.getDate() - 90); return d;
-      case "180d": d.setDate(d.getDate() - 180); return d;
-      case "365d": d.setDate(d.getDate() - 365); return d;
-      default: d.setDate(d.getDate() - 30); return d;
-    }
-  };
-  const periodStart = getPeriodStart(period);
-  const filteredOrders = orders.filter(o => new Date(o.created_at) >= periodStart);
-  // Use analytics API data for accurate revenue (covers all paginated orders)
+  // Orders zaten period'a gore cekildi, dogrudan kullan
+  const filteredOrders = orders;
+  // Analytics API varsa onu kullan (daha dogru, tum siparisleri kapsar)
   const periodRevenue = siteAnalytics?.daily
     ? siteAnalytics.daily.reduce((s: number, d: any) => s + (d.revenue || 0), 0)
     : filteredOrders.reduce((s, o) => s + parseFloat(o.total_price), 0);
@@ -164,6 +153,7 @@ export default function SalesPage() {
           <p className="text-sm text-gray-500 mt-1 flex items-center gap-1.5">
             <CheckCircle className="h-3.5 w-3.5 text-green-500" />
             {stats?.shop?.name || "Mağaza"} - Shopify + Site Analitik
+            {refreshing && <Loader2 className="h-3 w-3 animate-spin text-blue-500 ml-2" />}
           </p>
         </div>
         <div className="flex flex-col gap-2">
@@ -285,33 +275,6 @@ export default function SalesPage() {
             </div>
           </div>
 
-          {/* Cihaz Dağılımı */}
-          <div className="card p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <Smartphone className="h-4 w-4 text-blue-500" /> Cihaz Dağılımı
-            </h3>
-            {(site?.devices || []).length > 0 ? (
-              <>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="flex-1 h-4 rounded-full overflow-hidden flex">
-                    {site!.devices.map(d => (
-                      <div key={d.device} className={`h-full ${d.color}`} style={{ width: `${d.pct}%` }} />
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center gap-6 text-xs">
-                  {site!.devices.map(d => (
-                    <span key={d.device} className="flex items-center gap-1.5">
-                      <div className={`w-2 h-2 rounded-full ${d.color}`} />
-                      {d.device} %{d.pct}
-                    </span>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="text-xs text-gray-400 text-center py-4">Cihaz verisi yüklenemedi</p>
-            )}
-          </div>
         </>
       )}
 
@@ -648,7 +611,13 @@ export default function SalesPage() {
       {/* ==================== REKLAM ==================== */}
       {activeTab === "ads" && (
         <>
-          {metaAds && !metaAds.error ? (
+          {metaAds?.error ? (
+            <div className="card p-6 border-l-4 border-l-red-400 text-center">
+              <AlertCircle className="h-8 w-8 text-red-400 mx-auto mb-2" />
+              <p className="text-sm font-medium text-gray-700">Meta Reklam Verisi Alinamiyor</p>
+              <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">{metaAds.error.includes("access token") ? "Access token suresi dolmus. Meta Business Suite'ten yeni token alinmali." : metaAds.error}</p>
+            </div>
+          ) : metaAds ? (
             <>
               {/* Meta Ads - Canlı Veri */}
               <div className="card p-5 border-l-4 border-l-pink-500">
@@ -797,8 +766,7 @@ export default function SalesPage() {
           ) : (
             <div className="card p-8 text-center">
               <Instagram className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-500">Meta Ads verisi yüklenemedi.</p>
-              <p className="text-xs text-gray-400 mt-1">Ayarlar → Entegrasyonlar kısmından hesabınızı bağlayın.</p>
+              <p className="text-sm text-gray-500">Meta Ads verisi yukleniyor...</p>
             </div>
           )}
 

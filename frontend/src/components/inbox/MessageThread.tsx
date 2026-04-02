@@ -45,7 +45,7 @@ export default function MessageThread({ messages }: MessageThreadProps) {
   let lastDate = "";
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-1 bg-gray-50/30">
+    <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-1 bg-gray-50/30">
       {messages.map((msg) => {
         const msgDate = formatMessageDate(msg.created_at);
         let showDate = false;

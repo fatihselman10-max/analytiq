@@ -85,32 +85,45 @@ export default function SalesPage() {
   };
 
   const fetchData = async () => {
+    const days = periodToDays[period] || 30;
+    const crmPeriod = periodToCrm[period] || "30d";
+
+    // Fase 1: Kritik veri - hemen yukle
     try {
-      const days = periodToDays[period] || 30;
-      const crmPeriod = periodToCrm[period] || "30d";
-      const [statsRes, ordersRes, crmRes, metaRes, refundsRes, analyticsRes, messagesRes, agentsRes, channelsRes] = await Promise.all([
-        fetch("/api/shopify?action=stats"),
-        fetch("/api/shopify?action=orders&limit=250"),
+      const [statsRes, ordersRes] = await Promise.all([
+        fetch("/api/shopify?action=stats").then(r => r.json()).catch(() => null),
+        fetch("/api/shopify?action=orders&limit=250").then(r => r.json()).catch(() => ({ orders: [] })),
+      ]);
+      setStats(statsRes);
+      setOrders(ordersRes.orders || []);
+    } catch {}
+    setLoading(false);
+
+    // Fase 2: Ikincil veri - arka planda yukle
+    try {
+      const [crmRes, analyticsRes, messagesRes, agentsRes, channelsRes] = await Promise.all([
         reportsAPI.overview(crmPeriod).catch(() => ({ data: null })),
-        fetch(`/api/shopify?action=meta-ads&date_preset=${periodToMeta[period] || "last_30d"}`).then(r => r.json()).catch(() => null),
-        fetch("/api/shopify?action=refunds").then(r => r.json()).catch(() => ({ orders: [] })),
         fetch(`/api/shopify?action=analytics&days=${days}`).then(r => r.json()).catch(() => null),
         reportsAPI.messages(crmPeriod).catch(() => ({ data: null })),
         reportsAPI.agents(crmPeriod).catch(() => ({ data: null })),
         reportsAPI.channels(crmPeriod).catch(() => ({ data: null })),
       ]);
-      setStats(await statsRes.json());
-      const data = await ordersRes.json();
-      setOrders(data.orders || []);
       setCrmData(crmRes.data);
-      setMetaAds(metaRes);
-      setRefundOrders(refundsRes.orders || []);
       if (analyticsRes && !analyticsRes.error) setSiteAnalytics(analyticsRes);
       setCrmMessages(messagesRes.data);
       setCrmAgents(agentsRes.data?.agents || []);
       setCrmChannels(channelsRes.data?.channels || []);
     } catch {}
-    setLoading(false);
+
+    // Fase 3: Agir veri - en son yukle
+    try {
+      const [metaRes, refundsRes] = await Promise.all([
+        fetch(`/api/shopify?action=meta-ads&date_preset=${periodToMeta[period] || "last_30d"}`).then(r => r.json()).catch(() => null),
+        fetch("/api/shopify?action=refunds").then(r => r.json()).catch(() => ({ orders: [] })),
+      ]);
+      setMetaAds(metaRes);
+      setRefundOrders(refundsRes.orders || []);
+    } catch {}
   };
 
   useEffect(() => { if (organization) fetchData(); }, [organization, period]);

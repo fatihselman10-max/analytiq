@@ -221,7 +221,7 @@ export default function InboxPage() {
       {/* Center Panel - Message Thread */}
       <div className={`${showMobileThread ? "flex" : "hidden lg:flex"} flex-1 flex-col bg-white dark:bg-slate-900 min-w-0`}>
         {activeConversation ? (
-          <>
+          <div className="flex flex-col h-full">
             {/* Thread Header */}
             <div className="flex items-center gap-3 px-4 lg:px-6 py-3 border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900">
               {/* Mobile back button */}
@@ -283,7 +283,7 @@ export default function InboxPage() {
             <MessageThread messages={activeMessages} />
 
             {/* Input */}
-            <div className="mb-14 lg:mb-0">
+            <div className="flex-shrink-0 mb-14 lg:mb-0">
               <MessageInput
                 onSend={handleSend}
                 onNote={handleNote}
@@ -293,7 +293,7 @@ export default function InboxPage() {
                 contactPhone={activeConversation.contact?.phone}
               />
             </div>
-          </>
+          </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
             <MessageSquare className="h-12 w-12 mb-3 text-gray-300" />

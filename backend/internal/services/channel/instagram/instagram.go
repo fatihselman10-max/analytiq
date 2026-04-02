@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/repliq/backend/internal/services/channel"
 )
@@ -181,9 +183,26 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 	avatarURL := ""
 	if !isEcho {
 		name, avatar, err := p.FetchUserProfile(ctx, messaging.Sender.ID)
-		if err == nil {
+		if err == nil && name != "" {
 			senderName = name
 			avatarURL = avatar
+		} else {
+			if err != nil {
+				log.Printf("[INSTAGRAM] Failed to fetch profile for %s: %v", messaging.Sender.ID, err)
+			}
+			// Retry once with a fresh context
+			retryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			name2, avatar2, err2 := p.FetchUserProfile(retryCtx, messaging.Sender.ID)
+			cancel()
+			if err2 == nil && name2 != "" {
+				senderName = name2
+				avatarURL = avatar2
+				log.Printf("[INSTAGRAM] Retry succeeded for %s: %s", messaging.Sender.ID, name2)
+			} else {
+				// Fallback: use sender ID as name so it's not blank
+				senderName = "ig_" + messaging.Sender.ID
+				log.Printf("[INSTAGRAM] Using fallback name for %s", messaging.Sender.ID)
+			}
 		}
 	}
 

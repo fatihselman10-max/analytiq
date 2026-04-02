@@ -28,19 +28,11 @@ export default function MessageThread({ messages }: MessageThreadProps) {
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const timer = setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
+    return () => clearTimeout(timer);
   }, [messages]);
-
-  // Re-scroll when container resizes (e.g. AI suggestions appear/disappear)
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const observer = new ResizeObserver(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "auto" });
-    });
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
 
   if (messages.length === 0) {
     return (

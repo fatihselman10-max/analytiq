@@ -78,7 +78,7 @@ export default function DashboardPage() {
       const channelSummary = chs.map((c: any) => `${c.name || c.type}: ${c.message_count || 0} mesaj`).join(", ");
 
       const periodLabels: Record<string, string> = {
-        "7d": "son 7 gün", "30d": "son 30 gün", "90d": "son 3 ay",
+        "today": "bugün", "yesterday": "dün", "7d": "son 7 gün", "30d": "son 30 gün", "90d": "son 3 ay",
       };
       const periodText = periodLabels[period] || "son 7 gün";
 
@@ -135,7 +135,7 @@ KURALLAR:
   const pendingConvs = ov?.pending_conversations || 0;
 
   const periodLabel: Record<string, string> = {
-    "7d": "Son 7 Gün", "30d": "Son 30 Gün", "90d": "Son 3 Ay",
+    "today": "Bugün", "yesterday": "Dün", "7d": "Son 7 Gün", "30d": "Son 30 Gün", "90d": "Son 3 Ay",
   };
 
   // Sort channels by message count for Kanal Dağılımı
@@ -156,6 +156,8 @@ KURALLAR:
         </div>
         <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1">
           {[
+            { key: "today", label: "Bugün" },
+            { key: "yesterday", label: "Dün" },
             { key: "7d", label: "7 Gün" },
             { key: "30d", label: "30 Gün" },
             { key: "90d", label: "3 Ay" },
@@ -247,7 +249,7 @@ KURALLAR:
           <p className="text-[10px] text-gray-400 mt-1">{periodLabel[period] || "Son 7 Gün"}</p>
         </div>
 
-        <Link href="/reports" className="card p-4 hover:shadow-md transition-shadow">
+        <Link href="/analytics" className="card p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center gap-2 mb-2">
             <div className="p-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950"><Send className="h-4 w-4 text-cyan-600" /></div>
             <span className="text-xs text-gray-500">Toplam Mesaj</span>

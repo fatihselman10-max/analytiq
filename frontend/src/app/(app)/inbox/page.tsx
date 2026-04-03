@@ -7,7 +7,8 @@ import ConversationList from "@/components/inbox/ConversationList";
 import MessageThread from "@/components/inbox/MessageThread";
 import MessageInput from "@/components/inbox/MessageInput";
 import ContactPanel from "@/components/inbox/ContactPanel";
-import { Inbox, MessageSquare, ArrowLeft, User } from "lucide-react";
+import MessageTableView from "@/components/inbox/MessageTableView";
+import { Inbox, MessageSquare, ArrowLeft, User, List, Table2 } from "lucide-react";
 import { Conversation } from "@/types";
 import { useToast } from "@/components/ui/Toast";
 import { useAuthStore } from "@/store/auth";
@@ -30,6 +31,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [showContactPanel, setShowContactPanel] = useState(false);
   const [slaStatuses, setSlaStatuses] = useState<Record<number, { response_breached: boolean; resolution_breached: boolean; response_elapsed: number; response_target: number }>>({});
+  const [viewMode, setViewMode] = useState<"list" | "table">("list");
   const { toast } = useToast();
   const { organization } = useAuthStore();
   const isDemo = isDemoOrg(organization?.name);
@@ -173,6 +175,9 @@ export default function InboxPage() {
   };
 
   const handleMobileSelect = (id: number) => {
+    if (viewMode === "table") {
+      setViewMode("list");
+    }
     setActiveConversation(id);
     setShowContactPanel(false);
   };
@@ -183,19 +188,36 @@ export default function InboxPage() {
   return (
     <div className="flex h-[calc(100dvh-3rem-3.5rem)] lg:h-screen">
       {/* Left Panel - Conversation List */}
-      <div className={`${showMobileThread ? "hidden lg:flex" : "flex"} w-full lg:w-80 border-r border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-col`}>
+      <div className={`${showMobileThread ? "hidden lg:flex" : "flex"} w-full ${viewMode === "table" ? "lg:flex-1" : "lg:w-80"} border-r border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-col`}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200">
           <Inbox className="h-5 w-5 text-primary-600" />
           <h1 className="text-base font-semibold text-gray-900 dark:text-white">Gelen Kutusu</h1>
-          <span className="ml-auto text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+          <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
             {filteredConversations.length}
           </span>
+          <div className="ml-auto flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5">
+            <button onClick={() => setViewMode("list")} title="Liste"
+              className={`p-1.5 rounded-md transition-all ${viewMode === "list" ? "bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-white" : "text-gray-400 hover:text-gray-600"}`}>
+              <List className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => setViewMode("table")} title="Tablo"
+              className={`p-1.5 rounded-md transition-all ${viewMode === "table" ? "bg-white dark:bg-slate-700 shadow-sm text-gray-900 dark:text-white" : "text-gray-400 hover:text-gray-600"}`}>
+              <Table2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
           </div>
+        ) : viewMode === "table" ? (
+          <MessageTableView
+            conversations={filteredConversations}
+            onSelect={handleMobileSelect}
+            onUpdate={handleUpdate}
+            slaStatuses={slaStatuses}
+          />
         ) : (
           <ConversationList
             conversations={filteredConversations}
@@ -218,8 +240,8 @@ export default function InboxPage() {
         )}
       </div>
 
-      {/* Center Panel - Message Thread */}
-      <div className={`${showMobileThread ? "flex" : "hidden lg:flex"} flex-1 flex-col bg-white dark:bg-slate-900 min-w-0 overflow-hidden`}>
+      {/* Center Panel - Message Thread (hidden in table mode) */}
+      <div className={`${viewMode === "table" ? "hidden" : ""} ${showMobileThread ? "flex" : "hidden lg:flex"} flex-1 flex-col bg-white dark:bg-slate-900 min-w-0 overflow-hidden`}>
         {activeConversation ? (
           <>
             {/* Thread Header */}
@@ -305,8 +327,8 @@ export default function InboxPage() {
         )}
       </div>
 
-      {/* Right Panel - Contact Panel (Desktop: always visible, Mobile: overlay) */}
-      {activeConversation && (
+      {/* Right Panel - Contact Panel (Desktop: always visible, Mobile: overlay, hidden in table mode) */}
+      {activeConversation && viewMode !== "table" && (
         <>
           {/* Desktop */}
           <div className="hidden lg:flex w-80 border-l border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-col">

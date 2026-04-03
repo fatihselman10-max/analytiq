@@ -15,7 +15,7 @@ import { useThemeStore } from "@/store/theme";
 const navItems = [
   { href: "/dashboard", label: "Ana Sayfa", icon: LayoutDashboard },
   { href: "/inbox", label: "Gelen Kutusu", icon: Inbox },
-  { href: "/sales", label: "Müşteri Analizi", icon: Users },
+  { href: "/analytics", label: "Müşteri Analizi", icon: Users },
   { href: "/bot", label: "AI Bot", icon: Bot },
   { href: "/tasks", label: "Görevler", icon: ClipboardList },
   { href: "/automations", label: "Otomasyonlar", icon: Workflow },
@@ -25,7 +25,7 @@ const navItems = [
 const mobileNavItems = [
   { href: "/dashboard", label: "Ana Sayfa", icon: LayoutDashboard },
   { href: "/inbox", label: "Gelen Kutusu", icon: Inbox },
-  { href: "/sales", label: "Müşteri", icon: Users },
+  { href: "/analytics", label: "Müşteri", icon: Users },
   { href: "/bot", label: "Bot", icon: Bot },
   { href: "/contacts", label: "Kişiler", icon: UserCircle },
 ];

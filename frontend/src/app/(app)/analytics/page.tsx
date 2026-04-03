@@ -57,11 +57,11 @@ export default function SalesPage() {
   const [returnsLoaded, setReturnsLoaded] = useState(false);
 
   const periodToDays: Record<string, number> = {
-    "7d": 7, "30d": 30, "90d": 90,
+    "today": 0, "yesterday": 1, "7d": 7, "30d": 30, "90d": 90,
   };
 
   const periodToCrm: Record<string, string> = {
-    "7d": "7d", "30d": "30d", "90d": "90d",
+    "today": "today", "yesterday": "yesterday", "7d": "7d", "30d": "30d", "90d": "90d",
   };
 
   // CRM verisi - her zaman yukle (ana veri)
@@ -120,8 +120,10 @@ export default function SalesPage() {
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
 
-  const periodStart = new Date(Date.now() - (periodToDays[period] || 30) * 86400000);
-  const periodLabels: Record<string, string> = { "7d": "7 Gun", "30d": "30 Gun", "90d": "3 Ay" };
+  const periodStart = period === "today" ? new Date(new Date().setHours(0,0,0,0)) :
+    period === "yesterday" ? new Date(Date.now() - 86400000) :
+    new Date(Date.now() - (periodToDays[period] || 30) * 86400000);
+  const periodLabels: Record<string, string> = { "today": "Bugun", "yesterday": "Dun", "7d": "7 Gun", "30d": "30 Gun", "90d": "3 Ay" };
 
   return (
     <div className="p-4 lg:p-8 space-y-6 animate-fade-in">
@@ -137,6 +139,8 @@ export default function SalesPage() {
         <div className="flex flex-col gap-2">
           <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1">
             {[
+              { key: "today", label: "Bugun" },
+              { key: "yesterday", label: "Dun" },
               { key: "7d", label: "7 Gun" },
               { key: "30d", label: "30 Gun" },
               { key: "90d", label: "3 Ay" },

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/repliq/backend/internal/auth"
 	"github.com/repliq/backend/internal/config"
@@ -120,6 +121,36 @@ func main() {
 				go poller.Start()
 				log.Printf("Started IMAP poller for email channel %d (%s)", chID, creds["smtp_user"])
 			}
+		}
+	}()
+
+	// Auto-resolve: close conversations where agent replied but no customer follow-up
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			<-ticker.C
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			result, err := db.Pool.Exec(ctx,
+				`UPDATE conversations SET status = 'resolved', resolved_at = NOW(), updated_at = NOW()
+				 WHERE status IN ('open', 'pending')
+				   AND id IN (
+				     SELECT c.id FROM conversations c
+				     JOIN LATERAL (
+				       SELECT sender_type, created_at FROM messages
+				       WHERE conversation_id = c.id AND is_internal = false
+				       ORDER BY created_at DESC LIMIT 1
+				     ) last_msg ON true
+				     WHERE c.status IN ('open', 'pending')
+				       AND last_msg.sender_type IN ('agent', 'bot')
+				       AND last_msg.created_at < NOW() - INTERVAL '24 hours'
+				   )`)
+			if err != nil {
+				log.Printf("Auto-resolve error: %v", err)
+			} else if result.RowsAffected() > 0 {
+				log.Printf("Auto-resolved %d conversations", result.RowsAffected())
+			}
+			cancel()
 		}
 	}()
 

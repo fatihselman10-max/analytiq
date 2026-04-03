@@ -68,7 +68,7 @@ func (h *ConversationHandler) List(c *gin.Context) {
 		argIdx++
 	}
 
-	query += " ORDER BY c.last_message_at DESC NULLS LAST LIMIT 50"
+	query += " ORDER BY c.last_message_at DESC NULLS LAST LIMIT 200"
 
 	rows, err := h.db.Pool.Query(ctx, query, args...)
 	if err != nil {

@@ -24,6 +24,10 @@ func NewReportHandler(db *database.DB) *ReportHandler {
 func parsePeriod(c *gin.Context) (string, int) {
 	period := c.DefaultQuery("period", "30d")
 	switch period {
+	case "today":
+		return "today", 0
+	case "yesterday":
+		return "yesterday", 1
 	case "7d":
 		return "7 days", 7
 	case "30d":
@@ -92,7 +96,14 @@ func (p reportParams) dateFilter(col string) string {
 	if p.interval == "" {
 		return ""
 	}
-	return " AND " + col + " >= NOW() - INTERVAL '" + p.interval + "'"
+	switch p.interval {
+	case "today":
+		return " AND " + col + " >= CURRENT_DATE"
+	case "yesterday":
+		return " AND " + col + " >= CURRENT_DATE - INTERVAL '1 day' AND " + col + " < CURRENT_DATE"
+	default:
+		return " AND " + col + " >= NOW() - INTERVAL '" + p.interval + "'"
+	}
 }
 
 func (h *ReportHandler) Overview(c *gin.Context) {
@@ -201,7 +212,14 @@ func (h *ReportHandler) Channels(c *gin.Context) {
 
 	dateFilter := ""
 	if interval != "" {
-		dateFilter = " AND c.created_at >= NOW() - INTERVAL '" + interval + "'"
+		switch interval {
+		case "today":
+			dateFilter = " AND c.created_at >= CURRENT_DATE"
+		case "yesterday":
+			dateFilter = " AND c.created_at >= CURRENT_DATE - INTERVAL '1 day' AND c.created_at < CURRENT_DATE"
+		default:
+			dateFilter = " AND c.created_at >= NOW() - INTERVAL '" + interval + "'"
+		}
 	}
 
 	rows, err := h.db.Pool.Query(ctx,

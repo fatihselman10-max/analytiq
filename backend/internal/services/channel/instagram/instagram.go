@@ -14,6 +14,7 @@ import (
 )
 
 const graphAPIBase = "https://graph.instagram.com/v21.0"
+const fbGraphAPIBase = "https://graph.facebook.com/v21.0"
 
 // Provider implements the channel.Provider interface for Instagram Messaging API.
 type Provider struct {
@@ -53,71 +54,100 @@ func (p *Provider) SendMessage(ctx context.Context, contactExternalID string, co
 		return "", fmt.Errorf("instagram: failed to marshal message: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/me/messages?access_token=%s", graphAPIBase, p.accessToken)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("instagram: failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("instagram: failed to send message: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("instagram: Graph API error (status %d): %s", resp.StatusCode, string(respBody))
+	endpoints := []string{
+		fmt.Sprintf("%s/me/messages?access_token=%s", graphAPIBase, p.accessToken),
+		fmt.Sprintf("%s/me/messages?access_token=%s", fbGraphAPIBase, p.accessToken),
 	}
 
-	var result struct {
-		MessageID string `json:"message_id"`
-	}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", fmt.Errorf("instagram: failed to parse response: %w", err)
+	var lastErr error
+	for _, url := range endpoints {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := p.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("instagram: Graph API error (status %d): %s", resp.StatusCode, string(respBody))
+			log.Printf("[INSTAGRAM] SendMessage failed on %s: %s", url[:50], string(respBody))
+			continue
+		}
+
+		var result struct {
+			MessageID string `json:"message_id"`
+		}
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			lastErr = err
+			continue
+		}
+
+		return result.MessageID, nil
 	}
 
-	return result.MessageID, nil
+	return "", fmt.Errorf("instagram: all send attempts failed: %v", lastErr)
 }
 
 // FetchUserProfile fetches the Instagram user's name and profile picture.
+// Tries Instagram Graph API first, then Facebook Graph API as fallback.
 func (p *Provider) FetchUserProfile(ctx context.Context, userID string) (name string, avatarURL string, err error) {
-	url := fmt.Sprintf("%s/%s?fields=username,name,profile_pic&access_token=%s", graphAPIBase, userID, p.accessToken)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return "", "", fmt.Errorf("instagram: failed to create profile request: %w", err)
+	endpoints := []string{
+		fmt.Sprintf("%s/%s?fields=username,name,profile_pic&access_token=%s", graphAPIBase, userID, p.accessToken),
+		fmt.Sprintf("%s/%s?fields=username,name,profile_pic&access_token=%s", fbGraphAPIBase, userID, p.accessToken),
 	}
 
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return "", "", fmt.Errorf("instagram: failed to fetch profile: %w", err)
-	}
-	defer resp.Body.Close()
+	var lastErr error
+	for _, url := range endpoints {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
 
-	respBody, _ := io.ReadAll(resp.Body)
+		resp, err := p.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
 
-	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("instagram: profile API error (status %d): %s", resp.StatusCode, string(respBody))
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("instagram: profile API error (status %d): %s", resp.StatusCode, string(respBody))
+			continue
+		}
+
+		var profile struct {
+			Name       string `json:"name"`
+			Username   string `json:"username"`
+			ProfilePic string `json:"profile_pic"`
+		}
+		if err := json.Unmarshal(respBody, &profile); err != nil {
+			lastErr = err
+			continue
+		}
+
+		displayName := profile.Username
+		if displayName == "" {
+			displayName = profile.Name
+		}
+
+		if displayName != "" {
+			return displayName, profile.ProfilePic, nil
+		}
 	}
 
-	var profile struct {
-		Name       string `json:"name"`
-		Username   string `json:"username"`
-		ProfilePic string `json:"profile_pic"`
-	}
-	if err := json.Unmarshal(respBody, &profile); err != nil {
-		return "", "", fmt.Errorf("instagram: failed to parse profile: %w", err)
-	}
-
-	displayName := profile.Username
-	if displayName == "" {
-		displayName = profile.Name
-	}
-
-	return displayName, profile.ProfilePic, nil
+	return "", "", fmt.Errorf("instagram: all profile fetch attempts failed: %v", lastErr)
 }
 
 // webhookPayload represents Instagram Messaging webhook with attachments support.

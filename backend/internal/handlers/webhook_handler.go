@@ -25,10 +25,11 @@ type WebhookHandler struct {
 	botEngine      *bot.Engine
 	aiBot          *bot.AIBot
 	hub            *ws.Hub
+	verifyToken    string
 }
 
-func NewWebhookHandler(db *database.DB, channelService *channel.Service, registry *channel.Registry, botEngine *bot.Engine, aiBot *bot.AIBot, hub *ws.Hub) *WebhookHandler {
-	return &WebhookHandler{db: db, channelService: channelService, registry: registry, botEngine: botEngine, aiBot: aiBot, hub: hub}
+func NewWebhookHandler(db *database.DB, channelService *channel.Service, registry *channel.Registry, botEngine *bot.Engine, aiBot *bot.AIBot, hub *ws.Hub, verifyToken string) *WebhookHandler {
+	return &WebhookHandler{db: db, channelService: channelService, registry: registry, botEngine: botEngine, aiBot: aiBot, hub: hub, verifyToken: verifyToken}
 }
 
 // loadProviderFromDB loads a channel provider with credentials from the database
@@ -216,11 +217,13 @@ func (h *WebhookHandler) VerifyWebhook(c *gin.Context) {
 	token := c.Query("hub.verify_token")
 	challenge := c.Query("hub.challenge")
 
-	if mode == "subscribe" && token != "" {
+	if mode == "subscribe" && token == h.verifyToken {
+		fmt.Printf("[WEBHOOK] Verification successful for token: %s\n", token)
 		c.String(http.StatusOK, challenge)
 		return
 	}
 
+	fmt.Printf("[WEBHOOK] Verification failed - mode: %s, token: %s, expected: %s\n", mode, token, h.verifyToken)
 	c.JSON(http.StatusForbidden, gin.H{"error": "Verification failed"})
 }
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { channelsAPI } from "@/lib/api";
 import { Channel } from "@/types";
 import { useAuthStore } from "@/store/auth";
-import { isDemoOrg, DEMO_CHANNELS } from "@/lib/demo-data";
+
 import {
   Settings, Check, Copy, X, Zap, MessageCircle, Instagram, Send as SendIcon,
   Facebook, Twitter, Globe, Mail, MessageSquare, HelpCircle, ExternalLink,
@@ -122,14 +122,8 @@ export default function ChannelsPage() {
   const [copied, setCopied] = useState(false);
 
   const { organization } = useAuthStore();
-  const isDemo = isDemoOrg(organization?.name);
 
   const loadChannels = async () => {
-    if (isDemo) {
-      setChannels(DEMO_CHANNELS as any);
-      setLoading(false);
-      return;
-    }
     try {
       const { data } = await channelsAPI.list();
       setChannels(data?.channels || []);
@@ -140,7 +134,7 @@ export default function ChannelsPage() {
     }
   };
 
-  useEffect(() => { if (!organization) return; loadChannels(); }, [isDemo, organization]);
+  useEffect(() => { if (!organization) return; loadChannels(); }, [organization]);
 
   const getConnectedChannel = (type: string) => channels.find((c) => c.type === type);
 

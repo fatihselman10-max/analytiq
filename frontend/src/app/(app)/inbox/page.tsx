@@ -12,7 +12,7 @@ import { Inbox, MessageSquare, ArrowLeft, User, List, Table2 } from "lucide-reac
 import { Conversation } from "@/types";
 import { useToast } from "@/components/ui/Toast";
 import { useAuthStore } from "@/store/auth";
-import { isDemoOrg, DEMO_CONVERSATIONS, DEMO_MESSAGES, DEMO_SLA_STATUSES } from "@/lib/demo-data";
+
 
 export default function InboxPage() {
   const {
@@ -34,17 +34,10 @@ export default function InboxPage() {
   const [viewMode, setViewMode] = useState<"list" | "table">("list");
   const { toast } = useToast();
   const { organization } = useAuthStore();
-  const isDemo = isDemoOrg(organization?.name);
 
   // Fetch conversations on mount + poll every 5s
   useEffect(() => {
     if (!organization) return;
-    if (isDemo) {
-      setConversations(DEMO_CONVERSATIONS as any);
-      setSlaStatuses(DEMO_SLA_STATUSES);
-      setLoading(false);
-      return;
-    }
     const fetchConversations = async () => {
       try {
         const res = await conversationsAPI.list();
@@ -60,15 +53,11 @@ export default function InboxPage() {
     }).catch(() => {});
 
     return () => clearInterval(interval);
-  }, [setConversations, isDemo, organization]);
+  }, [setConversations, organization]);
 
   // Fetch messages when active conversation changes + poll every 3s
   useEffect(() => {
     if (!activeConversationId) return;
-    if (isDemo) {
-      setMessages(activeConversationId, (DEMO_MESSAGES[activeConversationId] || []) as any);
-      return;
-    }
     const fetchMessages = async () => {
       try {
         const res = await messagesAPI.list(activeConversationId);
@@ -78,7 +67,7 @@ export default function InboxPage() {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
-  }, [activeConversationId, setMessages, isDemo]);
+  }, [activeConversationId, setMessages]);
 
   // Filter conversations
   const filteredConversations = useMemo(() => {
@@ -129,10 +118,6 @@ export default function InboxPage() {
   const handleSend = useCallback(
     async (content: string) => {
       if (!activeConversationId) return;
-      if (isDemo) {
-        toast("Demo modunda mesaj gönderilemez", "info");
-        return;
-      }
       try {
         await messagesAPI.reply(activeConversationId, content);
       } catch {
@@ -141,16 +126,12 @@ export default function InboxPage() {
       }
       await refreshMessages(activeConversationId);
     },
-    [activeConversationId, refreshMessages, isDemo]
+    [activeConversationId, refreshMessages]
   );
 
   const handleNote = useCallback(
     async (content: string) => {
       if (!activeConversationId) return;
-      if (isDemo) {
-        toast("Demo modunda not eklenemez", "info");
-        return;
-      }
       try {
         await messagesAPI.addNote(activeConversationId, content);
       } catch {
@@ -159,7 +140,7 @@ export default function InboxPage() {
       }
       await refreshMessages(activeConversationId);
     },
-    [activeConversationId, refreshMessages, isDemo]
+    [activeConversationId, refreshMessages]
   );
 
   const handleUpdate = useCallback(

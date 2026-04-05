@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { kbAPI } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
-import { isDemoOrg, DEMO_KB_CATEGORIES, DEMO_KB_ARTICLES } from "@/lib/demo-data";
+
 import {
   BookOpen, Plus, Trash2, Search, Loader2, X, Edit3, Eye, FileText, FolderPlus, ChevronDown,
 } from "lucide-react";
@@ -25,7 +25,6 @@ export default function KnowledgeBasePage() {
   const [filterCat, setFilterCat] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const { organization } = useAuthStore();
-  const isDemo = isDemoOrg(organization?.name);
 
   // Editor state
   const [editing, setEditing] = useState<Article | null>(null);
@@ -41,16 +40,10 @@ export default function KnowledgeBasePage() {
   const [catName, setCatName] = useState("");
   const [catDesc, setCatDesc] = useState("");
 
-  useEffect(() => { if (!organization) return; fetchAll(); }, [isDemo, organization]);
+  useEffect(() => { if (!organization) return; fetchAll(); }, [organization]);
 
   const fetchAll = async () => {
     setLoading(true);
-    if (isDemo) {
-      setCategories(DEMO_KB_CATEGORIES as any);
-      setArticles(DEMO_KB_ARTICLES as any);
-      setLoading(false);
-      return;
-    }
     try {
       const [catRes, artRes] = await Promise.all([kbAPI.listCategories(), kbAPI.listArticles()]);
       setCategories(catRes.data.categories || []);

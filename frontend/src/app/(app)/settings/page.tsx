@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { teamAPI, businessHoursAPI, slaAPI, csatAPI, cannedAPI } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { Building2, User, Bell, Key, CreditCard, Check, Copy, Clock, Loader2, ShieldCheck, Star, Radio, Users, BookOpen, Bot, Globe2, Zap, Plus, Trash2, Edit3, X, Save } from "lucide-react";
-import { isDemoOrg, DEMO_BUSINESS_HOURS, DEMO_SLA_POLICY, DEMO_CSAT_CONFIG, DEMO_CSAT_RESPONSES } from "@/lib/demo-data";
+
 
 
 const DAYS = [
@@ -100,7 +100,6 @@ export default function SettingsPage() {
   const [cannedShowAdd, setCannedShowAdd] = useState(false);
   const [cannedSaving, setCannedSaving] = useState(false);
 
-  const isDemo = isDemoOrg(organization?.name);
 
   useEffect(() => {
     if (!organization) return;
@@ -112,17 +111,6 @@ export default function SettingsPage() {
 
   const loadBusinessHours = async () => {
     setBhLoading(true);
-    if (isDemo) {
-      setBhEnabled(true);
-      setBhTimezone(DEMO_BUSINESS_HOURS.timezone);
-      const sched: Record<string, { enabled: boolean; start: string; end: string }> = {};
-      DEMO_BUSINESS_HOURS.schedule.forEach(s => { sched[s.day] = { enabled: s.enabled, start: s.start, end: s.end }; });
-      setBhSchedule(sched);
-      setBhAwayMessage(DEMO_BUSINESS_HOURS.away_message);
-      setBhWelcomeMessage(DEMO_BUSINESS_HOURS.welcome_message);
-      setBhLoading(false);
-      return;
-    }
     try {
       const { data } = await businessHoursAPI.get();
       const bh = data.business_hours;
@@ -165,14 +153,6 @@ export default function SettingsPage() {
 
   const loadSLA = async () => {
     setSlaLoading(true);
-    if (isDemo) {
-      setSlaEnabled(true);
-      setSlaBhOnly(DEMO_SLA_POLICY.business_hours_only);
-      setSlaFR(DEMO_SLA_POLICY.first_response);
-      setSlaRes(DEMO_SLA_POLICY.resolution);
-      setSlaLoading(false);
-      return;
-    }
     try {
       const { data } = await slaAPI.getPolicy();
       const p = data.sla_policy;
@@ -210,16 +190,6 @@ export default function SettingsPage() {
 
   const loadCSAT = async () => {
     setCsatLoading(true);
-    if (isDemo) {
-      setCsatEnabled(DEMO_CSAT_CONFIG.is_enabled);
-      setCsatQuestion(DEMO_CSAT_CONFIG.question);
-      setCsatThankYou(DEMO_CSAT_CONFIG.thank_you_message);
-      setCsatDelay(DEMO_CSAT_CONFIG.send_delay_minutes);
-      setCsatStats(DEMO_CSAT_RESPONSES.stats);
-      setCsatResponses(DEMO_CSAT_RESPONSES.responses as any);
-      setCsatLoading(false);
-      return;
-    }
     try {
       const [configRes, responsesRes] = await Promise.all([
         csatAPI.getConfig(),

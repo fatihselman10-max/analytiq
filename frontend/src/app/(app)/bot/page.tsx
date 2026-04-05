@@ -5,7 +5,7 @@ import Link from "next/link";
 import { botAPI, aiBotAPI } from "@/lib/api";
 import { BotRule } from "@/types";
 import { useAuthStore } from "@/store/auth";
-import { isDemoOrg, DEMO_BOT_CONFIG, DEMO_BOT_RULES, DEMO_AI_LOGS } from "@/lib/demo-data";
+
 import {
   Plus, Pencil, Trash2, Activity, Bot, Sparkles, Zap,
   MessageSquare, Settings, ToggleLeft, ToggleRight, ChevronRight,
@@ -61,48 +61,14 @@ export default function BotPage() {
   });
 
   const { organization } = useAuthStore();
-  const isDemo = isDemoOrg(organization?.name);
 
   useEffect(() => {
     if (!organization) return;
     loadAll();
-  }, [isDemo, organization]);
+  }, [organization]);
 
   const loadAll = async () => {
     setLoading(true);
-    if (isDemo) {
-      const dc = DEMO_BOT_CONFIG;
-      const cfg = {
-        is_enabled: dc.is_enabled,
-        brand_name: dc.brand_name,
-        brand_description: dc.brand_description,
-        brand_tone: dc.tone,
-        products_services: dc.products_services,
-        faq: dc.faq,
-        policies: dc.policies,
-        greeting_message: dc.greeting_message,
-        fallback_message: dc.fallback_message,
-        custom_instructions: dc.custom_instructions,
-        token_balance: dc.token_balance,
-        tokens_used: dc.tokens_used,
-      } as AIConfig;
-      setAIConfig(cfg);
-      setUsage({ token_balance: dc.token_balance, tokens_used: dc.tokens_used, total_responses: dc.total_responses, logs: DEMO_AI_LOGS as any });
-      setRules(DEMO_BOT_RULES as any);
-      setForm({
-        brand_name: dc.brand_name,
-        brand_description: dc.brand_description,
-        brand_tone: dc.tone,
-        products_services: dc.products_services,
-        faq: dc.faq,
-        policies: dc.policies,
-        greeting_message: dc.greeting_message,
-        fallback_message: dc.fallback_message,
-        custom_instructions: dc.custom_instructions,
-      });
-      setLoading(false);
-      return;
-    }
     try {
       const [configRes, usageRes, rulesRes] = await Promise.all([
         aiBotAPI.getConfig(),

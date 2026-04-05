@@ -15,8 +15,9 @@ type Config struct {
 	WhatsAppPhoneID    string
 	WhatsAppVerifyToken string
 	TelegramBotToken   string
-	InstagramToken     string
-	InstagramAppSecret string
+	InstagramToken              string
+	InstagramAppSecret          string
+	InstagramWebhookVerifyToken string
 	FacebookPageToken  string
 	FacebookAppSecret  string
 	TwitterAPIKey      string
@@ -50,8 +51,9 @@ func Load() *Config {
 		WhatsAppPhoneID:     os.Getenv("WHATSAPP_PHONE_ID"),
 		WhatsAppVerifyToken: os.Getenv("WHATSAPP_VERIFY_TOKEN"),
 		TelegramBotToken:    os.Getenv("TELEGRAM_BOT_TOKEN"),
-		InstagramToken:      os.Getenv("INSTAGRAM_TOKEN"),
-		InstagramAppSecret:  os.Getenv("INSTAGRAM_APP_SECRET"),
+		InstagramToken:              os.Getenv("INSTAGRAM_TOKEN"),
+		InstagramAppSecret:          os.Getenv("INSTAGRAM_APP_SECRET"),
+		InstagramWebhookVerifyToken: getEnv("INSTAGRAM_WEBHOOK_VERIFY_TOKEN", "messe-verify"),
 		FacebookPageToken:   os.Getenv("FACEBOOK_PAGE_TOKEN"),
 		FacebookAppSecret:   os.Getenv("FACEBOOK_APP_SECRET"),
 		TwitterAPIKey:       os.Getenv("TWITTER_API_KEY"),

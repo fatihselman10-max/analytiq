@@ -171,7 +171,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(db, authService)
 	conversationHandler := handlers.NewConversationHandler(db)
 	messageHandler := handlers.NewMessageHandler(db, channelService, hub)
-	webhookHandler := handlers.NewWebhookHandler(db, channelService, registry, botEngine, aiBot, hub)
+	webhookHandler := handlers.NewWebhookHandler(db, channelService, registry, botEngine, aiBot, hub, cfg.InstagramWebhookVerifyToken)
 	channelHandler := handlers.NewChannelHandler(db)
 	contactHandler := handlers.NewContactHandler(db)
 	reportHandler := handlers.NewReportHandler(db)

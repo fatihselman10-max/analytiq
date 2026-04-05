@@ -167,6 +167,10 @@ func main() {
 	hub := ws.NewHub()
 	go hub.Run()
 
+	// Instagram DM poller - fetches messages via API every 30s
+	igPoller := instagram.NewPoller(db, channelService, hub)
+	go igPoller.Start(30 * time.Second)
+
 	// Handlers
 	authHandler := handlers.NewAuthHandler(db, authService)
 	conversationHandler := handlers.NewConversationHandler(db)

@@ -25,10 +25,15 @@ type Provider struct {
 }
 
 // NewInstagramProvider creates a new Instagram provider from the given config map.
+// Prefers page_access_token over access_token for better API compatibility.
 func NewInstagramProvider(config map[string]string) *Provider {
+	token := config["page_access_token"]
+	if token == "" {
+		token = config["access_token"]
+	}
 	return &Provider{
 		pageID:      config["page_id"],
-		accessToken: config["access_token"],
+		accessToken: token,
 		appSecret:   config["app_secret"],
 		httpClient:  &http.Client{},
 	}

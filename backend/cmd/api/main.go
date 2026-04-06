@@ -18,6 +18,8 @@ import (
 	"github.com/repliq/backend/internal/services/channel"
 	"github.com/repliq/backend/internal/services/channel/email"
 	"github.com/repliq/backend/internal/services/channel/instagram"
+	tgpkg "github.com/repliq/backend/internal/services/channel/telegram"
+	vkprovider "github.com/repliq/backend/internal/services/channel/vk"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -44,6 +46,12 @@ func main() {
 	registry.RegisterFactory("email", func(config map[string]string) channel.Provider {
 		return email.NewEmailProvider(config)
 	})
+	registry.RegisterFactory("telegram", func(config map[string]string) channel.Provider {
+		return tgpkg.NewTelegramProvider(config)
+	})
+	registry.RegisterFactory("vk", func(config map[string]string) channel.Provider {
+		return vkprovider.NewVKProvider(config)
+	})
 
 	// Register channel providers from DB
 	func() {
@@ -69,6 +77,16 @@ func main() {
 				if config["access_token"] != "" {
 					registry.Register(instagram.NewInstagramProvider(config))
 					log.Printf("Registered Instagram provider from DB")
+				}
+			case "telegram":
+				if config["bot_token"] != "" {
+					registry.Register(tgpkg.NewTelegramProvider(config))
+					log.Printf("Registered Telegram provider from DB")
+				}
+			case "vk":
+				if config["access_token"] != "" {
+					registry.Register(vkprovider.NewVKProvider(config))
+					log.Printf("Registered VK provider from DB")
 				}
 			}
 		}

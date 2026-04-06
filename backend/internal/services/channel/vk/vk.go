@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math/rand"
+	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/repliq/backend/internal/services/channel"
@@ -11,9 +15,9 @@ import (
 
 // Provider implements the channel.Provider interface for VK Messages API.
 type Provider struct {
-	accessToken    string
-	groupID        string
-	secretKey      string
+	accessToken      string
+	groupID          string
+	secretKey        string
 	confirmationCode string
 }
 
@@ -32,12 +36,48 @@ func (p *Provider) GetType() string {
 	return "vk"
 }
 
-func (p *Provider) SendMessage(ctx context.Context, contactExternalID string, content string, attachments []channel.IncomingAttachment) (string, error) {
-	externalID := fmt.Sprintf("vk_msg_%s_%s", contactExternalID, "stub-message-id")
-	return externalID, nil
+func (p *Provider) GetConfirmationCode() string {
+	return p.confirmationCode
 }
 
-// webhookPayload represents a simplified VK Callback API event structure.
+func (p *Provider) SendMessage(ctx context.Context, contactExternalID string, content string, attachments []channel.IncomingAttachment) (string, error) {
+	params := url.Values{}
+	params.Set("peer_id", contactExternalID)
+	params.Set("message", content)
+	params.Set("random_id", strconv.Itoa(rand.Int()))
+	params.Set("access_token", p.accessToken)
+	params.Set("v", "5.199")
+
+	apiURL := "https://api.vk.com/method/messages.send?" + params.Encode()
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("vk: send failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Response int `json:"response"`
+		Error    *struct {
+			ErrorCode int    `json:"error_code"`
+			ErrorMsg  string `json:"error_msg"`
+		} `json:"error"`
+	}
+	json.Unmarshal(body, &result)
+
+	if result.Error != nil {
+		return "", fmt.Errorf("vk: API error %d: %s", result.Error.ErrorCode, result.Error.ErrorMsg)
+	}
+
+	return strconv.Itoa(result.Response), nil
+}
+
+// webhookPayload represents a VK Callback API event structure.
 type webhookPayload struct {
 	Type    string `json:"type"`
 	GroupID int    `json:"group_id"`
@@ -72,8 +112,22 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 		return nil, fmt.Errorf("vk: failed to parse webhook body: %w", err)
 	}
 
+	// VK confirmation request - return special message
+	if payload.Type == "confirmation" {
+		return &channel.IncomingMessage{
+			ExternalID:  "confirmation",
+			ContentType: "confirmation",
+			Content:     p.confirmationCode,
+		}, nil
+	}
+
 	if payload.Type != "message_new" {
 		return nil, fmt.Errorf("vk: unsupported event type: %s", payload.Type)
+	}
+
+	// Validate secret if configured
+	if p.secretKey != "" && payload.Secret != p.secretKey {
+		return nil, fmt.Errorf("vk: invalid secret key")
 	}
 
 	vkMsg := payload.Object.Message

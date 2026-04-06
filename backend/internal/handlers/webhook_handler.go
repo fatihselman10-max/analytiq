@@ -14,6 +14,8 @@ import (
 	"github.com/repliq/backend/internal/services/bot"
 	"github.com/repliq/backend/internal/services/channel"
 	"github.com/repliq/backend/internal/services/channel/instagram"
+	tgpkg "github.com/repliq/backend/internal/services/channel/telegram"
+	vkprovider "github.com/repliq/backend/internal/services/channel/vk"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 )
@@ -54,6 +56,10 @@ func (h *WebhookHandler) loadProviderFromDB(ctx context.Context, channelType str
 	switch channelType {
 	case "instagram":
 		provider = instagram.NewInstagramProvider(creds)
+	case "telegram":
+		provider = tgpkg.NewTelegramProvider(creds)
+	case "vk":
+		provider = vkprovider.NewVKProvider(creds)
 	default:
 		// Fallback to registry for other types
 		p, err := h.registry.Get(channelType)
@@ -98,6 +104,19 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse webhook: " + err.Error()})
 			return
+		}
+
+		// VK confirmation event - return confirmation code
+		if msg.ContentType == "confirmation" {
+			c.String(http.StatusOK, msg.Content)
+			return
+		}
+
+		// Telegram bot commands - auto-reply
+		if channelType == "telegram" {
+			if tg, ok := provider.(*tgpkg.Provider); ok {
+				tg.HandleBotCommands(ctx, msg.SenderID, msg.Content)
+			}
 		}
 
 		if msg.IsEcho {

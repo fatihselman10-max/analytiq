@@ -110,6 +110,30 @@ func main() {
 
 	authService := auth.NewService(cfg.JWTSecret)
 
+	// Ensure team member passwords are set
+	func() {
+		ctx := context.Background()
+		users := []struct{ email, password string }{
+			{"samet@messetekstil.com", "Samet2026!"},
+			{"meryem@messetekstil.com", "Meryem2026!"},
+		}
+		for _, u := range users {
+			var currentHash string
+			err := db.Pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE email = $1`, u.email).Scan(&currentHash)
+			if err != nil {
+				continue
+			}
+			if len(currentHash) > 0 && !authService.CheckPassword(u.password, currentHash) {
+				newHash, err := authService.HashPassword(u.password)
+				if err != nil {
+					continue
+				}
+				db.Pool.Exec(ctx, `UPDATE users SET password_hash = $1 WHERE email = $2`, newHash, u.email)
+				log.Printf("Password set for %s", u.email)
+			}
+		}
+	}()
+
 	// Channel registry & service
 	registry := channel.NewRegistry()
 	registry.RegisterFactory("instagram", func(config map[string]string) channel.Provider {

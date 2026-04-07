@@ -268,6 +268,53 @@ type KBArticle struct {
 	AuthorName      string    `json:"author_name,omitempty"`
 }
 
+// CRM Customer
+type Customer struct {
+	ID                int64      `json:"id" db:"id"`
+	OrgID             int64      `json:"org_id" db:"org_id"`
+	Name              string     `json:"name" db:"name"`
+	Company           string     `json:"company" db:"company"`
+	Country           string     `json:"country" db:"country"`
+	Segment           int        `json:"segment" db:"segment"`
+	CustomerType      string     `json:"customer_type" db:"customer_type"`
+	CustomerTypeOther string     `json:"customer_type_other" db:"customer_type_other"`
+	Source            string     `json:"source" db:"source"`
+	SourceDetail      string     `json:"source_detail" db:"source_detail"`
+	AssignedTo        *int64     `json:"assigned_to" db:"assigned_to"`
+	Phone             string     `json:"phone" db:"phone"`
+	Email             string     `json:"email" db:"email"`
+	Instagram         string     `json:"instagram" db:"instagram"`
+	Notes             string     `json:"notes" db:"notes"`
+	Orders            string     `json:"orders" db:"orders"`
+	LastContactAt     *time.Time `json:"last_contact_at" db:"last_contact_at"`
+	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at" db:"updated_at"`
+
+	// Joined
+	Channels     []CustomerChannel `json:"channels,omitempty"`
+	AssignedUser *User             `json:"assigned_user,omitempty"`
+}
+
+type CustomerChannel struct {
+	ID                int64     `json:"id" db:"id"`
+	CustomerID        int64     `json:"customer_id" db:"customer_id"`
+	ChannelType       string    `json:"channel_type" db:"channel_type"`
+	ChannelIdentifier string    `json:"channel_identifier" db:"channel_identifier"`
+	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+}
+
+type SegmentHistory struct {
+	ID            int64     `json:"id" db:"id"`
+	OrgID         int64     `json:"org_id" db:"org_id"`
+	CustomerID    int64     `json:"customer_id" db:"customer_id"`
+	OldSegment    int       `json:"old_segment" db:"old_segment"`
+	NewSegment    int       `json:"new_segment" db:"new_segment"`
+	ChangedBy     *int64    `json:"changed_by" db:"changed_by"`
+	ChangedAt     time.Time `json:"changed_at" db:"changed_at"`
+	CustomerName  string    `json:"customer_name,omitempty"`
+	ChangedByName string    `json:"changed_by_name,omitempty"`
+}
+
 // Report types
 type ReportOverview struct {
 	TotalConversations int     `json:"total_conversations"`

@@ -23,10 +23,27 @@ func (h *TaskHandler) List(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	rows, err := h.db.Pool.Query(ctx,
-		`SELECT id, org_id, title, assignee, department, priority, status,
-		        due_date, completed_at, tags, notes, kpi_weight, created_at, updated_at
-		 FROM tasks WHERE org_id = $1 ORDER BY created_at DESC`, orgID)
+	query := `SELECT id, org_id, title, assignee, department, priority, status,
+		        due_date, completed_at, tags, notes, kpi_weight, created_at, updated_at,
+		        COALESCE(category, 'Genel'), COALESCE(source_type, 'manual'), customer_id
+		 FROM tasks WHERE org_id = $1`
+	args := []interface{}{orgID}
+	argIdx := 2
+
+	if cat := c.Query("category"); cat != "" {
+		query += ` AND category = $` + strconv.Itoa(argIdx)
+		args = append(args, cat)
+		argIdx++
+	}
+	if assignee := c.Query("assignee"); assignee != "" {
+		query += ` AND assignee = $` + strconv.Itoa(argIdx)
+		args = append(args, assignee)
+		argIdx++
+	}
+
+	query += ` ORDER BY created_at DESC`
+
+	rows, err := h.db.Pool.Query(ctx, query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch"})
 		return
@@ -47,6 +64,9 @@ func (h *TaskHandler) List(c *gin.Context) {
 		KpiWeight   int        `json:"kpi_weight"`
 		CreatedAt   time.Time  `json:"created_at"`
 		UpdatedAt   time.Time  `json:"updated_at"`
+		Category    string     `json:"category"`
+		SourceType  string     `json:"source_type"`
+		CustomerID  *int64     `json:"customer_id"`
 	}
 
 	items := []taskResponse{}
@@ -55,7 +75,7 @@ func (h *TaskHandler) List(c *gin.Context) {
 		var dueDate, completedAt *time.Time
 		if err := rows.Scan(&t.ID, new(int64), &t.Title, &t.Assignee, &t.Department,
 			&t.Priority, &t.Status, &dueDate, &completedAt, &t.Tags, &t.Notes,
-			&t.KpiWeight, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.KpiWeight, &t.CreatedAt, &t.UpdatedAt, &t.Category, &t.SourceType, &t.CustomerID); err != nil {
 			continue
 		}
 		if dueDate != nil {
@@ -88,6 +108,9 @@ func (h *TaskHandler) Create(c *gin.Context) {
 		DueDate    string   `json:"due_date"`
 		Tags       []string `json:"tags"`
 		KpiWeight  int      `json:"kpi_weight"`
+		Category   string   `json:"category"`
+		CustomerID *int64   `json:"customer_id"`
+		SourceType string   `json:"source_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -106,6 +129,12 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	if req.Tags == nil {
 		req.Tags = []string{}
 	}
+	if req.Category == "" {
+		req.Category = "Genel"
+	}
+	if req.SourceType == "" {
+		req.SourceType = "manual"
+	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
@@ -119,9 +148,10 @@ func (h *TaskHandler) Create(c *gin.Context) {
 
 	var id int64
 	err := h.db.Pool.QueryRow(ctx,
-		`INSERT INTO tasks (org_id, title, assignee, department, priority, due_date, tags, kpi_weight)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+		`INSERT INTO tasks (org_id, title, assignee, department, priority, due_date, tags, kpi_weight, category, customer_id, source_type)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
 		orgID, req.Title, req.Assignee, req.Department, req.Priority, dueDate, req.Tags, req.KpiWeight,
+		req.Category, req.CustomerID, req.SourceType,
 	).Scan(&id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create"})

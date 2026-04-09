@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/repliq/backend/internal/database"
@@ -200,4 +203,138 @@ func (h *MessageHandler) AddNote(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message_id": messageID})
+}
+
+func (h *MessageHandler) Upload(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	userID := c.GetInt64("user_id")
+	conversationID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid conversation ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+
+	var convOrgID int64
+	err = h.db.Pool.QueryRow(ctx,
+		`SELECT org_id FROM conversations WHERE id = $1`, conversationID,
+	).Scan(&convOrgID)
+	if err != nil || convOrgID != orgID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Conversation not found"})
+		return
+	}
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+		return
+	}
+	defer file.Close()
+
+	if header.Size > 10*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File too large (max 10MB)"})
+		return
+	}
+
+	fileData, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read file"})
+		return
+	}
+
+	content := c.PostForm("content")
+	fileName := header.Filename
+	fileType := header.Header.Get("Content-Type")
+	if fileType == "" {
+		fileType = "application/octet-stream"
+	}
+
+	contentType := "file"
+	if strings.HasPrefix(fileType, "image/") {
+		contentType = "image"
+	}
+
+	msgContent := content
+	if msgContent == "" {
+		msgContent = fileName
+	}
+
+	var messageID int64
+	err = h.db.Pool.QueryRow(ctx,
+		`INSERT INTO messages (conversation_id, sender_type, sender_id, content, content_type, is_internal)
+		 VALUES ($1, 'agent', $2, $3, $4, false)
+		 RETURNING id`,
+		conversationID, userID, msgContent, contentType,
+	).Scan(&messageID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create message"})
+		return
+	}
+
+	var attachmentID int64
+	err = h.db.Pool.QueryRow(ctx,
+		`INSERT INTO attachments (message_id, file_name, file_url, file_type, file_size, file_data)
+		 VALUES ($1, $2, '', $3, $4, $5)
+		 RETURNING id`,
+		messageID, fileName, fileType, header.Size, fileData,
+	).Scan(&attachmentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save attachment"})
+		return
+	}
+
+	fileURL := fmt.Sprintf("/api/v1/files/%d", attachmentID)
+	h.db.Pool.Exec(ctx, `UPDATE attachments SET file_url = $1 WHERE id = $2`, fileURL, attachmentID)
+
+	h.db.Pool.Exec(ctx,
+		`UPDATE conversations SET last_message_at = NOW(), updated_at = NOW() WHERE id = $1`,
+		conversationID,
+	)
+
+	h.hub.BroadcastToOrg(orgID, ws.Event{
+		Type: "new_message",
+		Data: map[string]interface{}{
+			"conversation_id": conversationID,
+			"message_id":      messageID,
+			"sender_type":     "agent",
+			"content_type":    contentType,
+			"content":         msgContent,
+		},
+	})
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message_id":    messageID,
+		"attachment_id": attachmentID,
+		"file_url":      fileURL,
+	})
+}
+
+func (h *MessageHandler) ServeFile(c *gin.Context) {
+	attachmentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid attachment ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	var fileName, fileType string
+	var fileData []byte
+	err = h.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(file_name, ''), COALESCE(file_type, 'application/octet-stream'), file_data
+		 FROM attachments WHERE id = $1 AND file_data IS NOT NULL`,
+		attachmentID,
+	).Scan(&fileName, &fileType, &fileData)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	c.Header("Content-Type", fileType)
+	c.Header("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, fileName))
+	c.Header("Cache-Control", "public, max-age=86400")
+	c.Data(http.StatusOK, fileType, fileData)
 }

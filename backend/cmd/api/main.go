@@ -31,6 +31,37 @@ func runMigrations(db *database.DB) {
 		name string
 		sql  string
 	}{
+		{"011_attachment_data", `
+ALTER TABLE attachments ADD COLUMN IF NOT EXISTS file_data BYTEA;
+`},
+		{"013_customer_products", `
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS interested_products TEXT NOT NULL DEFAULT '';
+`},
+		{"014_customer_tracking_fields", `
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS sent_catalogs TEXT NOT NULL DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS sent_kartelas TEXT NOT NULL DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS sent_samples TEXT NOT NULL DEFAULT '';
+`},
+		{"012_pipeline_activities", `
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS pipeline_stage VARCHAR(50) NOT NULL DEFAULT 'new_contact';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS pipeline_updated_at TIMESTAMPTZ DEFAULT NOW();
+CREATE INDEX IF NOT EXISTS idx_customers_pipeline ON customers(org_id, pipeline_stage);
+
+CREATE TABLE IF NOT EXISTS customer_activities (
+    id BIGSERIAL PRIMARY KEY,
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    activity_type VARCHAR(50) NOT NULL,
+    title VARCHAR(500) NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    channel VARCHAR(50) NOT NULL DEFAULT '',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_activities_customer ON customer_activities(customer_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_activities_org ON customer_activities(org_id, created_at DESC);
+`},
 		{"009_customers", `
 CREATE TABLE IF NOT EXISTS customers (
     id BIGSERIAL PRIMARY KEY,
@@ -305,6 +336,8 @@ func main() {
 	kbHandler := handlers.NewKBHandler(db)
 	taskHandler := handlers.NewTaskHandler(db)
 	customerHandler := handlers.NewCustomerHandler(db)
+	briefingService := bot.NewBriefingService(db, cfg.AnthropicAPIKey)
+	briefingHandler := handlers.NewBriefingHandler(briefingService)
 	wsHandler := handlers.NewWSHandler(hub, authService)
 
 	// Router
@@ -367,6 +400,8 @@ func main() {
 		api.GET("/conversations/:id/messages", messageHandler.List)
 		api.POST("/conversations/:id/messages", messageHandler.Reply)
 		api.POST("/conversations/:id/notes", messageHandler.AddNote)
+		api.POST("/conversations/:id/upload", messageHandler.Upload)
+		api.GET("/files/:id", messageHandler.ServeFile)
 
 		// Channels
 		api.GET("/channels", channelHandler.List)
@@ -464,6 +499,12 @@ func main() {
 		api.POST("/customers/:id/channels", customerHandler.AddChannel)
 		api.DELETE("/customers/:id/channels/:channel_id", customerHandler.RemoveChannel)
 		api.POST("/customers/import", customerHandler.Import)
+		api.PATCH("/customers/:id/pipeline", customerHandler.UpdatePipelineStage)
+		api.GET("/customers/:id/activities", customerHandler.ListActivities)
+		api.POST("/customers/:id/activities", customerHandler.CreateActivity)
+		api.GET("/reports/crm/pipeline", customerHandler.PipelineOverview)
+		api.GET("/reports/patron", customerHandler.PatronFeed)
+		api.GET("/reports/briefing", briefingHandler.GetBriefing)
 
 		// CRM Reports
 		api.GET("/reports/crm/segments", customerHandler.SegmentOverview)

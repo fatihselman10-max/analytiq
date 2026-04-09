@@ -30,7 +30,13 @@ func (h *CustomerHandler) List(c *gin.Context) {
 	                  c.assigned_to, COALESCE(c.phone,''), COALESCE(c.email,''),
 	                  COALESCE(c.instagram,''), COALESCE(c.notes,''), COALESCE(c.orders,''),
 	                  c.last_contact_at, c.created_at, c.updated_at,
-	                  COALESCE(u.full_name, '') as assigned_name
+	                  COALESCE(u.full_name, '') as assigned_name,
+	                  COALESCE(c.pipeline_stage, 'new_contact') as pipeline_stage,
+	                  COALESCE(c.pipeline_updated_at, c.created_at) as pipeline_updated_at,
+	                  COALESCE(c.interested_products, '') as interested_products,
+	                  COALESCE(c.sent_catalogs, '') as sent_catalogs,
+	                  COALESCE(c.sent_kartelas, '') as sent_kartelas,
+	                  COALESCE(c.sent_samples, '') as sent_samples
 	           FROM customers c
 	           LEFT JOIN users u ON c.assigned_to = u.id
 	           WHERE c.org_id = $1`
@@ -59,6 +65,11 @@ func (h *CustomerHandler) List(c *gin.Context) {
 	}
 	if s := c.Query("assigned_to"); s != "" {
 		query += fmt.Sprintf(" AND c.assigned_to = $%d", argIdx)
+		args = append(args, s)
+		argIdx++
+	}
+	if s := c.Query("pipeline_stage"); s != "" {
+		query += fmt.Sprintf(" AND c.pipeline_stage = $%d", argIdx)
 		args = append(args, s)
 		argIdx++
 	}
@@ -103,7 +114,13 @@ func (h *CustomerHandler) List(c *gin.Context) {
 		CreatedAt         time.Time  `json:"created_at"`
 		UpdatedAt         time.Time  `json:"updated_at"`
 		AssignedName      string     `json:"assigned_name"`
-		Channels          []chResp   `json:"channels"`
+		PipelineStage      string     `json:"pipeline_stage"`
+		PipelineUpdatedAt  time.Time  `json:"pipeline_updated_at"`
+		InterestedProducts string     `json:"interested_products"`
+		SentCatalogs       string     `json:"sent_catalogs"`
+		SentKartelas       string     `json:"sent_kartelas"`
+		SentSamples        string     `json:"sent_samples"`
+		Channels           []chResp   `json:"channels"`
 	}
 
 	var customers []customerResp
@@ -115,7 +132,9 @@ func (h *CustomerHandler) List(c *gin.Context) {
 			&cu.Segment, &cu.CustomerType, &cu.CustomerTypeOther,
 			&cu.Source, &cu.SourceDetail, &cu.AssignedTo,
 			&cu.Phone, &cu.Email, &cu.Instagram, &cu.Notes, &cu.Orders,
-			&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName); err != nil {
+			&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName,
+			&cu.PipelineStage, &cu.PipelineUpdatedAt, &cu.InterestedProducts,
+			&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples); err != nil {
 			continue
 		}
 		cu.Channels = []chResp{}
@@ -185,6 +204,12 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		CreatedAt         time.Time  `json:"created_at"`
 		UpdatedAt         time.Time  `json:"updated_at"`
 		AssignedName      string     `json:"assigned_name"`
+		PipelineStage      string     `json:"pipeline_stage"`
+		PipelineUpdatedAt  time.Time  `json:"pipeline_updated_at"`
+		InterestedProducts string     `json:"interested_products"`
+		SentCatalogs       string     `json:"sent_catalogs"`
+		SentKartelas       string     `json:"sent_kartelas"`
+		SentSamples        string     `json:"sent_samples"`
 	}
 
 	err = h.db.Pool.QueryRow(ctx,
@@ -194,7 +219,13 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		        c.assigned_to, COALESCE(c.phone,''), COALESCE(c.email,''),
 		        COALESCE(c.instagram,''), COALESCE(c.notes,''), COALESCE(c.orders,''),
 		        c.last_contact_at, c.created_at, c.updated_at,
-		        COALESCE(u.full_name, '') as assigned_name
+		        COALESCE(u.full_name, '') as assigned_name,
+		        COALESCE(c.pipeline_stage, 'new_contact') as pipeline_stage,
+		        COALESCE(c.pipeline_updated_at, c.created_at) as pipeline_updated_at,
+		        COALESCE(c.interested_products, '') as interested_products,
+		        COALESCE(c.sent_catalogs, '') as sent_catalogs,
+		        COALESCE(c.sent_kartelas, '') as sent_kartelas,
+		        COALESCE(c.sent_samples, '') as sent_samples
 		 FROM customers c
 		 LEFT JOIN users u ON c.assigned_to = u.id
 		 WHERE c.id = $1 AND c.org_id = $2`, id, orgID,
@@ -202,7 +233,9 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		&cu.Segment, &cu.CustomerType, &cu.CustomerTypeOther,
 		&cu.Source, &cu.SourceDetail, &cu.AssignedTo,
 		&cu.Phone, &cu.Email, &cu.Instagram, &cu.Notes, &cu.Orders,
-		&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName)
+		&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName,
+		&cu.PipelineStage, &cu.PipelineUpdatedAt, &cu.InterestedProducts,
+		&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
 		return
@@ -346,8 +379,12 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 		Phone             *string `json:"phone"`
 		Email             *string `json:"email"`
 		Instagram         *string `json:"instagram"`
-		Notes             *string `json:"notes"`
-		Orders            *string `json:"orders"`
+		Notes              *string `json:"notes"`
+		Orders             *string `json:"orders"`
+		InterestedProducts *string `json:"interested_products"`
+		SentCatalogs       *string `json:"sent_catalogs"`
+		SentKartelas       *string `json:"sent_kartelas"`
+		SentSamples        *string `json:"sent_samples"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -360,14 +397,25 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 	// Check segment change for audit
 	if req.Segment != nil {
 		var oldSegment int
+		var customerName string
 		err := h.db.Pool.QueryRow(ctx,
-			`SELECT segment FROM customers WHERE id = $1 AND org_id = $2`, id, orgID,
-		).Scan(&oldSegment)
+			`SELECT segment, name FROM customers WHERE id = $1 AND org_id = $2`, id, orgID,
+		).Scan(&oldSegment, &customerName)
 		if err == nil && oldSegment != *req.Segment {
 			h.db.Pool.Exec(ctx,
 				`INSERT INTO segment_history (org_id, customer_id, old_segment, new_segment, changed_by)
 				 VALUES ($1,$2,$3,$4,$5)`,
 				orgID, id, oldSegment, *req.Segment, userID)
+			// Log activity for segment change
+			segTitle := fmt.Sprintf("Segment degisikligi: %d → %d", oldSegment, *req.Segment)
+			noteText := ""
+			if req.Notes != nil && *req.Notes != "" {
+				noteText = *req.Notes
+			}
+			h.db.Pool.Exec(ctx,
+				`INSERT INTO customer_activities (org_id, customer_id, activity_type, title, description, created_by)
+				 VALUES ($1,$2,'segment_change',$3,$4,$5)`,
+				orgID, id, segTitle, noteText, userID)
 		}
 	}
 
@@ -444,6 +492,26 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 	if req.Orders != nil {
 		query += fmt.Sprintf(", orders=$%d", argIdx)
 		args = append(args, *req.Orders)
+		argIdx++
+	}
+	if req.InterestedProducts != nil {
+		query += fmt.Sprintf(", interested_products=$%d", argIdx)
+		args = append(args, *req.InterestedProducts)
+		argIdx++
+	}
+	if req.SentCatalogs != nil {
+		query += fmt.Sprintf(", sent_catalogs=$%d", argIdx)
+		args = append(args, *req.SentCatalogs)
+		argIdx++
+	}
+	if req.SentKartelas != nil {
+		query += fmt.Sprintf(", sent_kartelas=$%d", argIdx)
+		args = append(args, *req.SentKartelas)
+		argIdx++
+	}
+	if req.SentSamples != nil {
+		query += fmt.Sprintf(", sent_samples=$%d", argIdx)
+		args = append(args, *req.SentSamples)
 		argIdx++
 	}
 
@@ -720,4 +788,443 @@ func (h *CustomerHandler) WeeklyNew(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"weekly": result})
+}
+
+// Pipeline: Update customer stage
+func (h *CustomerHandler) UpdatePipelineStage(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	userID := c.GetInt64("user_id")
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	var req struct {
+		Stage string `json:"stage" binding:"required"`
+		Note  string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	// Get old stage
+	var oldStage string
+	err = h.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(pipeline_stage, 'new_contact') FROM customers WHERE id=$1 AND org_id=$2`, id, orgID,
+	).Scan(&oldStage)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
+		return
+	}
+
+	// Update stage
+	_, err = h.db.Pool.Exec(ctx,
+		`UPDATE customers SET pipeline_stage=$1, pipeline_updated_at=NOW(), updated_at=NOW() WHERE id=$2 AND org_id=$3`,
+		req.Stage, id, orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update stage"})
+		return
+	}
+
+	// Log activity
+	title := fmt.Sprintf("Asama degisikligi: %s → %s", oldStage, req.Stage)
+	desc := req.Note
+	h.db.Pool.Exec(ctx,
+		`INSERT INTO customer_activities (org_id, customer_id, activity_type, title, description, created_by)
+		 VALUES ($1,$2,'stage_change',$3,$4,$5)`,
+		orgID, id, title, desc, userID)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Stage updated"})
+}
+
+// Activities: List for a customer
+func (h *CustomerHandler) ListActivities(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	rows, err := h.db.Pool.Query(ctx,
+		`SELECT a.id, a.activity_type, a.title, a.description, a.channel,
+		        COALESCE(u.full_name, 'Sistem') as created_by_name, a.created_at,
+		        COALESCE(a.metadata, '{}') as metadata
+		 FROM customer_activities a
+		 LEFT JOIN users u ON a.created_by = u.id
+		 WHERE a.customer_id = $1 AND a.org_id = $2
+		 ORDER BY a.created_at DESC
+		 LIMIT 100`,
+		customerID, orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch activities"})
+		return
+	}
+	defer rows.Close()
+
+	type actResp struct {
+		ID            int64     `json:"id"`
+		ActivityType  string    `json:"activity_type"`
+		Title         string    `json:"title"`
+		Description   string    `json:"description"`
+		Channel       string    `json:"channel"`
+		CreatedByName string    `json:"created_by_name"`
+		CreatedAt     time.Time `json:"created_at"`
+		Metadata      string    `json:"metadata"`
+	}
+	activities := []actResp{}
+	for rows.Next() {
+		var a actResp
+		if err := rows.Scan(&a.ID, &a.ActivityType, &a.Title, &a.Description, &a.Channel, &a.CreatedByName, &a.CreatedAt, &a.Metadata); err != nil {
+			continue
+		}
+		activities = append(activities, a)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"activities": activities})
+}
+
+// Activities: Create
+func (h *CustomerHandler) CreateActivity(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	userID := c.GetInt64("user_id")
+	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	var req struct {
+		ActivityType string `json:"activity_type" binding:"required"`
+		Title        string `json:"title" binding:"required"`
+		Description  string `json:"description"`
+		Channel      string `json:"channel"`
+		Metadata     string `json:"metadata"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Metadata == "" {
+		req.Metadata = "{}"
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	// Verify customer belongs to org
+	var exists bool
+	h.db.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM customers WHERE id=$1 AND org_id=$2)`, customerID, orgID).Scan(&exists)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
+		return
+	}
+
+	var id int64
+	err = h.db.Pool.QueryRow(ctx,
+		`INSERT INTO customer_activities (org_id, customer_id, activity_type, title, description, channel, metadata, created_by)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+		orgID, customerID, req.ActivityType, req.Title, req.Description, req.Channel, req.Metadata, userID,
+	).Scan(&id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create activity"})
+		return
+	}
+
+	// Update last_contact_at
+	h.db.Pool.Exec(ctx, `UPDATE customers SET last_contact_at=NOW(), updated_at=NOW() WHERE id=$1`, customerID)
+
+	// Auto pipeline + segment based on activity type
+	stageForActivity := map[string]string{
+		"catalog_sent": "catalog_sent",
+		"kartela_sent": "kartela_sent",
+		"sample_sent":  "sample_sent",
+		"order":        "order_received",
+	}
+	segmentForActivity := map[string]int{
+		"kartela_sent": 2, // Aktif
+		"sample_sent":  2, // Aktif
+		"order":        1, // VIP
+	}
+
+	// Pipeline stage order for comparison
+	stageOrder := map[string]int{
+		"new_contact": 0, "catalog_sent": 1, "kartela_sent": 2,
+		"sample_sent": 3, "order_received": 4, "shipping": 5,
+	}
+	if newStage, ok := stageForActivity[req.ActivityType]; ok {
+		// Only advance pipeline forward, never backward
+		var currentStage string
+		h.db.Pool.QueryRow(ctx, `SELECT COALESCE(pipeline_stage,'new_contact') FROM customers WHERE id=$1`, customerID).Scan(&currentStage)
+		currentOrder := stageOrder[currentStage]
+		newOrder := stageOrder[newStage]
+		if newOrder > currentOrder {
+			h.db.Pool.Exec(ctx,
+				`UPDATE customers SET pipeline_stage=$1, pipeline_updated_at=NOW() WHERE id=$2 AND org_id=$3`,
+				newStage, customerID, orgID)
+		}
+	}
+	if newSeg, ok := segmentForActivity[req.ActivityType]; ok {
+		var oldSeg int
+		err := h.db.Pool.QueryRow(ctx, `SELECT segment FROM customers WHERE id=$1`, customerID).Scan(&oldSeg)
+		if err == nil && newSeg < oldSeg {
+			h.db.Pool.Exec(ctx, `UPDATE customers SET segment=$1 WHERE id=$2`, newSeg, customerID)
+			// Log segment change as activity
+			segTitle := fmt.Sprintf("Segment degisikligi: %d → %d", oldSeg, newSeg)
+			h.db.Pool.Exec(ctx,
+				`INSERT INTO segment_history (org_id, customer_id, old_segment, new_segment, changed_by)
+				 VALUES ($1,$2,$3,$4,$5)`, orgID, customerID, oldSeg, newSeg, userID)
+			h.db.Pool.Exec(ctx,
+				`INSERT INTO customer_activities (org_id, customer_id, activity_type, title, created_by)
+				 VALUES ($1,$2,'segment_change',$3,$4)`, orgID, customerID, segTitle, userID)
+		}
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"id": id})
+}
+
+// Pipeline: Overview (counts per stage)
+func (h *CustomerHandler) PipelineOverview(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	rows, err := h.db.Pool.Query(ctx,
+		`SELECT COALESCE(pipeline_stage, 'new_contact'), COUNT(*)
+		 FROM customers WHERE org_id = $1
+		 GROUP BY pipeline_stage ORDER BY pipeline_stage`, orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch"})
+		return
+	}
+	defer rows.Close()
+
+	type stageCount struct {
+		Stage string `json:"stage"`
+		Count int    `json:"count"`
+	}
+	result := []stageCount{}
+	for rows.Next() {
+		var sc stageCount
+		if err := rows.Scan(&sc.Stage, &sc.Count); err != nil {
+			continue
+		}
+		result = append(result, sc)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"stages": result})
+}
+
+// Patron Dashboard: All recent activities across all customers
+func (h *CustomerHandler) PatronFeed(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	days := 30
+	if d := c.Query("days"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 {
+			days = parsed
+		}
+	}
+
+	// Recent activities across all customers
+	actRows, err := h.db.Pool.Query(ctx,
+		`SELECT a.id, a.customer_id, a.activity_type, a.title, a.description, a.channel,
+		        COALESCE(u.full_name, 'Sistem') as created_by_name, a.created_at,
+		        c.name as customer_name, COALESCE(c.company,'') as customer_company,
+		        c.segment as customer_segment,
+		        COALESCE(a.metadata, '{}') as metadata
+		 FROM customer_activities a
+		 JOIN customers c ON a.customer_id = c.id
+		 LEFT JOIN users u ON a.created_by = u.id
+		 WHERE a.org_id = $1 AND a.created_at >= NOW() - ($2 || ' days')::INTERVAL
+		 ORDER BY a.created_at DESC
+		 LIMIT 200`,
+		orgID, strconv.Itoa(days))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch activities"})
+		return
+	}
+	defer actRows.Close()
+
+	type actItem struct {
+		ID              int64     `json:"id"`
+		CustomerID      int64     `json:"customer_id"`
+		ActivityType    string    `json:"activity_type"`
+		Title           string    `json:"title"`
+		Description     string    `json:"description"`
+		Channel         string    `json:"channel"`
+		CreatedByName   string    `json:"created_by_name"`
+		CreatedAt       time.Time `json:"created_at"`
+		CustomerName    string    `json:"customer_name"`
+		CustomerCompany string    `json:"customer_company"`
+		CustomerSegment int       `json:"customer_segment"`
+		Metadata        string    `json:"metadata"`
+	}
+	activities := []actItem{}
+	for actRows.Next() {
+		var a actItem
+		if err := actRows.Scan(&a.ID, &a.CustomerID, &a.ActivityType, &a.Title, &a.Description,
+			&a.Channel, &a.CreatedByName, &a.CreatedAt,
+			&a.CustomerName, &a.CustomerCompany, &a.CustomerSegment, &a.Metadata); err != nil {
+			continue
+		}
+		activities = append(activities, a)
+	}
+
+	// Recent segment changes with details
+	segRows, err := h.db.Pool.Query(ctx,
+		`SELECT sh.id, sh.customer_id, sh.old_segment, sh.new_segment,
+		        COALESCE(u.full_name, 'Sistem') as changed_by_name, sh.changed_at,
+		        c.name as customer_name, COALESCE(c.company,'') as customer_company,
+		        COALESCE(c.pipeline_stage, 'new_contact') as pipeline_stage
+		 FROM segment_history sh
+		 JOIN customers c ON sh.customer_id = c.id
+		 LEFT JOIN users u ON sh.changed_by = u.id
+		 WHERE sh.org_id = $1 AND sh.changed_at >= NOW() - ($2 || ' days')::INTERVAL
+		 ORDER BY sh.changed_at DESC
+		 LIMIT 100`,
+		orgID, strconv.Itoa(days))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch segment changes"})
+		return
+	}
+	defer segRows.Close()
+
+	type segItem struct {
+		ID              int64     `json:"id"`
+		CustomerID      int64     `json:"customer_id"`
+		OldSegment      int       `json:"old_segment"`
+		NewSegment      int       `json:"new_segment"`
+		ChangedByName   string    `json:"changed_by_name"`
+		ChangedAt       time.Time `json:"changed_at"`
+		CustomerName    string    `json:"customer_name"`
+		CustomerCompany string    `json:"customer_company"`
+		PipelineStage   string    `json:"pipeline_stage"`
+	}
+	segChanges := []segItem{}
+	for segRows.Next() {
+		var s segItem
+		if err := segRows.Scan(&s.ID, &s.CustomerID, &s.OldSegment, &s.NewSegment,
+			&s.ChangedByName, &s.ChangedAt,
+			&s.CustomerName, &s.CustomerCompany, &s.PipelineStage); err != nil {
+			continue
+		}
+		segChanges = append(segChanges, s)
+	}
+
+	// Team member activity counts
+	teamRows, err := h.db.Pool.Query(ctx,
+		`SELECT COALESCE(u.full_name, 'Sistem') as name, COUNT(*) as count
+		 FROM customer_activities a
+		 LEFT JOIN users u ON a.created_by = u.id
+		 WHERE a.org_id = $1 AND a.created_at >= NOW() - ($2 || ' days')::INTERVAL
+		 GROUP BY u.full_name
+		 ORDER BY count DESC`,
+		orgID, strconv.Itoa(days))
+	teamStats := []struct {
+		Name  string `json:"name"`
+		Count int    `json:"count"`
+	}{}
+	if err == nil {
+		defer teamRows.Close()
+		for teamRows.Next() {
+			var t struct {
+				Name  string `json:"name"`
+				Count int    `json:"count"`
+			}
+			if err := teamRows.Scan(&t.Name, &t.Count); err != nil {
+				continue
+			}
+			teamStats = append(teamStats, t)
+		}
+	}
+
+	// Pipeline stage distribution
+	pipeRows, err := h.db.Pool.Query(ctx,
+		`SELECT COALESCE(pipeline_stage, 'new_contact'), COUNT(*)
+		 FROM customers WHERE org_id = $1
+		 GROUP BY pipeline_stage ORDER BY COUNT(*) DESC`,
+		orgID)
+	pipeStats := []struct {
+		Stage string `json:"stage"`
+		Count int    `json:"count"`
+	}{}
+	if err == nil {
+		defer pipeRows.Close()
+		for pipeRows.Next() {
+			var p struct {
+				Stage string `json:"stage"`
+				Count int    `json:"count"`
+			}
+			if err := pipeRows.Scan(&p.Stage, &p.Count); err != nil {
+				continue
+			}
+			pipeStats = append(pipeStats, p)
+		}
+	}
+
+	// Recent conversations/messages
+	msgRows, err := h.db.Pool.Query(ctx,
+		`SELECT m.id, m.conversation_id, m.sender_type, m.content,
+		        COALESCE(m.content_type, 'text'), m.created_at,
+		        COALESCE(u.full_name, co.name, '') as sender_name,
+		        co.name as contact_name, COALESCE(ch.type, '') as channel_type
+		 FROM messages m
+		 JOIN conversations cv ON m.conversation_id = cv.id
+		 LEFT JOIN contacts co ON cv.contact_id = co.id
+		 LEFT JOIN channels ch ON cv.channel_id = ch.id
+		 LEFT JOIN users u ON m.sender_type IN ('agent','bot') AND u.id = m.sender_id
+		 WHERE cv.org_id = $1
+		   AND m.is_internal = false
+		   AND m.created_at >= NOW() - ($2 || ' days')::INTERVAL
+		 ORDER BY m.created_at DESC
+		 LIMIT 100`,
+		orgID, strconv.Itoa(days))
+
+	type msgItem struct {
+		ID             int64     `json:"id"`
+		ConversationID int64     `json:"conversation_id"`
+		SenderType     string    `json:"sender_type"`
+		Content        string    `json:"content"`
+		ContentType    string    `json:"content_type"`
+		CreatedAt      time.Time `json:"created_at"`
+		SenderName     string    `json:"sender_name"`
+		ContactName    string    `json:"contact_name"`
+		ChannelType    string    `json:"channel_type"`
+	}
+	recentMessages := []msgItem{}
+	if err == nil {
+		defer msgRows.Close()
+		for msgRows.Next() {
+			var m msgItem
+			if err := msgRows.Scan(&m.ID, &m.ConversationID, &m.SenderType, &m.Content,
+				&m.ContentType, &m.CreatedAt, &m.SenderName, &m.ContactName, &m.ChannelType); err != nil {
+				continue
+			}
+			// Truncate content for overview
+			if len(m.Content) > 200 {
+				m.Content = m.Content[:200] + "..."
+			}
+			recentMessages = append(recentMessages, m)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"activities":       activities,
+		"segment_changes":  segChanges,
+		"team_stats":       teamStats,
+		"pipeline_stats":   pipeStats,
+		"recent_messages":  recentMessages,
+	})
 }

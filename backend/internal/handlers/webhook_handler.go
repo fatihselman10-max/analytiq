@@ -151,16 +151,30 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 		var chType string
 		h.db.Pool.QueryRow(ctx, `SELECT type FROM channels WHERE id = $1`, channelID).Scan(&chType)
 
-		outside, awayMsg := IsOutsideBusinessHours(h.db, ctx, result.OrgID)
-		if outside && awayMsg != "" && result.IsNew {
-			// Save away message as bot message
-			h.db.Pool.Exec(ctx,
-				`INSERT INTO messages (conversation_id, sender_type, content, content_type)
-				 VALUES ($1, 'bot', $2, 'text')`,
-				result.ConversationID, awayMsg)
-			// Try to send via channel provider
-			if provider != nil {
-				provider.SendMessage(ctx, msg.SenderID, awayMsg, nil)
+		outside, _ := IsOutsideBusinessHours(h.db, ctx, result.OrgID)
+		if outside {
+			// Find customer country for targeted auto-reply
+			var customerCountry string
+			if result.ConversationID > 0 {
+				h.db.Pool.QueryRow(ctx,
+					`SELECT COALESCE(cu.country, '') FROM conversations cv
+					 LEFT JOIN customers cu ON cu.id = cv.customer_id
+					 WHERE cv.id = $1`, result.ConversationID,
+				).Scan(&customerCountry)
+			}
+
+			// Get best matching auto-reply (channel + country based)
+			autoMsg := GetAutoReply(h.db, ctx, result.OrgID, chType, customerCountry)
+			if autoMsg != "" {
+				// Save as bot message
+				h.db.Pool.Exec(ctx,
+					`INSERT INTO messages (conversation_id, sender_type, content, content_type)
+					 VALUES ($1, 'bot', $2, 'text')`,
+					result.ConversationID, autoMsg)
+				// Send via channel
+				if provider != nil {
+					provider.SendMessage(ctx, msg.SenderID, autoMsg, nil)
+				}
 			}
 		}
 

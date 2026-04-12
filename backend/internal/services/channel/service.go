@@ -53,6 +53,33 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 		return nil, fmt.Errorf("failed to upsert contact: %w", err)
 	}
 
+	// Try to match sender to a CRM customer via customer_channels
+	var customerID *int64
+	var matchedCustID int64
+	err = s.db.Pool.QueryRow(ctx,
+		`SELECT cc.customer_id FROM customer_channels cc
+		 JOIN customers cu ON cu.id = cc.customer_id AND cu.org_id = $1
+		 WHERE LOWER(cc.channel_type) = LOWER($2)
+		   AND (cc.channel_identifier = $3 OR cc.channel_identifier = $4)
+		 LIMIT 1`,
+		orgID, channelType, msg.SenderID, msg.SenderName,
+	).Scan(&matchedCustID)
+	if err == nil {
+		customerID = &matchedCustID
+	} else {
+		// Also try matching by customer name, phone, email, instagram
+		err = s.db.Pool.QueryRow(ctx,
+			`SELECT id FROM customers
+			 WHERE org_id = $1 AND (
+			   name = $2 OR phone = $2 OR email = $2 OR instagram = $2
+			 ) LIMIT 1`,
+			orgID, msg.SenderName,
+		).Scan(&matchedCustID)
+		if err == nil {
+			customerID = &matchedCustID
+		}
+	}
+
 	// Find existing open/pending conversation or reopen a resolved one
 	var conversationID int64
 	isNew := false
@@ -73,8 +100,8 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 		if err == nil {
 			// Reopen the resolved conversation
 			_, _ = s.db.Pool.Exec(ctx,
-				`UPDATE conversations SET status = 'open', resolved_at = NULL, updated_at = NOW() WHERE id = $1`,
-				conversationID,
+				`UPDATE conversations SET status = 'open', resolved_at = NULL, updated_at = NOW(), customer_id = COALESCE(customer_id, $2) WHERE id = $1`,
+				conversationID, customerID,
 			)
 		} else {
 			// Create new conversation
@@ -84,15 +111,21 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 				subject = subject[:100]
 			}
 			err = s.db.Pool.QueryRow(ctx,
-				`INSERT INTO conversations (org_id, channel_id, contact_id, status, priority, subject, last_message_at)
-				 VALUES ($1, $2, $3, 'open', 'normal', $4, NOW())
+				`INSERT INTO conversations (org_id, channel_id, contact_id, customer_id, status, priority, subject, last_message_at)
+				 VALUES ($1, $2, $3, $4, 'open', 'normal', $5, NOW())
 				 RETURNING id`,
-				orgID, channelID, contactID, subject,
+				orgID, channelID, contactID, customerID, subject,
 			).Scan(&conversationID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create conversation: %w", err)
 			}
 		}
+	} else if customerID != nil {
+		// Update existing conversation with customer_id if not set
+		s.db.Pool.Exec(ctx,
+			`UPDATE conversations SET customer_id = COALESCE(customer_id, $2) WHERE id = $1`,
+			conversationID, customerID,
+		)
 	}
 
 	// Insert message

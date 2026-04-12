@@ -26,7 +26,7 @@ func (h *ConversationHandler) List(c *gin.Context) {
 	defer cancel()
 
 	query := `
-		SELECT c.id, c.org_id, c.channel_id, c.contact_id, c.assigned_to,
+		SELECT c.id, c.org_id, c.channel_id, c.contact_id, c.assigned_to, c.customer_id,
 		       c.status, c.priority, c.subject, c.last_message_at,
 		       c.first_response_at, c.resolved_at, c.created_at, c.updated_at,
 		       co.name AS contact_name, co.email AS contact_email, co.avatar_url AS contact_avatar,
@@ -82,7 +82,7 @@ func (h *ConversationHandler) List(c *gin.Context) {
 		var conv models.Conversation
 		var contactName, contactEmail, contactAvatar, channelType, assignedName, lastMessage *string
 		err := rows.Scan(
-			&conv.ID, &conv.OrgID, &conv.ChannelID, &conv.ContactID, &conv.AssignedTo,
+			&conv.ID, &conv.OrgID, &conv.ChannelID, &conv.ContactID, &conv.AssignedTo, &conv.CustomerID,
 			&conv.Status, &conv.Priority, &conv.Subject, &conv.LastMessageAt,
 			&conv.FirstResponseAt, &conv.ResolvedAt, &conv.CreatedAt, &conv.UpdatedAt,
 			&contactName, &contactEmail, &contactAvatar,
@@ -131,7 +131,7 @@ func (h *ConversationHandler) Get(c *gin.Context) {
 	var conv models.Conversation
 	var contactName, contactEmail, contactAvatar, channelType, assignedName *string
 	err = h.db.Pool.QueryRow(ctx,
-		`SELECT c.id, c.org_id, c.channel_id, c.contact_id, c.assigned_to,
+		`SELECT c.id, c.org_id, c.channel_id, c.contact_id, c.assigned_to, c.customer_id,
 		        c.status, c.priority, c.subject, c.last_message_at,
 		        c.first_response_at, c.resolved_at, c.created_at, c.updated_at,
 		        co.name, co.email, co.avatar_url,
@@ -144,7 +144,7 @@ func (h *ConversationHandler) Get(c *gin.Context) {
 		 WHERE c.id = $1 AND c.org_id = $2`,
 		id, orgID,
 	).Scan(
-		&conv.ID, &conv.OrgID, &conv.ChannelID, &conv.ContactID, &conv.AssignedTo,
+		&conv.ID, &conv.OrgID, &conv.ChannelID, &conv.ContactID, &conv.AssignedTo, &conv.CustomerID,
 		&conv.Status, &conv.Priority, &conv.Subject, &conv.LastMessageAt,
 		&conv.FirstResponseAt, &conv.ResolvedAt, &conv.CreatedAt, &conv.UpdatedAt,
 		&contactName, &contactEmail, &contactAvatar,
@@ -376,4 +376,71 @@ func (h *ConversationHandler) RemoveTag(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Tag removed"})
+}
+
+// LinkCustomer links a conversation to a CRM customer
+func (h *ConversationHandler) LinkCustomer(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	var req struct {
+		CustomerID int64 `json:"customer_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	// Verify customer belongs to same org
+	var exists bool
+	err = h.db.Pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM customers WHERE id = $1 AND org_id = $2)`,
+		req.CustomerID, orgID,
+	).Scan(&exists)
+	if err != nil || !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
+		return
+	}
+
+	_, err = h.db.Pool.Exec(ctx,
+		`UPDATE conversations SET customer_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
+		req.CustomerID, id, orgID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to link customer"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Customer linked"})
+}
+
+// UnlinkCustomer removes the customer link from a conversation
+func (h *ConversationHandler) UnlinkCustomer(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	_, err = h.db.Pool.Exec(ctx,
+		`UPDATE conversations SET customer_id = NULL, updated_at = NOW() WHERE id = $1 AND org_id = $2`,
+		id, orgID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unlink"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Customer unlinked"})
 }

@@ -42,6 +42,27 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS sent_catalogs TEXT NOT NULL DEFAU
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS sent_kartelas TEXT NOT NULL DEFAULT '';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS sent_samples TEXT NOT NULL DEFAULT '';
 `},
+		{"015_contact_role", `
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS contact_role VARCHAR(50) NOT NULL DEFAULT '';
+`},
+		{"017_auto_replies", `
+CREATE TABLE IF NOT EXISTS auto_replies (
+    id BIGSERIAL PRIMARY KEY,
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    channel_type VARCHAR(50) NOT NULL DEFAULT '',
+    country VARCHAR(100) NOT NULL DEFAULT '',
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    only_first_message BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+`},
+		{"016_conversation_customer_link", `
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_conversations_customer ON conversations(customer_id);
+`},
 		{"012_pipeline_activities", `
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS pipeline_stage VARCHAR(50) NOT NULL DEFAULT 'new_contact';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS pipeline_updated_at TIMESTAMPTZ DEFAULT NOW();
@@ -338,6 +359,7 @@ func main() {
 	customerHandler := handlers.NewCustomerHandler(db)
 	briefingService := bot.NewBriefingService(db, cfg.AnthropicAPIKey)
 	briefingHandler := handlers.NewBriefingHandler(briefingService)
+	autoReplyHandler := handlers.NewAutoReplyHandler(db)
 	wsHandler := handlers.NewWSHandler(hub, authService)
 
 	// Router
@@ -395,6 +417,8 @@ func main() {
 		api.POST("/conversations/bulk", conversationHandler.BulkUpdate)
 		api.POST("/conversations/:id/tags", conversationHandler.AddTag)
 		api.DELETE("/conversations/:id/tags/:tag_id", conversationHandler.RemoveTag)
+		api.POST("/conversations/:id/link-customer", conversationHandler.LinkCustomer)
+		api.DELETE("/conversations/:id/link-customer", conversationHandler.UnlinkCustomer)
 
 		// Messages
 		api.GET("/conversations/:id/messages", messageHandler.List)
@@ -510,6 +534,12 @@ func main() {
 		api.GET("/reports/crm/segments", customerHandler.SegmentOverview)
 		api.GET("/reports/crm/segment-changes", customerHandler.SegmentChanges)
 		api.GET("/reports/crm/weekly-new", customerHandler.WeeklyNew)
+
+		// Auto Replies
+		api.GET("/auto-replies", autoReplyHandler.List)
+		api.POST("/auto-replies", autoReplyHandler.Create)
+		api.PUT("/auto-replies/:id", autoReplyHandler.Update)
+		api.DELETE("/auto-replies/:id", autoReplyHandler.Delete)
 
 		// Tags
 		api.GET("/tags", tagHandler.List)

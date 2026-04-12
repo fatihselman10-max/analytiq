@@ -36,7 +36,8 @@ func (h *CustomerHandler) List(c *gin.Context) {
 	                  COALESCE(c.interested_products, '') as interested_products,
 	                  COALESCE(c.sent_catalogs, '') as sent_catalogs,
 	                  COALESCE(c.sent_kartelas, '') as sent_kartelas,
-	                  COALESCE(c.sent_samples, '') as sent_samples
+	                  COALESCE(c.sent_samples, '') as sent_samples,
+	                  COALESCE(c.contact_role, '') as contact_role
 	           FROM customers c
 	           LEFT JOIN users u ON c.assigned_to = u.id
 	           WHERE c.org_id = $1`
@@ -120,6 +121,7 @@ func (h *CustomerHandler) List(c *gin.Context) {
 		SentCatalogs       string     `json:"sent_catalogs"`
 		SentKartelas       string     `json:"sent_kartelas"`
 		SentSamples        string     `json:"sent_samples"`
+		ContactRole        string     `json:"contact_role"`
 		Channels           []chResp   `json:"channels"`
 	}
 
@@ -134,7 +136,7 @@ func (h *CustomerHandler) List(c *gin.Context) {
 			&cu.Phone, &cu.Email, &cu.Instagram, &cu.Notes, &cu.Orders,
 			&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName,
 			&cu.PipelineStage, &cu.PipelineUpdatedAt, &cu.InterestedProducts,
-			&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples); err != nil {
+			&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples, &cu.ContactRole); err != nil {
 			continue
 		}
 		cu.Channels = []chResp{}
@@ -210,6 +212,7 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		SentCatalogs       string     `json:"sent_catalogs"`
 		SentKartelas       string     `json:"sent_kartelas"`
 		SentSamples        string     `json:"sent_samples"`
+		ContactRole        string     `json:"contact_role"`
 	}
 
 	err = h.db.Pool.QueryRow(ctx,
@@ -225,7 +228,8 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		        COALESCE(c.interested_products, '') as interested_products,
 		        COALESCE(c.sent_catalogs, '') as sent_catalogs,
 		        COALESCE(c.sent_kartelas, '') as sent_kartelas,
-		        COALESCE(c.sent_samples, '') as sent_samples
+		        COALESCE(c.sent_samples, '') as sent_samples,
+		        COALESCE(c.contact_role, '') as contact_role
 		 FROM customers c
 		 LEFT JOIN users u ON c.assigned_to = u.id
 		 WHERE c.id = $1 AND c.org_id = $2`, id, orgID,
@@ -235,7 +239,7 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		&cu.Phone, &cu.Email, &cu.Instagram, &cu.Notes, &cu.Orders,
 		&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName,
 		&cu.PipelineStage, &cu.PipelineUpdatedAt, &cu.InterestedProducts,
-		&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples)
+		&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples, &cu.ContactRole)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
 		return
@@ -385,6 +389,7 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 		SentCatalogs       *string `json:"sent_catalogs"`
 		SentKartelas       *string `json:"sent_kartelas"`
 		SentSamples        *string `json:"sent_samples"`
+		ContactRole        *string `json:"contact_role"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -512,6 +517,11 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 	if req.SentSamples != nil {
 		query += fmt.Sprintf(", sent_samples=$%d", argIdx)
 		args = append(args, *req.SentSamples)
+		argIdx++
+	}
+	if req.ContactRole != nil {
+		query += fmt.Sprintf(", contact_role=$%d", argIdx)
+		args = append(args, *req.ContactRole)
 		argIdx++
 	}
 
@@ -812,26 +822,55 @@ func (h *CustomerHandler) UpdatePipelineStage(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	// Get old stage
+	// Get old stage and current segment
 	var oldStage string
+	var currentSegment int
 	err = h.db.Pool.QueryRow(ctx,
-		`SELECT COALESCE(pipeline_stage, 'new_contact') FROM customers WHERE id=$1 AND org_id=$2`, id, orgID,
-	).Scan(&oldStage)
+		`SELECT COALESCE(pipeline_stage, 'new_contact'), segment FROM customers WHERE id=$1 AND org_id=$2`, id, orgID,
+	).Scan(&oldStage, &currentSegment)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
 		return
 	}
 
-	// Update stage
+	// Auto segment rules: kartela/sample → Aktif(2), order/shipping → VIP(1)
+	stageAutoSegment := map[string]int{
+		"catalog_sent":   3, // Potansiyel
+		"kartela_sent":   2, // Aktif
+		"sample_sent":    2, // Aktif
+		"order_received": 1, // VIP
+		"shipping":       1, // VIP
+	}
+
+	newSegment := currentSegment
+	if autoSeg, ok := stageAutoSegment[req.Stage]; ok && autoSeg < currentSegment {
+		newSegment = autoSeg
+	}
+
+	// Update stage + segment together
 	_, err = h.db.Pool.Exec(ctx,
-		`UPDATE customers SET pipeline_stage=$1, pipeline_updated_at=NOW(), updated_at=NOW() WHERE id=$2 AND org_id=$3`,
-		req.Stage, id, orgID)
+		`UPDATE customers SET pipeline_stage=$1, pipeline_updated_at=NOW(), segment=$2, updated_at=NOW() WHERE id=$3 AND org_id=$4`,
+		req.Stage, newSegment, id, orgID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update stage"})
 		return
 	}
 
-	// Log activity
+	// Log segment change if changed
+	segmentChanged := newSegment != currentSegment
+	if segmentChanged {
+		h.db.Pool.Exec(ctx,
+			`INSERT INTO segment_history (org_id, customer_id, old_segment, new_segment, changed_by)
+			 VALUES ($1,$2,$3,$4,$5)`,
+			orgID, id, currentSegment, newSegment, userID)
+		segTitle := fmt.Sprintf("Segment degisikligi: %d → %d", currentSegment, newSegment)
+		h.db.Pool.Exec(ctx,
+			`INSERT INTO customer_activities (org_id, customer_id, activity_type, title, description, created_by)
+			 VALUES ($1,$2,'segment_change',$3,$4,$5)`,
+			orgID, id, segTitle, "", userID)
+	}
+
+	// Log stage change activity
 	title := fmt.Sprintf("Asama degisikligi: %s → %s", oldStage, req.Stage)
 	desc := req.Note
 	h.db.Pool.Exec(ctx,
@@ -839,7 +878,7 @@ func (h *CustomerHandler) UpdatePipelineStage(c *gin.Context) {
 		 VALUES ($1,$2,'stage_change',$3,$4,$5)`,
 		orgID, id, title, desc, userID)
 
-	c.JSON(http.StatusOK, gin.H{"message": "Stage updated"})
+	c.JSON(http.StatusOK, gin.H{"message": "Stage updated", "segment_changed": segmentChanged, "new_segment": newSegment})
 }
 
 // Activities: List for a customer

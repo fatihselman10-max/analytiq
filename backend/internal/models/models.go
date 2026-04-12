@@ -60,6 +60,7 @@ type Conversation struct {
 	ChannelID       *int64     `json:"channel_id" db:"channel_id"`
 	ContactID       *int64     `json:"contact_id" db:"contact_id"`
 	AssignedTo      *int64     `json:"assigned_to" db:"assigned_to"`
+	CustomerID      *int64     `json:"customer_id" db:"customer_id"`
 	Status          string     `json:"status" db:"status"`
 	Priority        string     `json:"priority" db:"priority"`
 	Subject         string     `json:"subject" db:"subject"`

@@ -1,0 +1,83 @@
+LESSANDROMANCE AYLIK KUMAS ALIM PLANI (x1.5 Hizlandirilmis),,,,,
+Analiz Tarihi: 30 Mart 2026,,,,,
+Veri Kaynagi: Shopify siparis verileri (son 4 gun bazli projeksiyon),,,,,
+,,,,,
+=== URUN BAZLI TOPLAM IHTIYAC ===,,,,,
+Urun,Aylik Normal,Aylik x1.5,Gunluk Ort Satis,En Cok Satan Renk,
+RAHAT DOKUMLU PANTOLON,2081,3121,52 adet/gun,Bebe Mavisi (383),
+KALIN ASKILI ATLET,1678,2514,42 adet/gun,Bebe Mavisi + Aci Kahve (304),
+KEMERLI KOMBINE UZUN KIMONO,980,1470,33 adet/gun,Aci Kahve (225),
+FIT KESIM UZUN KOLLU T-SHIRT,730,1097,19 adet/gun,Bebe Mavisi (158),
+GENEL TOPLAM,5469,8202,146 adet/gun,,
+,,,,,
+=== RENK BAZLI KUMAS IHTIYACI (TUM URUNLER TOPLAM) ===,,,,,
+Renk,Aylik x1.5 Toplam Adet,Oncelik,Aciklama,,
+ACI KAHVE,987,YUKSEK,En cok satan renk - tum urunlerde guclu,,
+GRI MELANJ,953,YUKSEK,Pantolon+atlet+kimono cok satiliyor,,
+BEBE MAVISI,845,YUKSEK,Pantolon #1 + atlet #1 rengi,,
+EKRU,758,YUKSEK,Pantolon ve atlet'te guclu talep,,
+KIRMIZI,619,ORTA,Pantolon ve kimono'da iyi satis,,
+TEREYAG SARISI,600,ORTA,Pantolon'da en guclu tshirt'te orta,,
+MURDUM,634,ORTA,Tum urunlerde dengeli talep,,
+KOYU VIZON,570,ORTA,Kimono ve pantolon'da iyi talep,,
+TAS,507,ORTA,Dengeli talep tum urunlerde,,
+SIYAH,469,NORMAL,Beklentiye gore dusuk siyah talep,,
+ANTRASIT MELANJ,225,DUSUK,Dusuk talep - minimal stok yeterli,,
+,,,,,
+=== RAHAT DOKUMLU PANTOLON - RENK/BEDEN DETAY ===,,,,,
+Renk,XS-S Ihtiyac,M-L Ihtiyac,Toplam x1.5,XS-S Oran,M-L Oran
+BEBE MAVISI,259,124,383,%68,%32
+ACI KAHVE,225,158,383,%59,%41
+GRI MELANJ,225,180,360,%56,%44 (M-L cok guclu!)
+EKRU,191,158,360,%53,%47 (M-L cok guclu!)
+TEREYAG SARISI,255,90,281,%77,%23 (XS-S yogun)
+KIRMIZI,146,124,270,%54,%46
+KOYU VIZON,135,135,270,%50,%50 (esit dagilim)
+MURDUM,191,56,248,%77,%23
+SIYAH,158,79,236,%67,%33
+TAS,191,34,225,%85,%15 (XS-S agirlikli!)
+ANTRASIT MELANJ,45,60,105,%43,%57 (M-L agirlikli)
+TOPLAM,2021,1100,3121,%65,%35
+,,,,,
+=== KALIN ASKILI ATLET - RENK/BEDEN DETAY ===,,,,,
+Renk,XS Ihtiyac,S Ihtiyac,M Ihtiyac,L Ihtiyac,Toplam x1.5
+BEBE MAVISI,124,68,79,34,304
+ACI KAHVE,68,150,56,68,304 (S beden patladi!)
+EKRU,45,79,56,34,285
+KOYU VIZON,45,34,68,45,255
+GRI MELANJ,105,79,45,45,248
+TEREYAG SARISI,34,79,56,45,214
+TAS,79,135,11,23,214 (S beden yogun)
+KIRMIZI,34,79,23,79,214 (L beden dikkat!)
+MURDUM,56,34,68,34,191
+SIYAH,23,11,23,34,120
+ANTRASIT MELANJ,0,11,0,45,75 (sadece S ve L)
+TOPLAM,613,759,485,486,2514
+,,,,,
+=== KEMERLI KOMBINE UZUN KIMONO (STANDART BEDEN) ===,,,,,
+Renk,Aylik x1.5 Ihtiyac,Haftalik Satis,Gunluk Ort,,
+ACI KAHVE,225,35,5,,
+GRI MELANJ,210,33,4.67,,
+KIRMIZI,169,26,3.75,,
+BEBE MAVISI,169,26,3.75,,
+EKRU,210,33,4.67,,
+TAS,146,23,3.25,,
+KOYU VIZON,150,23,3.33,,
+TEREYAG SARISI,135,21,3,,
+MURDUM,90,14,2,,
+TOPLAM,1470,,,,,
+,,,,,
+=== FIT KESIM UZUN KOLLU T-SHIRT - RENK/BEDEN DETAY ===,,,,,
+Renk,XS Ihtiyac,S Ihtiyac,M Ihtiyac,L Ihtiyac,Toplam x1.5
+BEBE MAVISI,45,56,34,23,158
+GRI MELANJ,34,23,11,0,135
+KIRMIZI,11,11,34,11,135
+EKRU,23,23,11,0,113
+SIYAH,23,11,23,0,113
+TEREYAG SARISI,34,11,23,11,105
+MURDUM,45,23,0,11,105
+ACI KAHVE,23,11,0,23,75
+TAS,11,11,11,0,68
+KOYU VIZON,0,11,11,0,45
+ANTRASIT MELANJ,11,0,11,0,45
+TOPLAM,260,191,169,79,1097

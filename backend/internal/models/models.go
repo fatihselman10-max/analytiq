@@ -285,6 +285,10 @@ type Customer struct {
 	Phone             string     `json:"phone" db:"phone"`
 	Email             string     `json:"email" db:"email"`
 	Instagram         string     `json:"instagram" db:"instagram"`
+	Website           string     `json:"website" db:"website"`
+	VK                string     `json:"vk" db:"vk"`
+	Telegram          string     `json:"telegram" db:"telegram"`
+	PreferredChannel  string     `json:"preferred_channel" db:"preferred_channel"`
 	Notes             string     `json:"notes" db:"notes"`
 	Orders            string     `json:"orders" db:"orders"`
 	LastContactAt     *time.Time `json:"last_contact_at" db:"last_contact_at"`

@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS fabric_images;
+DROP TABLE IF EXISTS fabrics;

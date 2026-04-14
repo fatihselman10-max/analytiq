@@ -37,7 +37,11 @@ func (h *CustomerHandler) List(c *gin.Context) {
 	                  COALESCE(c.sent_catalogs, '') as sent_catalogs,
 	                  COALESCE(c.sent_kartelas, '') as sent_kartelas,
 	                  COALESCE(c.sent_samples, '') as sent_samples,
-	                  COALESCE(c.contact_role, '') as contact_role
+	                  COALESCE(c.contact_role, '') as contact_role,
+	                  COALESCE(c.website, '') as website,
+	                  COALESCE(c.vk, '') as vk,
+	                  COALESCE(c.telegram, '') as telegram,
+	                  COALESCE(c.preferred_channel, '') as preferred_channel
 	           FROM customers c
 	           LEFT JOIN users u ON c.assigned_to = u.id
 	           WHERE c.org_id = $1`
@@ -122,6 +126,10 @@ func (h *CustomerHandler) List(c *gin.Context) {
 		SentKartelas       string     `json:"sent_kartelas"`
 		SentSamples        string     `json:"sent_samples"`
 		ContactRole        string     `json:"contact_role"`
+		Website            string     `json:"website"`
+		VK                 string     `json:"vk"`
+		Telegram           string     `json:"telegram"`
+		PreferredChannel   string     `json:"preferred_channel"`
 		Channels           []chResp   `json:"channels"`
 	}
 
@@ -136,7 +144,8 @@ func (h *CustomerHandler) List(c *gin.Context) {
 			&cu.Phone, &cu.Email, &cu.Instagram, &cu.Notes, &cu.Orders,
 			&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName,
 			&cu.PipelineStage, &cu.PipelineUpdatedAt, &cu.InterestedProducts,
-			&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples, &cu.ContactRole); err != nil {
+			&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples, &cu.ContactRole,
+			&cu.Website, &cu.VK, &cu.Telegram, &cu.PreferredChannel); err != nil {
 			continue
 		}
 		cu.Channels = []chResp{}
@@ -213,6 +222,10 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		SentKartelas       string     `json:"sent_kartelas"`
 		SentSamples        string     `json:"sent_samples"`
 		ContactRole        string     `json:"contact_role"`
+		Website            string     `json:"website"`
+		VK                 string     `json:"vk"`
+		Telegram           string     `json:"telegram"`
+		PreferredChannel   string     `json:"preferred_channel"`
 	}
 
 	err = h.db.Pool.QueryRow(ctx,
@@ -229,7 +242,11 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		        COALESCE(c.sent_catalogs, '') as sent_catalogs,
 		        COALESCE(c.sent_kartelas, '') as sent_kartelas,
 		        COALESCE(c.sent_samples, '') as sent_samples,
-		        COALESCE(c.contact_role, '') as contact_role
+		        COALESCE(c.contact_role, '') as contact_role,
+		        COALESCE(c.website, '') as website,
+		        COALESCE(c.vk, '') as vk,
+		        COALESCE(c.telegram, '') as telegram,
+		        COALESCE(c.preferred_channel, '') as preferred_channel
 		 FROM customers c
 		 LEFT JOIN users u ON c.assigned_to = u.id
 		 WHERE c.id = $1 AND c.org_id = $2`, id, orgID,
@@ -239,7 +256,8 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		&cu.Phone, &cu.Email, &cu.Instagram, &cu.Notes, &cu.Orders,
 		&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName,
 		&cu.PipelineStage, &cu.PipelineUpdatedAt, &cu.InterestedProducts,
-		&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples, &cu.ContactRole)
+		&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples, &cu.ContactRole,
+		&cu.Website, &cu.VK, &cu.Telegram, &cu.PreferredChannel)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
 		return
@@ -315,6 +333,10 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 		Phone             string `json:"phone"`
 		Email             string `json:"email"`
 		Instagram         string `json:"instagram"`
+		Website           string `json:"website"`
+		VK                string `json:"vk"`
+		Telegram          string `json:"telegram"`
+		PreferredChannel  string `json:"preferred_channel"`
 		Notes             string `json:"notes"`
 		Channels          []struct {
 			ChannelType       string `json:"channel_type"`
@@ -336,11 +358,13 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 	var id int64
 	err := h.db.Pool.QueryRow(ctx,
 		`INSERT INTO customers (org_id, name, company, country, segment, customer_type, customer_type_other,
-		                        source, source_detail, assigned_to, phone, email, instagram, notes, last_contact_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW()) RETURNING id`,
+		                        source, source_detail, assigned_to, phone, email, instagram, notes,
+		                        website, vk, telegram, preferred_channel, last_contact_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW()) RETURNING id`,
 		orgID, req.Name, req.Company, req.Country, req.Segment,
 		req.CustomerType, req.CustomerTypeOther, req.Source, req.SourceDetail,
 		req.AssignedTo, req.Phone, req.Email, req.Instagram, req.Notes,
+		req.Website, req.VK, req.Telegram, req.PreferredChannel,
 	).Scan(&id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create customer"})
@@ -383,6 +407,10 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 		Phone             *string `json:"phone"`
 		Email             *string `json:"email"`
 		Instagram         *string `json:"instagram"`
+		Website           *string `json:"website"`
+		VK                *string `json:"vk"`
+		Telegram          *string `json:"telegram"`
+		PreferredChannel  *string `json:"preferred_channel"`
 		Notes              *string `json:"notes"`
 		Orders             *string `json:"orders"`
 		InterestedProducts *string `json:"interested_products"`
@@ -487,6 +515,26 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 	if req.Instagram != nil {
 		query += fmt.Sprintf(", instagram=$%d", argIdx)
 		args = append(args, *req.Instagram)
+		argIdx++
+	}
+	if req.Website != nil {
+		query += fmt.Sprintf(", website=$%d", argIdx)
+		args = append(args, *req.Website)
+		argIdx++
+	}
+	if req.VK != nil {
+		query += fmt.Sprintf(", vk=$%d", argIdx)
+		args = append(args, *req.VK)
+		argIdx++
+	}
+	if req.Telegram != nil {
+		query += fmt.Sprintf(", telegram=$%d", argIdx)
+		args = append(args, *req.Telegram)
+		argIdx++
+	}
+	if req.PreferredChannel != nil {
+		query += fmt.Sprintf(", preferred_channel=$%d", argIdx)
+		args = append(args, *req.PreferredChannel)
 		argIdx++
 	}
 	if req.Notes != nil {
@@ -896,10 +944,12 @@ func (h *CustomerHandler) ListActivities(c *gin.Context) {
 	rows, err := h.db.Pool.Query(ctx,
 		`SELECT a.id, a.activity_type, a.title, a.description, a.channel,
 		        COALESCE(u.full_name, 'Sistem') as created_by_name, a.created_at,
-		        COALESCE(a.metadata, '{}') as metadata
+		        COALESCE(a.metadata, '{}') as metadata,
+		        COALESCE(a.detected_by, 'manual') as detected_by
 		 FROM customer_activities a
 		 LEFT JOIN users u ON a.created_by = u.id
 		 WHERE a.customer_id = $1 AND a.org_id = $2
+		   AND COALESCE(a.status, 'approved') = 'approved'
 		 ORDER BY a.created_at DESC
 		 LIMIT 100`,
 		customerID, orgID)
@@ -918,17 +968,247 @@ func (h *CustomerHandler) ListActivities(c *gin.Context) {
 		CreatedByName string    `json:"created_by_name"`
 		CreatedAt     time.Time `json:"created_at"`
 		Metadata      string    `json:"metadata"`
+		DetectedBy    string    `json:"detected_by"`
 	}
 	activities := []actResp{}
 	for rows.Next() {
 		var a actResp
-		if err := rows.Scan(&a.ID, &a.ActivityType, &a.Title, &a.Description, &a.Channel, &a.CreatedByName, &a.CreatedAt, &a.Metadata); err != nil {
+		if err := rows.Scan(&a.ID, &a.ActivityType, &a.Title, &a.Description, &a.Channel, &a.CreatedByName, &a.CreatedAt, &a.Metadata, &a.DetectedBy); err != nil {
 			continue
 		}
 		activities = append(activities, a)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"activities": activities})
+}
+
+// ListPendingActivities — org-wide AI/rule detected activities awaiting approval
+func (h *CustomerHandler) ListPendingActivities(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	rows, err := h.db.Pool.Query(ctx,
+		`SELECT a.id, a.customer_id, c.name, COALESCE(c.company,''), COALESCE(c.country,''),
+		        a.activity_type, a.title, COALESCE(a.description,''), COALESCE(a.channel,''),
+		        COALESCE(a.metadata,'{}'), COALESCE(a.detected_by,'manual'), COALESCE(a.confidence,0),
+		        COALESCE(a.source_text,''), a.source_message_id, a.created_at
+		 FROM customer_activities a
+		 JOIN customers c ON c.id = a.customer_id
+		 WHERE a.org_id = $1 AND COALESCE(a.status,'approved') = 'pending'
+		 ORDER BY a.created_at DESC
+		 LIMIT 200`, orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch pending activities"})
+		return
+	}
+	defer rows.Close()
+
+	type pendingItem struct {
+		ID              int64     `json:"id"`
+		CustomerID      int64     `json:"customer_id"`
+		CustomerName    string    `json:"customer_name"`
+		CustomerCompany string    `json:"customer_company"`
+		CustomerCountry string    `json:"customer_country"`
+		ActivityType    string    `json:"activity_type"`
+		Title           string    `json:"title"`
+		Description     string    `json:"description"`
+		Channel         string    `json:"channel"`
+		Metadata        string    `json:"metadata"`
+		DetectedBy      string    `json:"detected_by"`
+		Confidence      int       `json:"confidence"`
+		SourceText      string    `json:"source_text"`
+		SourceMessageID *int64    `json:"source_message_id"`
+		CreatedAt       time.Time `json:"created_at"`
+	}
+	items := []pendingItem{}
+	for rows.Next() {
+		var p pendingItem
+		if err := rows.Scan(&p.ID, &p.CustomerID, &p.CustomerName, &p.CustomerCompany, &p.CustomerCountry,
+			&p.ActivityType, &p.Title, &p.Description, &p.Channel, &p.Metadata, &p.DetectedBy, &p.Confidence,
+			&p.SourceText, &p.SourceMessageID, &p.CreatedAt); err != nil {
+			continue
+		}
+		items = append(items, p)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"pending": items, "count": len(items)})
+}
+
+// ApprovePendingActivity — confirms detected activity, applies pipeline+segment effects
+func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	userID := c.GetInt64("user_id")
+	actID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	var req struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	var customerID int64
+	var activityType string
+	err = h.db.Pool.QueryRow(ctx,
+		`SELECT customer_id, activity_type FROM customer_activities
+		 WHERE id=$1 AND org_id=$2 AND COALESCE(status,'approved')='pending'`,
+		actID, orgID).Scan(&customerID, &activityType)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pending activity not found"})
+		return
+	}
+
+	updateFields := `status='approved', reviewed_by=$1, reviewed_at=NOW()`
+	args := []interface{}{userID}
+	idx := 2
+	if req.Title != "" {
+		updateFields += fmt.Sprintf(", title=$%d", idx)
+		args = append(args, req.Title)
+		idx++
+	}
+	if req.Description != "" {
+		updateFields += fmt.Sprintf(", description=$%d", idx)
+		args = append(args, req.Description)
+		idx++
+	}
+	args = append(args, actID, orgID)
+	_, err = h.db.Pool.Exec(ctx,
+		fmt.Sprintf(`UPDATE customer_activities SET %s WHERE id=$%d AND org_id=$%d`, updateFields, idx, idx+1),
+		args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to approve"})
+		return
+	}
+
+	// Apply pipeline+segment side effects (mirrors CreateActivity logic)
+	h.db.Pool.Exec(ctx, `UPDATE customers SET last_contact_at=NOW(), updated_at=NOW() WHERE id=$1`, customerID)
+
+	stageForActivity := map[string]string{
+		"catalog_request":      "catalog_sent",
+		"kartela_request":      "kartela_sent",
+		"sample_request":       "kartela_sent",
+		"shipping_info":        "shipping",
+		"order_intent":         "order_received",
+		"intro_video_sent":     "catalog_sent",
+		"warehouse_video_sent": "catalog_sent",
+	}
+	segmentForActivity := map[string]int{
+		"kartela_request": 2,
+		"sample_request":  2,
+		"order_intent":    1,
+	}
+	stageOrder := map[string]int{
+		"new_contact": 0, "catalog_sent": 1, "kartela_sent": 2,
+		"sample_sent": 3, "order_received": 4, "shipping": 5,
+	}
+	if newStage, ok := stageForActivity[activityType]; ok {
+		var currentStage string
+		h.db.Pool.QueryRow(ctx, `SELECT COALESCE(pipeline_stage,'new_contact') FROM customers WHERE id=$1`, customerID).Scan(&currentStage)
+		if stageOrder[newStage] > stageOrder[currentStage] {
+			h.db.Pool.Exec(ctx,
+				`UPDATE customers SET pipeline_stage=$1, pipeline_updated_at=NOW() WHERE id=$2 AND org_id=$3`,
+				newStage, customerID, orgID)
+		}
+	}
+	if newSeg, ok := segmentForActivity[activityType]; ok {
+		var oldSeg int
+		err := h.db.Pool.QueryRow(ctx, `SELECT segment FROM customers WHERE id=$1`, customerID).Scan(&oldSeg)
+		if err == nil && newSeg < oldSeg {
+			h.db.Pool.Exec(ctx, `UPDATE customers SET segment=$1 WHERE id=$2`, newSeg, customerID)
+			h.db.Pool.Exec(ctx,
+				`INSERT INTO segment_history (org_id, customer_id, old_segment, new_segment, changed_by)
+				 VALUES ($1,$2,$3,$4,$5)`, orgID, customerID, oldSeg, newSeg, userID)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// RejectPendingActivity — discards a detected activity
+func (h *CustomerHandler) RejectPendingActivity(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	userID := c.GetInt64("user_id")
+	actID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	res, err := h.db.Pool.Exec(ctx,
+		`UPDATE customer_activities
+		 SET status='rejected', reviewed_by=$1, reviewed_at=NOW()
+		 WHERE id=$2 AND org_id=$3 AND COALESCE(status,'approved')='pending'`,
+		userID, actID, orgID)
+	if err != nil || res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pending activity not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// PendingActivityStats — weekly approve/reject ratio + top types (for patron widget)
+func (h *CustomerHandler) PendingActivityStats(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	var pendingCount, approvedWeek, rejectedWeek int
+	h.db.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM customer_activities WHERE org_id=$1 AND status='pending'`, orgID,
+	).Scan(&pendingCount)
+	h.db.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM customer_activities
+		 WHERE org_id=$1 AND status='approved' AND detected_by IN ('rule','ai')
+		   AND reviewed_at > NOW() - INTERVAL '7 days'`, orgID,
+	).Scan(&approvedWeek)
+	h.db.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM customer_activities
+		 WHERE org_id=$1 AND status='rejected'
+		   AND reviewed_at > NOW() - INTERVAL '7 days'`, orgID,
+	).Scan(&rejectedWeek)
+
+	rows, _ := h.db.Pool.Query(ctx,
+		`SELECT activity_type, COUNT(*) FROM customer_activities
+		 WHERE org_id=$1 AND detected_by IN ('rule','ai')
+		   AND created_at > NOW() - INTERVAL '7 days'
+		 GROUP BY activity_type ORDER BY 2 DESC LIMIT 5`, orgID)
+	type topItem struct {
+		ActivityType string `json:"activity_type"`
+		Count        int    `json:"count"`
+	}
+	top := []topItem{}
+	if rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var t topItem
+			if err := rows.Scan(&t.ActivityType, &t.Count); err == nil {
+				top = append(top, t)
+			}
+		}
+	}
+
+	total := approvedWeek + rejectedWeek
+	approveRate := 0
+	if total > 0 {
+		approveRate = (approvedWeek * 100) / total
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"pending_count":  pendingCount,
+		"approved_week":  approvedWeek,
+		"rejected_week":  rejectedWeek,
+		"approve_rate":   approveRate,
+		"top_types":      top,
+	})
 }
 
 // Activities: Create

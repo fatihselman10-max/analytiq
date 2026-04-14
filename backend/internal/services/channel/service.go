@@ -9,9 +9,14 @@ import (
 	"github.com/repliq/backend/internal/database"
 )
 
+// IncomingHook is called asynchronously after a contact message is persisted.
+// orgID, customerID (may be nil), messageID, channelType, content.
+type IncomingHook func(orgID int64, customerID *int64, messageID int64, channelType, content string)
+
 type Service struct {
-	db       *database.DB
-	registry *Registry
+	db           *database.DB
+	registry     *Registry
+	IncomingHook IncomingHook
 }
 
 func NewService(db *database.DB, registry *Registry) *Service {
@@ -160,6 +165,10 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update conversation: %w", err)
+	}
+
+	if s.IncomingHook != nil && msg.ContentType == "text" {
+		go s.IncomingHook(orgID, customerID, messageID, channelType, msg.Content)
 	}
 
 	return &HandleResult{

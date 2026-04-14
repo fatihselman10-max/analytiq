@@ -1,0 +1,12 @@
+Konu,Sayi,Oran,Aciklama
+Fiyat Sorgusu,18,%30,"Musteri urun fiyatini soruyor (DM'den fiyat paylasilmiyor)"
+Siparis/Kargo Takibi,11,%18,"Musteri siparisinin durumunu ogrenmek istiyor"
+Stok/Beden Sorgusu,8,%13,"Beden yok veya stok guncellemesi sorgusu"
+Kumas/Urun Bilgisi,6,%10,"Kumas cinsi, kalip, renk bilgisi"
+Iade/Degisim,5,%8,"Degisim yok sadece iade var - hassas konu"
+Fiziksel Magaza,3,%5,"Istanbul'da magaza var mi sorusu"
+Isbirligi/PR,3,%5,"Influencer ve icerik uretici isbirligi talebi"
+Fiyat Sikayeti,2,%3,"Urunler pahali diye sikayet"
+Teslimat Suresi,2,%3,"14-21 gun preorder suresi sorgusu"
+DM'den Siparis,2,%3,"DM uzerinden siparis vermek istiyor"
+Toptan Satis,1,%2,"Toptan satis sorgusu"

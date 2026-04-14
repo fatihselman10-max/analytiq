@@ -14,6 +14,7 @@ import (
 	"github.com/repliq/backend/internal/database"
 	"github.com/repliq/backend/internal/handlers"
 	"github.com/repliq/backend/internal/middleware"
+	"github.com/repliq/backend/internal/services/activity"
 	"github.com/repliq/backend/internal/services/bot"
 	"github.com/repliq/backend/internal/services/channel"
 	"github.com/repliq/backend/internal/services/channel/email"
@@ -133,6 +134,51 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_type VARCHAR(50) NOT NULL DEFA
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS conversation_id BIGINT REFERENCES conversations(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_tasks_customer ON tasks(customer_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(org_id, category);
+`},
+		{"018_activity_approval", `
+ALTER TABLE customer_activities ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'approved';
+ALTER TABLE customer_activities ADD COLUMN IF NOT EXISTS detected_by VARCHAR(20) NOT NULL DEFAULT 'manual';
+ALTER TABLE customer_activities ADD COLUMN IF NOT EXISTS confidence INT NOT NULL DEFAULT 100;
+ALTER TABLE customer_activities ADD COLUMN IF NOT EXISTS source_message_id BIGINT REFERENCES messages(id) ON DELETE SET NULL;
+ALTER TABLE customer_activities ADD COLUMN IF NOT EXISTS source_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE customer_activities ADD COLUMN IF NOT EXISTS reviewed_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE customer_activities ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_activities_status ON customer_activities(org_id, status, created_at DESC);
+`},
+		{"019_customer_social_channels", `
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS website VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS vk VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS telegram VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS preferred_channel VARCHAR(50) NOT NULL DEFAULT '';
+`},
+		{"020_fabrics", `
+CREATE TABLE IF NOT EXISTS fabrics (
+    id BIGSERIAL PRIMARY KEY,
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(255) NOT NULL DEFAULT '',
+    season VARCHAR(10) NOT NULL DEFAULT '',
+    width VARCHAR(30) NOT NULL DEFAULT '',
+    composition VARCHAR(255) NOT NULL DEFAULT '',
+    gauge VARCHAR(30) NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(org_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_fabrics_org ON fabrics(org_id);
+CREATE INDEX IF NOT EXISTS idx_fabrics_season ON fabrics(org_id, season);
+CREATE TABLE IF NOT EXISTS fabric_images (
+    id BIGSERIAL PRIMARY KEY,
+    fabric_id BIGINT NOT NULL REFERENCES fabrics(id) ON DELETE CASCADE,
+    file_name VARCHAR(255) NOT NULL DEFAULT '',
+    file_type VARCHAR(50) NOT NULL DEFAULT 'image/jpeg',
+    file_size BIGINT NOT NULL DEFAULT 0,
+    file_data BYTEA NOT NULL,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_fabric_images_fabric ON fabric_images(fabric_id, sort_order);
 `},
 	}
 
@@ -262,6 +308,10 @@ func main() {
 
 	channelService := channel.NewService(db, registry)
 
+	// Activity analyzer (auto-detects pending CRM activities from messages)
+	activityService := activity.NewService(db, cfg.AnthropicAPIKey)
+	channelService.IncomingHook = activityService.AnalyzeIncoming
+
 	// Start IMAP poller for email channels
 	func() {
 		ctx := context.Background()
@@ -357,6 +407,7 @@ func main() {
 	kbHandler := handlers.NewKBHandler(db)
 	taskHandler := handlers.NewTaskHandler(db)
 	customerHandler := handlers.NewCustomerHandler(db)
+	fabricHandler := handlers.NewFabricHandler(db)
 	briefingService := bot.NewBriefingService(db, cfg.AnthropicAPIKey)
 	briefingHandler := handlers.NewBriefingHandler(briefingService)
 	autoReplyHandler := handlers.NewAutoReplyHandler(db)
@@ -404,6 +455,9 @@ func main() {
 
 	// WebSocket
 	r.GET("/ws", wsHandler.Handle)
+
+	// Public fabric image (no auth, so <img> tags can load)
+	r.GET("/api/v1/fabric-images/:id", fabricHandler.ServeImage)
 
 	// Protected routes
 	api := r.Group("/api/v1")
@@ -526,6 +580,10 @@ func main() {
 		api.PATCH("/customers/:id/pipeline", customerHandler.UpdatePipelineStage)
 		api.GET("/customers/:id/activities", customerHandler.ListActivities)
 		api.POST("/customers/:id/activities", customerHandler.CreateActivity)
+		api.GET("/activities/pending", customerHandler.ListPendingActivities)
+		api.POST("/activities/:id/approve", customerHandler.ApprovePendingActivity)
+		api.POST("/activities/:id/reject", customerHandler.RejectPendingActivity)
+		api.GET("/activities/stats", customerHandler.PendingActivityStats)
 		api.GET("/reports/crm/pipeline", customerHandler.PipelineOverview)
 		api.GET("/reports/patron", customerHandler.PatronFeed)
 		api.GET("/reports/briefing", briefingHandler.GetBriefing)
@@ -545,6 +603,15 @@ func main() {
 		api.GET("/tags", tagHandler.List)
 		api.POST("/tags", tagHandler.Create)
 		api.DELETE("/tags/:id", tagHandler.Delete)
+
+		// Fabrics (catalog)
+		api.GET("/fabrics", fabricHandler.List)
+		api.GET("/fabrics/:id", fabricHandler.Get)
+		api.POST("/fabrics", fabricHandler.Create)
+		api.PUT("/fabrics/:id", fabricHandler.Update)
+		api.DELETE("/fabrics/:id", fabricHandler.Delete)
+		api.POST("/fabrics/:id/images", fabricHandler.UploadImage)
+		api.DELETE("/fabric-images/:id", fabricHandler.DeleteImage)
 	}
 
 	// Admin only routes

@@ -1,0 +1,22 @@
+Kategori,Kural/Hata,Aciklama
+ASLA YAPMA,DM'den fiyat paylasma,Marka politikasi - fiyat sadece sitede
+ASLA YAPMA,DM'den siparis alma,Siparis sadece web sitesi uzerinden
+ASLA YAPMA,Kesin stok tarihi verme,Belirsizse yakinda de
+ASLA YAPMA,Degisim sozu verme,Sadece iade var
+ASLA YAPMA,Sikayete savunmaci yaklasma,Deger teklifini kisa acikla
+HER ZAMAN YAP,Siparis numarasi iste,Siparis takibi icin ilk adim
+HER ZAMAN YAP,Preorder suresini acikla,14-21 gun hazirlama + 1-3 gun kargo
+HER ZAMAN YAP,Urunu bulmasi icin yonlendir,"Sadece link degil, kategori ve urun adi da ver"
+HER ZAMAN YAP,Iade surecini net acikla,Adim adim: gonder > depoya gelsin > 3-7 gunde iade
+HER ZAMAN YAP,Showroom acilisini duyur,Nisantasi showroom planlanmakta
+HER ZAMAN YAP,Max 1 saat icinde yanit ver,Cevaplanmayan mesaj = kayip musteri
+HATA,Ayni sablonu 3 kez tekrarlama,"Musteri 2. kez soruyorsa, detayli yardim sun"
+HATA,Fiyat sorusuna sadece link verme,"Urunu sitede bulmasi icin kategori/isim de ver"
+HATA,Degisim yok deyip birakmak,"Iade + yeni siparis cozumunu proaktif sun"
+HATA,Cevaplanmamis birakma,Tum mesajlara max 1 saat icerisinde donus yap
+HATA,Detayli soruyu ignore etme,"Cok soru soran musteriye oncelik ver (ornek: azzmlh 6 mesaj)"
+HATA,Ingilizce mesaja Turkce cevap,Musteri hangi dilde yazdiysa o dilde cevap ver
+ONCELIK 1 - ACIL,Siparis/kargo sikayeti,"Odeme sorunu, iade gecikmesi, kayip siparis"
+ONCELIK 2 - YUKSEK,"Siparis durumu, beden/stok, degisim/iade","Satis potansiyeli yuksek, memnuniyetsizlik riski"
+ONCELIK 3 - NORMAL,"Fiyat sorgusu, kumas bilgisi, magaza sorgusu",Standart bilgilendirme yeterli
+ONCELIK 4 - DUSUK,"Isbirligi/PR, genel merhaba, hikaye yanitlari",Sablon cevap yeterli

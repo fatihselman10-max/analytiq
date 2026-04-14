@@ -1,0 +1,5 @@
+ALTER TABLE customers
+  DROP COLUMN IF EXISTS website,
+  DROP COLUMN IF EXISTS vk,
+  DROP COLUMN IF EXISTS telegram,
+  DROP COLUMN IF EXISTS preferred_channel;

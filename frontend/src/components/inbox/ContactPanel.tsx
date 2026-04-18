@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Conversation, Tag } from "@/types";
 import { OrgMember } from "@/types";
-import { teamAPI, tagsAPI, conversationsAPI } from "@/lib/api";
+import { teamAPI, tagsAPI, conversationsAPI, contactsAPI } from "@/lib/api";
 import {
   Mail,
   MessageCircle,
@@ -24,6 +24,11 @@ import {
   Send,
   Copy,
   CheckCircle,
+  Activity,
+  ShoppingCart,
+  CreditCard,
+  UserPlus,
+  ArrowRightLeft,
 } from "lucide-react";
 
 interface ContactPanelProps {
@@ -74,6 +79,58 @@ interface ShopifyOrder {
   fulfillments: ShopifyFulfillment[];
 }
 
+interface JourneyEvent {
+  id: number;
+  event_type: string;
+  source: string;
+  title: string;
+  body: string;
+  amount_cents?: number | null;
+  currency?: string | null;
+  external_id?: string | null;
+  occurred_at: string;
+  metadata?: Record<string, unknown>;
+}
+
+const eventMeta: Record<string, { label: string; dot: string; icon: React.ElementType }> = {
+  signup:             { label: "Kayıt",          dot: "bg-sky-500",    icon: UserPlus },
+  cart_updated:       { label: "Sepet",          dot: "bg-amber-500",  icon: ShoppingCart },
+  checkout_started:   { label: "Checkout",       dot: "bg-amber-500",  icon: CreditCard },
+  checkout_progress:  { label: "Checkout",       dot: "bg-amber-400",  icon: CreditCard },
+  order_placed:       { label: "Sipariş",        dot: "bg-emerald-500",icon: ShoppingBag },
+  order_paid:         { label: "Ödendi",         dot: "bg-emerald-600",icon: CheckCircle },
+  order_fulfilled:    { label: "Kargolandı",     dot: "bg-blue-500",   icon: Truck },
+  order_cancelled:    { label: "İptal",          dot: "bg-red-500",    icon: X },
+  message_in:         { label: "Müşteri mesajı", dot: "bg-slate-400",  icon: MessageCircle },
+  message_out:        { label: "Ajan cevabı",    dot: "bg-slate-300",  icon: ArrowRightLeft },
+};
+
+function timeAgo(iso: string): string {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return "şimdi";
+  if (diff < 3600) return `${Math.floor(diff / 60)}dk`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}sa`;
+  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}g`;
+  return new Date(iso).toLocaleDateString("tr-TR");
+}
+
+function stageLabel(events: JourneyEvent[]): { label: string; className: string } | null {
+  if (events.length === 0) return null;
+  // Walk from most recent to find decisive stage
+  for (const e of events) {
+    switch (e.event_type) {
+      case "order_fulfilled": return { label: "Kargoda",       className: "bg-blue-100 text-blue-700" };
+      case "order_paid":      return { label: "Ödendi",        className: "bg-emerald-100 text-emerald-700" };
+      case "order_placed":    return { label: "Sipariş",       className: "bg-emerald-100 text-emerald-700" };
+      case "checkout_started":
+      case "checkout_progress": return { label: "Checkout",    className: "bg-amber-100 text-amber-700" };
+      case "cart_updated":    return { label: "Sepet",         className: "bg-amber-50 text-amber-600" };
+      case "signup":          return { label: "Yeni kayıt",    className: "bg-sky-100 text-sky-700" };
+    }
+  }
+  return { label: "Aktif",            className: "bg-slate-100 text-slate-600" };
+}
+
 export default function ContactPanel({ conversation, onUpdate, onSendMessage }: ContactPanelProps) {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -84,11 +141,25 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
   const [orders, setOrders] = useState<ShopifyOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [showOrders, setShowOrders] = useState(true);
+  const [journey, setJourney] = useState<JourneyEvent[]>([]);
+  const [journeyLoading, setJourneyLoading] = useState(false);
+  const [showJourney, setShowJourney] = useState(true);
 
   useEffect(() => {
     teamAPI.listMembers().then((res) => setMembers(res.data?.members || [])).catch(() => {});
     tagsAPI.list().then((res) => setAllTags(res.data?.tags || [])).catch(() => {});
   }, []);
+
+  // Fetch unified journey (Shopify events + messages) for this contact
+  useEffect(() => {
+    const contactId = conversation.contact?.id;
+    if (!contactId) { setJourney([]); return; }
+    setJourneyLoading(true);
+    contactsAPI.journey(contactId, 100)
+      .then((res) => setJourney(res.data?.events || []))
+      .catch(() => setJourney([]))
+      .finally(() => setJourneyLoading(false));
+  }, [conversation.contact?.id, conversation.id]);
 
   // Fetch Shopify orders by contact name, email, or phone
   useEffect(() => {
@@ -370,6 +441,72 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
             )}
           </div>
         </div>
+      </div>
+
+      {/* Journey timeline (Shopify events + messages, unified) */}
+      <div className="p-4 border-t border-gray-200">
+        <button
+          onClick={() => setShowJourney(!showJourney)}
+          className="flex items-center justify-between w-full mb-2"
+        >
+          <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Activity className="h-3.5 w-3.5" />
+            Journey
+            {(() => {
+              const s = stageLabel(journey);
+              return s ? (
+                <span className={`ml-1 px-1.5 py-0.5 rounded text-[9px] font-medium ${s.className}`}>
+                  {s.label}
+                </span>
+              ) : null;
+            })()}
+          </h4>
+          <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform ${showJourney ? "rotate-180" : ""}`} />
+        </button>
+        {showJourney && (
+          journeyLoading ? (
+            <div className="flex justify-center py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+            </div>
+          ) : journey.length === 0 ? (
+            <p className="text-[11px] text-gray-400 text-center py-2">
+              Henüz etkinlik yok
+            </p>
+          ) : (
+            <div className="relative pl-3 space-y-2.5">
+              <div className="absolute left-[5px] top-1.5 bottom-1.5 w-px bg-gray-200 dark:bg-slate-700" />
+              {journey.slice(0, 30).map((e) => {
+                const meta = eventMeta[e.event_type] || { label: e.event_type, dot: "bg-gray-400", icon: Activity };
+                const amount = e.amount_cents != null
+                  ? `${(e.amount_cents / 100).toFixed(2)}${e.currency ? ` ${e.currency}` : ""}`
+                  : "";
+                return (
+                  <div key={e.id} className="relative flex items-start gap-2.5">
+                    <span className={`absolute -left-3 top-1 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${meta.dot}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 text-[10px] text-gray-400 mb-0.5">
+                        <span className="uppercase tracking-wider font-medium text-gray-500">{meta.label}</span>
+                        {e.source && e.source !== "shopify" && (
+                          <span className="px-1 py-0.5 rounded bg-gray-100 dark:bg-slate-800 text-[9px]">{e.source}</span>
+                        )}
+                        <span className="ml-auto">{timeAgo(e.occurred_at)}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-800 dark:text-gray-200 leading-snug truncate">
+                        {e.title || e.body || "—"}
+                      </p>
+                      {amount && (
+                        <p className="text-[10px] text-gray-500 mt-0.5">{amount}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {journey.length > 30 && (
+                <p className="text-[10px] text-center text-gray-400 pt-1">+{journey.length - 30} etkinlik daha</p>
+              )}
+            </div>
+          )
+        )}
       </div>
 
       {/* Shopify Orders */}

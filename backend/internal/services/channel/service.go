@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/repliq/backend/internal/database"
+	"github.com/repliq/backend/internal/services/journey"
 )
 
 // IncomingHook is called asynchronously after a contact message is persisted.
@@ -17,10 +18,32 @@ type Service struct {
 	db           *database.DB
 	registry     *Registry
 	IncomingHook IncomingHook
+	Journey      *journey.Service
 }
 
 func NewService(db *database.DB, registry *Registry) *Service {
 	return &Service{db: db, registry: registry}
+}
+
+// recordJourney writes a timeline entry. Safe to call even if Journey is nil.
+// Runs with its own context so caller's cancellation doesn't abort the write.
+func (s *Service) recordJourney(orgID, contactID, messageID int64, eventType, source, content string) {
+	if s.Journey == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = s.Journey.Insert(ctx, journey.InsertParams{
+			OrgID:      orgID,
+			ContactID:  contactID,
+			EventType:  eventType,
+			Source:     source,
+			Title:      journey.Truncate(content, 120),
+			Body:       content,
+			ExternalID: fmt.Sprintf("msg:%d", messageID),
+		})
+	}()
 }
 
 type HandleResult struct {
@@ -171,6 +194,8 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 		go s.IncomingHook(orgID, customerID, messageID, channelType, msg.Content)
 	}
 
+	s.recordJourney(orgID, contactID, messageID, "message_in", channelType, msg.Content)
+
 	return &HandleResult{
 		ConversationID: conversationID,
 		MessageID:      messageID,
@@ -278,6 +303,8 @@ func (s *Service) HandleEchoMessage(ctx context.Context, channelID int64, msg *I
 		now, conversationID,
 	)
 
+	s.recordJourney(orgID, contactID, messageID, "message_out", channelType, msg.Content)
+
 	return &HandleResult{
 		ConversationID: conversationID,
 		MessageID:      messageID,
@@ -292,14 +319,16 @@ func (s *Service) SendReply(ctx context.Context, conversationID int64, senderID 
 	var contactExternalID string
 	var channelType string
 	var credsStr string
+	var orgID int64
+	var contactID int64
 	err := s.db.Pool.QueryRow(ctx,
-		`SELECT c.channel_id, co.external_id, ch.type, COALESCE(ch.credentials::text, '{}')
+		`SELECT c.channel_id, co.external_id, ch.type, COALESCE(ch.credentials::text, '{}'), c.org_id, c.contact_id
 		 FROM conversations c
 		 JOIN contacts co ON co.id = c.contact_id
 		 JOIN channels ch ON ch.id = c.channel_id
 		 WHERE c.id = $1`,
 		conversationID,
-	).Scan(&channelID, &contactExternalID, &channelType, &credsStr)
+	).Scan(&channelID, &contactExternalID, &channelType, &credsStr, &orgID, &contactID)
 	if err != nil {
 		return 0, fmt.Errorf("conversation not found: %w", err)
 	}
@@ -340,6 +369,8 @@ func (s *Service) SendReply(ctx context.Context, conversationID int64, senderID 
 	if err != nil {
 		return 0, fmt.Errorf("failed to update conversation: %w", err)
 	}
+
+	s.recordJourney(orgID, contactID, messageID, "message_out", channelType, content)
 
 	return messageID, nil
 }

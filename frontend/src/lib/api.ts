@@ -86,6 +86,8 @@ export const contactsAPI = {
   get: (id: number) => api.get(`/contacts/${id}`),
   update: (id: number, data: { name?: string; email?: string; phone?: string }) =>
     api.patch(`/contacts/${id}`, data),
+  journey: (id: number, limit = 100) =>
+    api.get(`/contacts/${id}/journey`, { params: { limit } }),
 };
 
 // Reports

@@ -21,6 +21,7 @@ import (
 	"github.com/repliq/backend/internal/services/channel/instagram"
 	tgpkg "github.com/repliq/backend/internal/services/channel/telegram"
 	vkprovider "github.com/repliq/backend/internal/services/channel/vk"
+	"github.com/repliq/backend/internal/services/journey"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -150,6 +151,27 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS website VARCHAR(255) NOT NULL DEF
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS vk VARCHAR(255) NOT NULL DEFAULT '';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS telegram VARCHAR(255) NOT NULL DEFAULT '';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS preferred_channel VARCHAR(50) NOT NULL DEFAULT '';
+`},
+		{"021_customer_events", `
+CREATE TABLE IF NOT EXISTS customer_events (
+    id BIGSERIAL PRIMARY KEY,
+    org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    contact_id BIGINT REFERENCES contacts(id) ON DELETE CASCADE,
+    event_type VARCHAR(50) NOT NULL,
+    source VARCHAR(50) NOT NULL DEFAULT '',
+    title VARCHAR(500) NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    amount_cents BIGINT,
+    currency CHAR(3),
+    external_id VARCHAR(255),
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_customer_events_contact ON customer_events(org_id, contact_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_customer_events_org_time ON customer_events(org_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_customer_events_external ON customer_events(org_id, source, external_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_email_lower ON contacts(org_id, (LOWER(email))) WHERE email IS NOT NULL AND email != '';
 `},
 		{"020_fabrics", `
 CREATE TABLE IF NOT EXISTS fabrics (
@@ -308,6 +330,10 @@ func main() {
 
 	channelService := channel.NewService(db, registry)
 
+	// Journey service — unified customer timeline (Shopify events + messages)
+	journeyService := journey.NewService(db)
+	channelService.Journey = journeyService
+
 	// Activity analyzer (auto-detects pending CRM activities from messages)
 	activityService := activity.NewService(db, cfg.AnthropicAPIKey)
 	channelService.IncomingHook = activityService.AnalyzeIncoming
@@ -411,6 +437,8 @@ func main() {
 	briefingService := bot.NewBriefingService(db, cfg.AnthropicAPIKey)
 	briefingHandler := handlers.NewBriefingHandler(briefingService)
 	autoReplyHandler := handlers.NewAutoReplyHandler(db)
+	journeyHandler := handlers.NewJourneyHandler(journeyService)
+	shopifyWebhookHandler := handlers.NewShopifyWebhookHandler(journeyService)
 	wsHandler := handlers.NewWSHandler(hub, authService)
 
 	// Router
@@ -451,6 +479,7 @@ func main() {
 		webhooks.POST("/vk", webhookHandler.HandleWebhook("vk"))
 		webhooks.POST("/email", webhookHandler.HandleWebhook("email"))
 		webhooks.POST("/livechat", webhookHandler.HandleLiveChatMessage)
+		webhooks.POST("/shopify", shopifyWebhookHandler.Handle)
 	}
 
 	// WebSocket
@@ -491,6 +520,7 @@ func main() {
 		api.GET("/contacts", contactHandler.List)
 		api.GET("/contacts/:id", contactHandler.Get)
 		api.PATCH("/contacts/:id", contactHandler.Update)
+		api.GET("/contacts/:id/journey", journeyHandler.GetByContact)
 
 		// Reports
 		api.GET("/reports/overview", reportHandler.Overview)

@@ -288,6 +288,16 @@ func (h *MessageHandler) Upload(c *gin.Context) {
 	fileURL := fmt.Sprintf("/api/v1/files/%d", attachmentID)
 	h.db.Pool.Exec(ctx, `UPDATE attachments SET file_url = $1 WHERE id = $2`, fileURL, attachmentID)
 
+	// Forward the attachment to the underlying channel (Telegram, Instagram, etc.)
+	if _, sendErr := h.channelService.SendAttachment(ctx, conversationID, content, channel.IncomingAttachment{
+		FileName: fileName,
+		FileType: fileType,
+		FileSize: header.Size,
+		Data:     fileData,
+	}); sendErr != nil {
+		fmt.Printf("[UPLOAD] channel send failed (msg=%d, conv=%d): %v\n", messageID, conversationID, sendErr)
+	}
+
 	h.db.Pool.Exec(ctx,
 		`UPDATE conversations SET last_message_at = NOW(), updated_at = NOW() WHERE id = $1`,
 		conversationID,

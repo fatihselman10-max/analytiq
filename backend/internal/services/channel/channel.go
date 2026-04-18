@@ -12,6 +12,7 @@ type IncomingMessage struct {
 	ContentType string // text, image, file
 	IsEcho      bool   // true if sent by our own page (not a customer message)
 	Attachments []IncomingAttachment
+	Metadata    map[string]string // provider-specific data (e.g. telegram business_connection_id)
 }
 
 type IncomingAttachment struct {
@@ -19,6 +20,7 @@ type IncomingAttachment struct {
 	FileURL  string
 	FileType string
 	FileSize int64
+	Data     []byte // raw file bytes for multipart upload (used by outgoing sends)
 }
 
 type Provider interface {

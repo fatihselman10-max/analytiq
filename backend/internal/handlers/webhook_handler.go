@@ -112,8 +112,41 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 			return
 		}
 
-		// Telegram bot commands - auto-reply
-		if channelType == "telegram" {
+		// Telegram Business connection event - persist connection_id to channel credentials
+		if msg.ContentType == "business_connection" {
+			connID := ""
+			if msg.Metadata != nil {
+				connID = msg.Metadata["business_connection_id"]
+			}
+			h.db.Pool.Exec(ctx,
+				`UPDATE channels
+				 SET credentials = jsonb_set(COALESCE(credentials, '{}'::jsonb), '{business_connection_id}', to_jsonb($1::text), true)
+				 WHERE id = $2`,
+				connID, channelID)
+			fmt.Printf("[TG-BUSINESS] Connection updated for channel %d: id=%q enabled=%s\n",
+				channelID, connID, msg.Metadata["is_enabled"])
+			c.JSON(http.StatusOK, gin.H{"status": "ok", "business_connection": "saved"})
+			return
+		}
+
+		// Telegram: persist business_connection_id from the first business_message if not yet stored
+		if channelType == "telegram" && msg.Metadata != nil {
+			if connID := msg.Metadata["business_connection_id"]; connID != "" {
+				if tg, ok := provider.(*tgpkg.Provider); ok && tg.BusinessConnectionID() == "" {
+					h.db.Pool.Exec(ctx,
+						`UPDATE channels
+						 SET credentials = jsonb_set(COALESCE(credentials, '{}'::jsonb), '{business_connection_id}', to_jsonb($1::text), true)
+						 WHERE id = $2`,
+						connID, channelID)
+					// Reload provider with the new connection id so the rest of this request can reply via business
+					provider, _, _ = h.loadProviderFromDB(ctx, channelType)
+				}
+			}
+		}
+
+		// Telegram bot commands - auto-reply (skip for business messages)
+		isBusinessMessage := msg.Metadata != nil && msg.Metadata["business_connection_id"] != ""
+		if channelType == "telegram" && !isBusinessMessage {
 			if tg, ok := provider.(*tgpkg.Provider); ok {
 				tg.HandleBotCommands(ctx, msg.SenderID, msg.Content)
 			}

@@ -193,17 +193,23 @@ func (s *Service) HandleEchoMessage(ctx context.Context, channelID int64, msg *I
 		return nil, fmt.Errorf("channel not found: %w", err)
 	}
 
-	// Find the customer contact by recipient ID (the person we sent the message TO)
+	// Upsert contact by recipient ID (the person we sent the message TO).
+	// For Telegram Business outbound-first conversations, the contact may not exist yet.
 	var contactID int64
 	err = s.db.Pool.QueryRow(ctx,
-		`SELECT id FROM contacts WHERE org_id = $1 AND channel_type = $2 AND external_id = $3`,
-		orgID, channelType, msg.RecipientID,
+		`INSERT INTO contacts (org_id, external_id, channel_type, name, avatar_url)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (org_id, channel_type, external_id) DO UPDATE
+		 SET name = CASE WHEN EXCLUDED.name != '' THEN EXCLUDED.name ELSE contacts.name END,
+		     avatar_url = CASE WHEN EXCLUDED.avatar_url != '' THEN EXCLUDED.avatar_url ELSE contacts.avatar_url END
+		 RETURNING id`,
+		orgID, msg.RecipientID, channelType, msg.SenderName, msg.AvatarURL,
 	).Scan(&contactID)
 	if err != nil {
-		return nil, fmt.Errorf("contact not found for echo: %w", err)
+		return nil, fmt.Errorf("failed to upsert echo contact: %w", err)
 	}
 
-	// Find the latest open/pending conversation for this contact
+	// Find latest open/pending conversation, or create one for first-touch outbound
 	var conversationID int64
 	err = s.db.Pool.QueryRow(ctx,
 		`SELECT id FROM conversations
@@ -212,7 +218,15 @@ func (s *Service) HandleEchoMessage(ctx context.Context, channelID int64, msg *I
 		orgID, contactID, channelID,
 	).Scan(&conversationID)
 	if err != nil {
-		return nil, fmt.Errorf("no open conversation for echo: %w", err)
+		err = s.db.Pool.QueryRow(ctx,
+			`INSERT INTO conversations (org_id, contact_id, channel_id, status, last_message_at)
+			 VALUES ($1, $2, $3, 'open', NOW())
+			 RETURNING id`,
+			orgID, contactID, channelID,
+		).Scan(&conversationID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create conversation for echo: %w", err)
+		}
 	}
 
 	// Skip if a recent agent message with same content exists (sent from Repliq)
@@ -314,4 +328,35 @@ func (s *Service) SendReply(ctx context.Context, conversationID int64, senderID 
 	}
 
 	return messageID, nil
+}
+
+// SendAttachment sends an uploaded file to the conversation's channel (Telegram, Instagram, etc.).
+// content is used as caption/text. Returns the channel-side external message id (may be empty).
+func (s *Service) SendAttachment(ctx context.Context, conversationID int64, content string, att IncomingAttachment) (string, error) {
+	var contactExternalID string
+	var channelType string
+	var credsStr string
+	err := s.db.Pool.QueryRow(ctx,
+		`SELECT co.external_id, ch.type, COALESCE(ch.credentials::text, '{}')
+		 FROM conversations c
+		 JOIN contacts co ON co.id = c.contact_id
+		 JOIN channels ch ON ch.id = c.channel_id
+		 WHERE c.id = $1`,
+		conversationID,
+	).Scan(&contactExternalID, &channelType, &credsStr)
+	if err != nil {
+		return "", fmt.Errorf("conversation not found: %w", err)
+	}
+
+	if channelType == "livechat" {
+		return "", nil
+	}
+
+	var creds map[string]string
+	json.Unmarshal([]byte(credsStr), &creds)
+	provider := s.registry.CreateProvider(channelType, creds)
+	if provider == nil {
+		return "", fmt.Errorf("no provider for channel %s", channelType)
+	}
+	return provider.SendMessage(ctx, contactExternalID, content, []IncomingAttachment{att})
 }

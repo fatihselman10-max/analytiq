@@ -132,10 +132,13 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 
 	vkMsg := payload.Object.Message
 
+	senderName, avatarURL := p.fetchUser(ctx, vkMsg.FromID)
+
 	msg := &channel.IncomingMessage{
 		ExternalID:  strconv.Itoa(vkMsg.ID),
 		SenderID:    strconv.Itoa(vkMsg.FromID),
-		SenderName:  "",
+		SenderName:  senderName,
+		AvatarURL:   avatarURL,
 		Content:     vkMsg.Text,
 		ContentType: "text",
 	}
@@ -167,6 +170,51 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 	}
 
 	return msg, nil
+}
+
+// fetchUser calls users.get to get the sender's name and avatar (photo_200).
+// Returns ("", "") if the call fails or user_id is invalid (e.g., negative for groups).
+func (p *Provider) fetchUser(ctx context.Context, userID int) (string, string) {
+	if userID <= 0 || p.accessToken == "" {
+		return "", ""
+	}
+	params := url.Values{}
+	params.Set("user_ids", strconv.Itoa(userID))
+	params.Set("fields", "photo_200")
+	params.Set("access_token", p.accessToken)
+	params.Set("v", "5.199")
+
+	apiURL := "https://api.vk.com/method/users.get?" + params.Encode()
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return "", ""
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", ""
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	var result struct {
+		Response []struct {
+			FirstName string `json:"first_name"`
+			LastName  string `json:"last_name"`
+			Photo200  string `json:"photo_200"`
+		} `json:"response"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || len(result.Response) == 0 {
+		return "", ""
+	}
+	u := result.Response[0]
+	name := u.FirstName
+	if u.LastName != "" {
+		if name != "" {
+			name += " "
+		}
+		name += u.LastName
+	}
+	return name, u.Photo200
 }
 
 func (p *Provider) ValidateCredentials(ctx context.Context, creds map[string]string) error {

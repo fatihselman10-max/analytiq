@@ -250,6 +250,17 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 		attType := att.Type
 		attURL := att.Payload.URL
 
+		// Normalize Instagram variant type names so downstream handling + UI is consistent.
+		// IG can emit ig_reel, ig_story_share, ig_post etc.
+		switch attType {
+		case "ig_reel":
+			attType = "reel"
+		case "ig_story_share", "story_share":
+			attType = "share"
+		case "ig_post":
+			attType = "share"
+		}
+
 		if attURL != "" {
 			attachments = append(attachments, channel.IncomingAttachment{
 				FileURL:  attURL,

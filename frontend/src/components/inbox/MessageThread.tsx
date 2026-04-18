@@ -87,10 +87,10 @@ export default function MessageThread({ messages }: MessageThreadProps) {
                               <img src={att.file_url} alt="" className="max-w-full rounded-xl max-h-64 object-cover" />
                               {att.file_type === "story_reply" && <span className="text-[10px] text-purple-500 mt-0.5 block">Hikaye yanıtı</span>}
                             </a>
-                          ) : att.file_type === "video" || att.file_type === "reel" ? (
+                          ) : att.file_type === "video" || att.file_type === "reel" || att.file_type === "ig_reel" ? (
                             <a key={i} href={att.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
                               <Film className="h-4 w-4 text-blue-500" />
-                              <span className="text-xs text-blue-600 underline">{att.file_type === "reel" ? "Reels" : "Video"}</span>
+                              <span className="text-xs text-blue-600 underline">{att.file_type === "video" ? "Video" : "Reels"}</span>
                             </a>
                           ) : att.file_type === "audio" ? (
                             <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50">
@@ -122,9 +122,7 @@ export default function MessageThread({ messages }: MessageThreadProps) {
                     {msg.content && msg.content.startsWith("[") && !(msg as any).attachments?.length && (
                       <p className="text-sm text-gray-500 italic whitespace-pre-wrap">{msg.content}</p>
                     )}
-                    {msg.content && msg.content.startsWith("[") && (msg as any).attachments?.length > 0 && (
-                      <p className="text-[10px] text-gray-400 mt-1">{msg.content}</p>
-                    )}
+                    {/* Attachment varken "[Ek: ...]" fallback caption'ını gösterme — chip zaten açıklıyor */}
                   </div>
                 </div>
               </div>

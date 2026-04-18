@@ -1,22 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN || "2a4c1b-c4.myshopify.com";
-const SHOPIFY_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN || "";
+type StoreKey = "tr" | "ww";
+
+const STORES: Record<StoreKey, { domain: string; token: string }> = {
+  tr: {
+    domain: process.env.SHOPIFY_TR_DOMAIN || process.env.SHOPIFY_STORE_DOMAIN || "2a4c1b-c4.myshopify.com",
+    token: process.env.SHOPIFY_TR_TOKEN || process.env.SHOPIFY_ACCESS_TOKEN || "",
+  },
+  ww: {
+    domain: process.env.SHOPIFY_WW_DOMAIN || "bt0wj0-5j.myshopify.com",
+    token: process.env.SHOPIFY_WW_TOKEN || "",
+  },
+};
+
+// Backward-compat: TR is the default single-store for legacy actions (products, orders, analytics etc.)
+const SHOPIFY_DOMAIN = STORES.tr.domain;
+const SHOPIFY_TOKEN = STORES.tr.token;
+
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 const META_AD_ACCOUNT = process.env.META_AD_ACCOUNT_ID || "act_1204565511444286";
 const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN || "";
 const API_VERSION = "2024-01";
 
-async function shopifyFetch(endpoint: string) {
+async function shopifyFetchOn(store: StoreKey, endpoint: string) {
+  const { domain, token } = STORES[store];
+  if (!token) throw new Error(`Shopify ${store.toUpperCase()} token missing`);
   const res = await fetch(
-    `https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/${endpoint}`,
+    `https://${domain}/admin/api/${API_VERSION}/${endpoint}`,
     {
-      headers: { "X-Shopify-Access-Token": SHOPIFY_TOKEN },
-      next: { revalidate: 60 }, // cache 1 min
+      headers: { "X-Shopify-Access-Token": token },
+      next: { revalidate: 60 },
     }
   );
-  if (!res.ok) throw new Error(`Shopify API error: ${res.status}`);
+  if (!res.ok) throw new Error(`Shopify ${store} API error: ${res.status}`);
   return res.json();
+}
+
+// Legacy helper — queries TR only (kept for all non-customer-order actions)
+async function shopifyFetch(endpoint: string) {
+  return shopifyFetchOn("tr", endpoint);
 }
 
 async function shopifyFetchWithLink(endpoint: string): Promise<{ data: any; nextUrl: string | null }> {
@@ -40,6 +62,81 @@ async function shopifyFetchWithLink(endpoint: string): Promise<{ data: any; next
     nextUrl = urlObj.pathname.replace(`/admin/api/${API_VERSION}/`, "") + urlObj.search;
   }
   return { data, nextUrl };
+}
+
+// Query a single store for orders matching the given identifiers.
+// Returns flat orders array tagged with { store }.
+async function findOrdersInStore(
+  store: StoreKey,
+  ident: { emails: string[]; names: string[]; phones: string[]; orderNumbers: string[] },
+): Promise<any[]> {
+  if (!STORES[store].token) return []; // store not configured
+
+  const out: any[] = [];
+  const seen = new Set<number>();
+  const push = (arr: any[]) => {
+    for (const o of arr || []) {
+      if (!o?.id || seen.has(o.id)) continue;
+      seen.add(o.id);
+      out.push({ ...o, store });
+    }
+  };
+
+  // 1) direct order number (e.g. "#1234")
+  for (const num of ident.orderNumbers) {
+    try {
+      const name = num.startsWith("#") ? num : `#${num}`;
+      const d = await shopifyFetchOn(store, `orders.json?name=${encodeURIComponent(name)}&status=any&limit=5`);
+      push(d.orders);
+    } catch { /* noop */ }
+  }
+
+  // 2) email
+  for (const email of ident.emails) {
+    try {
+      const d = await shopifyFetchOn(store, `orders.json?email=${encodeURIComponent(email)}&status=any&limit=10`);
+      push(d.orders);
+    } catch { /* noop */ }
+  }
+
+  // 3) name → customers/search → that customer's orders
+  for (const name of ident.names) {
+    if (out.length >= 10) break;
+    try {
+      const clean = name.trim();
+      if (clean.length < 3) continue;
+      const sd = await shopifyFetchOn(store, `customers/search.json?query=${encodeURIComponent(clean)}&limit=5`);
+      const customers = sd.customers || [];
+      for (const c of customers.slice(0, 3)) {
+        try {
+          const od = await shopifyFetchOn(store, `customers/${c.id}/orders.json?status=any&limit=10`);
+          push(od.orders);
+        } catch { /* noop */ }
+      }
+    } catch { /* noop */ }
+  }
+
+  // 4) phone
+  for (const phone of ident.phones) {
+    if (out.length >= 10) break;
+    try {
+      const sd = await shopifyFetchOn(store, `customers/search.json?query=phone:${encodeURIComponent(phone)}&limit=3`);
+      const customers = sd.customers || [];
+      for (const c of customers.slice(0, 2)) {
+        try {
+          const od = await shopifyFetchOn(store, `customers/${c.id}/orders.json?status=any&limit=10`);
+          push(od.orders);
+        } catch { /* noop */ }
+      }
+    } catch { /* noop */ }
+  }
+
+  return out;
+}
+
+function splitCSV(v: string | null): string[] {
+  if (!v) return [];
+  return v.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 
@@ -101,47 +198,36 @@ export async function GET(req: NextRequest) {
     }
 
     if (action === "customer-orders") {
-      const email = searchParams.get("email");
-      const name = searchParams.get("name");
-      const phone = searchParams.get("phone");
+      // Support both single-value (email/name/phone) and CSV multi-value (emails/names/phones/order_numbers)
+      const emails = [
+        ...splitCSV(searchParams.get("emails")),
+        ...(searchParams.get("email") ? [searchParams.get("email")!] : []),
+      ].filter(Boolean);
+      const names = [
+        ...splitCSV(searchParams.get("names")),
+        ...(searchParams.get("name") ? [searchParams.get("name")!] : []),
+      ].filter(Boolean);
+      const phones = [
+        ...splitCSV(searchParams.get("phones")),
+        ...(searchParams.get("phone") ? [searchParams.get("phone")!] : []),
+      ].filter(Boolean);
+      const orderNumbers = [
+        ...splitCSV(searchParams.get("order_numbers")),
+        ...(searchParams.get("order_number") ? [searchParams.get("order_number")!] : []),
+      ].filter(Boolean);
 
-      let orders: any[] = [];
+      const ident = { emails, names, phones, orderNumbers };
 
-      // 1. Email ile ara (en güvenilir eşleşme)
-      if (email) {
-        const data = await shopifyFetch(`orders.json?email=${encodeURIComponent(email)}&status=any&limit=10`);
-        orders = data.orders || [];
-      }
+      // Query TR + WW in parallel, merge and sort by date desc
+      const [trOrders, wwOrders] = await Promise.all([
+        findOrdersInStore("tr", ident).catch(() => []),
+        findOrdersInStore("ww", ident).catch(() => []),
+      ]);
 
-      // 2. Email yoksa veya sonuç boşsa, müşteri adıyla Shopify customer search
-      if (orders.length === 0 && name) {
-        try {
-          const cleanName = name.trim();
-          const searchData = await shopifyFetch(`customers/search.json?query=${encodeURIComponent(cleanName)}&limit=5`);
-          const customers = searchData.customers || [];
-          if (customers.length > 0) {
-            // İlk eşleşen müşterinin siparişlerini getir
-            const custId = customers[0].id;
-            const ordData = await shopifyFetch(`customers/${custId}/orders.json?status=any&limit=10`);
-            orders = ordData.orders || [];
-          }
-        } catch { /* customer search failed, continue */ }
-      }
+      const merged = [...trOrders, ...wwOrders]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      // 3. Telefon ile ara
-      if (orders.length === 0 && phone) {
-        try {
-          const searchData = await shopifyFetch(`customers/search.json?query=phone:${encodeURIComponent(phone)}&limit=3`);
-          const customers = searchData.customers || [];
-          if (customers.length > 0) {
-            const custId = customers[0].id;
-            const ordData = await shopifyFetch(`customers/${custId}/orders.json?status=any&limit=10`);
-            orders = ordData.orders || [];
-          }
-        } catch { /* phone search failed */ }
-      }
-
-      return NextResponse.json({ orders });
+      return NextResponse.json({ orders: merged });
     }
 
     if (action === "refunds") {

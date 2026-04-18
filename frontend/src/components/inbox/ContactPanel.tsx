@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Conversation, Tag } from "@/types";
 import { OrgMember } from "@/types";
-import { teamAPI, tagsAPI, conversationsAPI, contactsAPI } from "@/lib/api";
+import { teamAPI, tagsAPI, conversationsAPI, contactsAPI, messagesAPI } from "@/lib/api";
 import {
   Mail,
   MessageCircle,
@@ -77,6 +77,71 @@ interface ShopifyOrder {
   currency: string;
   line_items: { title: string; quantity: number }[];
   fulfillments: ShopifyFulfillment[];
+  store?: "tr" | "ww";
+}
+
+// Extracts potential customer identifiers from recent chat messages.
+// Handles Turkish patterns: "X adına", "adım/ismim X", "#1234", email, phone.
+function extractIdentifiers(texts: string[]): {
+  names: string[];
+  orderNumbers: string[];
+  emails: string[];
+  phones: string[];
+} {
+  const names = new Set<string>();
+  const orderNumbers = new Set<string>();
+  const emails = new Set<string>();
+  const phones = new Set<string>();
+
+  const emailRe = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  // Turkish capitalized word (1-4 words) followed by "adına"
+  const nameAdinaRe = /([A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]+){0,3})\s+adına/gi;
+  // "adım/ismim/benim adım X Y" — capture 1-4 capitalized or lowercase words
+  const nameIntroRe = /\b(?:ad[ıi]m|ismim|benim ad[ıi]m)\s+([A-Za-zÇĞİÖŞÜçğıöşü]+(?:\s+[A-Za-zÇĞİÖŞÜçğıöşü]+){0,3})/gi;
+  // Order number: #1234 or "sipariş no/numarası 1234" or "1234 numaralı"
+  const orderHashRe = /#(\d{3,7})\b/g;
+  const orderTextRe = /(?:sipari[şs]\s*(?:no|numara[sı]?\s*[:=]?)\s*#?|(?:\d+)\s*numaral[ıi])\s*#?(\d{3,7})/gi;
+  // Phone — Turkish + international, min 10 digits
+  const phoneRe = /(?:\+?\d[\s\-().]?){10,}/g;
+
+  const collect = (re: RegExp, text: string): RegExpMatchArray[] => {
+    const out: RegExpMatchArray[] = [];
+    let m: RegExpExecArray | null;
+    const r = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+    while ((m = r.exec(text)) !== null) {
+      out.push(m);
+      if (m.index === r.lastIndex) r.lastIndex++; // avoid zero-length infinite loop
+    }
+    return out;
+  };
+
+  for (const raw of texts) {
+    if (!raw || raw.length < 3) continue;
+    const text = raw.slice(0, 2000);
+
+    collect(emailRe, text).forEach((m) => emails.add(m[0].toLowerCase()));
+    collect(nameAdinaRe, text).forEach((m) => {
+      const name = m[1].trim();
+      if (name.length >= 3) names.add(name);
+    });
+    collect(nameIntroRe, text).forEach((m) => {
+      const name = m[1].trim();
+      if (name.length >= 3) names.add(name.replace(/\b\w/g, (c: string) => c.toUpperCase()));
+    });
+    collect(orderHashRe, text).forEach((m) => orderNumbers.add(m[1]));
+    collect(orderTextRe, text).forEach((m) => { if (m[1]) orderNumbers.add(m[1]); });
+    collect(phoneRe, text).forEach((m) => {
+      const digits = m[0].replace(/\D/g, "");
+      if (digits.length >= 10 && digits.length <= 15) phones.add(digits);
+    });
+  }
+
+  return {
+    names: Array.from(names).slice(0, 5),
+    orderNumbers: Array.from(orderNumbers).slice(0, 5),
+    emails: Array.from(emails).slice(0, 5),
+    phones: Array.from(phones).slice(0, 3),
+  };
 }
 
 interface JourneyEvent {
@@ -161,23 +226,65 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
       .finally(() => setJourneyLoading(false));
   }, [conversation.contact?.id, conversation.id]);
 
-  // Fetch Shopify orders by contact name, email, or phone
+  // Fetch Shopify orders across TR + EU stores.
+  // Combines contact fields with identifiers extracted from recent chat messages
+  // (name-in-chat, order numbers, email mentions, phone numbers).
   useEffect(() => {
     const contact = conversation.contact;
     if (!contact) { setOrders([]); return; }
-    const params = new URLSearchParams({ action: "customer-orders" });
-    if (contact.email) params.set("email", contact.email);
-    if (contact.name) params.set("name", contact.name);
-    if (contact.phone) params.set("phone", contact.phone);
-    // En az bir parametre olmalı
-    if (!contact.email && !contact.name && !contact.phone) { setOrders([]); return; }
+
+    let cancelled = false;
     setOrdersLoading(true);
-    fetch(`/api/shopify?${params.toString()}`)
-      .then(r => r.json())
-      .then(data => setOrders(data.orders || []))
-      .catch(() => setOrders([]))
-      .finally(() => setOrdersLoading(false));
-  }, [conversation.contact?.email, conversation.contact?.name, conversation.contact?.phone]);
+
+    (async () => {
+      const names = new Set<string>();
+      const emails = new Set<string>();
+      const phones = new Set<string>();
+      const orderNumbers = new Set<string>();
+
+      if (contact.name && !/^ig_/i.test(contact.name)) names.add(contact.name);
+      if (contact.email) emails.add(contact.email);
+      if (contact.phone) phones.add(contact.phone);
+
+      // Pull the last 30 messages of this conversation and mine them for identifiers
+      try {
+        const msgRes = await messagesAPI.list(conversation.id);
+        const msgs = (msgRes.data?.messages || []) as Array<{ content?: string; sender_type?: string }>;
+        const contactTexts = msgs
+          .filter((m) => m.sender_type === "contact" && typeof m.content === "string")
+          .slice(-30)
+          .map((m) => m.content as string);
+        const extracted = extractIdentifiers(contactTexts);
+        extracted.names.forEach((n) => names.add(n));
+        extracted.emails.forEach((e) => emails.add(e));
+        extracted.phones.forEach((p) => phones.add(p));
+        extracted.orderNumbers.forEach((o) => orderNumbers.add(o));
+      } catch { /* message fetch failed — carry on with contact fields only */ }
+
+      if (names.size === 0 && emails.size === 0 && phones.size === 0 && orderNumbers.size === 0) {
+        if (!cancelled) { setOrders([]); setOrdersLoading(false); }
+        return;
+      }
+
+      const params = new URLSearchParams({ action: "customer-orders" });
+      if (names.size) params.set("names", Array.from(names).join(","));
+      if (emails.size) params.set("emails", Array.from(emails).join(","));
+      if (phones.size) params.set("phones", Array.from(phones).join(","));
+      if (orderNumbers.size) params.set("order_numbers", Array.from(orderNumbers).join(","));
+
+      try {
+        const r = await fetch(`/api/shopify?${params.toString()}`);
+        const data = await r.json();
+        if (!cancelled) setOrders(data.orders || []);
+      } catch {
+        if (!cancelled) setOrders([]);
+      } finally {
+        if (!cancelled) setOrdersLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [conversation.id, conversation.contact?.id, conversation.contact?.email, conversation.contact?.name, conversation.contact?.phone]);
 
   const contact = conversation.contact;
   const channel = channelLabels[conversation.channel_type || "web"] || channelLabels.web;
@@ -533,9 +640,18 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
           ) : (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
-                <span>{orders.length} siparis</span>
+                <span>{orders.length} sipariş</span>
                 <span className="font-medium text-gray-700">
-                  {orders.reduce((s, o) => s + parseFloat(o.total_price || "0"), 0).toLocaleString("tr-TR", { style: "currency", currency: "TRY" })}
+                  {(() => {
+                    const byCur: Record<string, number> = {};
+                    for (const o of orders) {
+                      const cur = (o.currency || "TRY").toUpperCase();
+                      byCur[cur] = (byCur[cur] || 0) + parseFloat(o.total_price || "0");
+                    }
+                    return Object.entries(byCur)
+                      .map(([cur, v]) => v.toLocaleString("tr-TR", { style: "currency", currency: cur, maximumFractionDigits: 0 }))
+                      .join(" · ");
+                  })()}
                 </span>
               </div>
               {orders.slice(0, 5).map((order) => {
@@ -565,10 +681,19 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
                   shippingLabel = "";
                 }
 
+                const storeBadge = order.store === "ww"
+                  ? { label: "WW", className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200" }
+                  : { label: "TR", className: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" };
+
                 return (
-                  <div key={order.id} className="p-2 rounded-lg bg-gray-50 dark:bg-slate-800/50">
+                  <div key={`${order.store || "tr"}-${order.id}`} className="p-2 rounded-lg bg-gray-50 dark:bg-slate-800/50">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-gray-900 dark:text-white">{order.name}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-semibold text-gray-900 dark:text-white">{order.name}</span>
+                        <span className={`px-1 py-0.5 rounded text-[9px] font-semibold ${storeBadge.className}`}>
+                          {storeBadge.label}
+                        </span>
+                      </div>
                       <span className="text-[10px] text-gray-400">
                         {new Date(order.created_at).toLocaleDateString("tr-TR")}
                       </span>

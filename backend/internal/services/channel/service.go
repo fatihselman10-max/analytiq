@@ -258,8 +258,7 @@ func (s *Service) HandleEchoMessage(ctx context.Context, channelID int64, msg *I
 	now := time.Now()
 	s.db.Pool.Exec(ctx,
 		`UPDATE conversations SET last_message_at = $1, updated_at = $1,
-		 first_response_at = COALESCE(first_response_at, $1),
-		 status = 'resolved', resolved_at = $1
+		 first_response_at = COALESCE(first_response_at, $1)
 		 WHERE id = $2`,
 		now, conversationID,
 	)

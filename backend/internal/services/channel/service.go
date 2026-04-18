@@ -219,8 +219,8 @@ func (s *Service) HandleEchoMessage(ctx context.Context, channelID int64, msg *I
 	).Scan(&conversationID)
 	if err != nil {
 		err = s.db.Pool.QueryRow(ctx,
-			`INSERT INTO conversations (org_id, contact_id, channel_id, status, last_message_at)
-			 VALUES ($1, $2, $3, 'open', NOW())
+			`INSERT INTO conversations (org_id, contact_id, channel_id, status, priority, subject, last_message_at)
+			 VALUES ($1, $2, $3, 'open', 'normal', '', NOW())
 			 RETURNING id`,
 			orgID, contactID, channelID,
 		).Scan(&conversationID)

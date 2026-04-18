@@ -244,15 +244,30 @@ func (s *Service) HandleEchoMessage(ctx context.Context, channelID int64, msg *I
 	}
 
 	// Save as agent message
+	contentType := msg.ContentType
+	if contentType == "" {
+		contentType = "text"
+	}
 	var messageID int64
 	err = s.db.Pool.QueryRow(ctx,
 		`INSERT INTO messages (conversation_id, sender_type, content, content_type, external_id)
-		 VALUES ($1, 'agent', $2, 'text', $3)
+		 VALUES ($1, 'agent', $2, $3, $4)
 		 RETURNING id`,
-		conversationID, msg.Content, msg.ExternalID,
+		conversationID, msg.Content, contentType, msg.ExternalID,
 	).Scan(&messageID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save echo message: %w", err)
+	}
+
+	for _, att := range msg.Attachments {
+		_, err = s.db.Pool.Exec(ctx,
+			`INSERT INTO attachments (message_id, file_name, file_url, file_type, file_size)
+			 VALUES ($1, $2, $3, $4, $5)`,
+			messageID, att.FileName, att.FileURL, att.FileType, att.FileSize,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to insert echo attachment: %w", err)
+		}
 	}
 
 	now := time.Now()

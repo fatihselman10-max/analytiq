@@ -32,11 +32,32 @@ func (h *ConversationHandler) List(c *gin.Context) {
 		       co.name AS contact_name, co.email AS contact_email, co.avatar_url AS contact_avatar,
 		       ch.type AS channel_type,
 		       u.full_name AS assigned_name,
-		       COALESCE((SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1), c.subject) AS last_message
+		       COALESCE(lm.content, c.subject) AS last_message,
+		       COALESCE(lm.content_tr, '') AS last_message_tr,
+		       COALESCE(lm.sender_type, '') AS last_sender_type,
+		       COALESCE(uc.cnt, 0) AS unread_count,
+		       COALESCE(cust.segment, 0) AS customer_segment,
+		       COALESCE(cust.pipeline_stage, '') AS customer_pipeline_stage
 		FROM conversations c
 		LEFT JOIN contacts co ON co.id = c.contact_id
 		LEFT JOIN channels ch ON ch.id = c.channel_id
 		LEFT JOIN users u ON u.id = c.assigned_to
+		LEFT JOIN customers cust ON cust.id = c.customer_id
+		LEFT JOIN LATERAL (
+		    SELECT content, COALESCE(content_tr, '') AS content_tr, sender_type
+		    FROM messages WHERE conversation_id = c.id AND is_internal = false
+		    ORDER BY created_at DESC LIMIT 1
+		) lm ON true
+		LEFT JOIN LATERAL (
+		    SELECT COUNT(*) AS cnt FROM messages m2
+		    WHERE m2.conversation_id = c.id
+		      AND m2.sender_type = 'contact'
+		      AND m2.is_internal = false
+		      AND m2.created_at > COALESCE(
+		          (SELECT MAX(created_at) FROM messages m3
+		           WHERE m3.conversation_id = c.id AND m3.sender_type IN ('agent','bot')),
+		          '1970-01-01'::timestamptz)
+		) uc ON true
 		WHERE c.org_id = $1`
 
 	args := []interface{}{orgID}
@@ -81,6 +102,9 @@ func (h *ConversationHandler) List(c *gin.Context) {
 	for rows.Next() {
 		var conv models.Conversation
 		var contactName, contactEmail, contactAvatar, channelType, assignedName, lastMessage *string
+		var lastMessageTR, lastSenderType, customerPipelineStage string
+		var customerSegment int
+		var unreadCount int
 		err := rows.Scan(
 			&conv.ID, &conv.OrgID, &conv.ChannelID, &conv.ContactID, &conv.AssignedTo, &conv.CustomerID,
 			&conv.Status, &conv.Priority, &conv.Subject, &conv.LastMessageAt,
@@ -89,6 +113,11 @@ func (h *ConversationHandler) List(c *gin.Context) {
 			&channelType,
 			&assignedName,
 			&lastMessage,
+			&lastMessageTR,
+			&lastSenderType,
+			&unreadCount,
+			&customerSegment,
+			&customerPipelineStage,
 		)
 		if err != nil {
 			continue
@@ -111,6 +140,15 @@ func (h *ConversationHandler) List(c *gin.Context) {
 		if lastMessage != nil {
 			conv.LastMessage = *lastMessage
 		}
+		conv.LastMessageTR = lastMessageTR
+		if lastSenderType == "contact" {
+			conv.LastMessageDirection = "inbound"
+		} else if lastSenderType == "agent" || lastSenderType == "bot" {
+			conv.LastMessageDirection = "outbound"
+		}
+		conv.UnreadCount = unreadCount
+		conv.CustomerSegment = customerSegment
+		conv.CustomerPipelineStage = customerPipelineStage
 		conversations = append(conversations, conv)
 	}
 

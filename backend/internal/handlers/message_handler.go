@@ -12,6 +12,7 @@ import (
 	"github.com/repliq/backend/internal/database"
 	"github.com/repliq/backend/internal/models"
 	"github.com/repliq/backend/internal/services/channel"
+	"github.com/repliq/backend/internal/services/translator"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 )
@@ -20,10 +21,15 @@ type MessageHandler struct {
 	db             *database.DB
 	channelService *channel.Service
 	hub            *ws.Hub
+	translator     *translator.Translator
 }
 
 func NewMessageHandler(db *database.DB, channelService *channel.Service, hub *ws.Hub) *MessageHandler {
 	return &MessageHandler{db: db, channelService: channelService, hub: hub}
+}
+
+func (h *MessageHandler) SetTranslator(t *translator.Translator) {
+	h.translator = t
 }
 
 func (h *MessageHandler) List(c *gin.Context) {
@@ -49,7 +55,7 @@ func (h *MessageHandler) List(c *gin.Context) {
 
 	rows, err := h.db.Pool.Query(ctx,
 		`SELECT m.id, m.conversation_id, m.sender_type, m.sender_id, m.content,
-		        m.content_type, m.is_internal, COALESCE(m.external_id, ''), m.created_at,
+		        m.content_type, COALESCE(m.content_tr, ''), m.is_internal, COALESCE(m.external_id, ''), m.created_at,
 		        COALESCE(u.full_name, co.name, '') AS sender_name
 		 FROM messages m
 		 LEFT JOIN users u ON m.sender_type IN ('agent', 'bot') AND u.id = m.sender_id
@@ -70,13 +76,49 @@ func (h *MessageHandler) List(c *gin.Context) {
 		var msg models.Message
 		err := rows.Scan(
 			&msg.ID, &msg.ConversationID, &msg.SenderType, &msg.SenderID,
-			&msg.Content, &msg.ContentType, &msg.IsInternal, &msg.ExternalID,
+			&msg.Content, &msg.ContentType, &msg.ContentTR, &msg.IsInternal, &msg.ExternalID,
 			&msg.CreatedAt, &msg.SenderName,
 		)
 		if err != nil {
 			continue
 		}
 		messages = append(messages, msg)
+	}
+
+	// Translate any non-Turkish untranslated message (contact, agent, or bot)
+	// so the patron can follow both sides of the conversation in Turkish.
+	if h.translator != nil {
+		missingIdx := []int{}
+		missingTexts := []string{}
+		for i, m := range messages {
+			if m.IsInternal {
+				continue
+			}
+			if m.ContentTR != "" {
+				continue
+			}
+			if !translator.NeedsTranslation(m.Content) {
+				continue
+			}
+			missingIdx = append(missingIdx, i)
+			missingTexts = append(missingTexts, m.Content)
+		}
+		if len(missingTexts) > 0 {
+			tCtx, tCancel := context.WithTimeout(ctx, 8*time.Second)
+			defer tCancel()
+			translations, terr := h.translator.TranslateBatch(tCtx, missingTexts)
+			if terr == nil && len(translations) == len(missingTexts) {
+				for j, idx := range missingIdx {
+					if translations[j] == "" {
+						continue
+					}
+					messages[idx].ContentTR = translations[j]
+					h.db.Pool.Exec(ctx,
+						`UPDATE messages SET content_tr = $1 WHERE id = $2`,
+						translations[j], messages[idx].ID)
+				}
+			}
+		}
 	}
 
 	// Fetch attachments for all messages

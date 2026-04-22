@@ -71,11 +71,16 @@ type Conversation struct {
 	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
 
 	// Joined fields (not in DB directly)
-	Contact      *Contact `json:"contact,omitempty"`
-	AssignedUser *User    `json:"assigned_user,omitempty"`
-	ChannelType  string   `json:"channel_type,omitempty"`
-	LastMessage  string   `json:"last_message,omitempty"`
-	Tags         []Tag    `json:"tags,omitempty"`
+	Contact               *Contact `json:"contact,omitempty"`
+	AssignedUser          *User    `json:"assigned_user,omitempty"`
+	ChannelType           string   `json:"channel_type,omitempty"`
+	LastMessage           string   `json:"last_message,omitempty"`
+	LastMessageTR         string   `json:"last_message_tr,omitempty"`
+	LastMessageDirection  string   `json:"last_message_direction,omitempty"`
+	UnreadCount           int      `json:"unread_count"`
+	CustomerSegment       int      `json:"customer_segment,omitempty"`
+	CustomerPipelineStage string   `json:"customer_pipeline_stage,omitempty"`
+	Tags                  []Tag    `json:"tags,omitempty"`
 }
 
 type Tag struct {
@@ -93,6 +98,7 @@ type Message struct {
 	SenderID       *int64    `json:"sender_id" db:"sender_id"`
 	Content        string    `json:"content" db:"content"`
 	ContentType    string    `json:"content_type" db:"content_type"`
+	ContentTR      string    `json:"content_tr,omitempty" db:"content_tr"`
 	IsInternal     bool      `json:"is_internal" db:"is_internal"`
 	ExternalID     string    `json:"external_id" db:"external_id"`
 	CreatedAt      time.Time `json:"created_at" db:"created_at"`
@@ -347,6 +353,61 @@ type AgentReport struct {
 type ChannelReport struct {
 	ChannelType string `json:"channel_type"`
 	Count       int    `json:"count"`
+}
+
+type SocialChannelStat struct {
+	ChannelType        string  `json:"channel_type"`
+	TotalConversations int     `json:"total_conversations"`
+	OpenConversations  int     `json:"open_conversations"`
+	MessagesToday      int     `json:"messages_today"`
+	AvgResponseMinutes float64 `json:"avg_response_minutes"`
+	CustomerLinked     int     `json:"customer_linked"`
+	LastMessageAt      *string `json:"last_message_at,omitempty"`
+}
+
+type FairCustomer struct {
+	ID             int64   `json:"id"`
+	Name           string  `json:"name"`
+	Company        string  `json:"company"`
+	Country        string  `json:"country"`
+	Segment        int     `json:"segment"`
+	PipelineStage  string  `json:"pipeline_stage"`
+	HasOrders      bool    `json:"has_orders"`
+	LastContactAt  *string `json:"last_contact_at,omitempty"`
+}
+
+type FairActivityType struct {
+	Type  string `json:"type"`
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+type FairActivityItem struct {
+	ID           int64  `json:"id"`
+	CustomerID   int64  `json:"customer_id"`
+	CustomerName string `json:"customer_name"`
+	Type         string `json:"type"`
+	Title        string `json:"title"`
+	CreatedAt    string `json:"created_at"`
+}
+
+type FairReport struct {
+	Name           string             `json:"name"`
+	TotalContacts  int                `json:"total_contacts"`
+	VIPCount       int                `json:"vip_count"`
+	ActiveCount    int                `json:"active_count"`
+	PotentialCount int                `json:"potential_count"`
+	ColdCount      int                `json:"cold_count"`
+	WithOrders     int                `json:"with_orders"`
+	OrderStage     int                `json:"order_stage"`
+	SampleStage    int                `json:"sample_stage"`
+	CatalogStage   int                `json:"catalog_stage"`
+	NewStage       int                `json:"new_stage"`
+	LastContactAt  *string            `json:"last_contact_at,omitempty"`
+	Customers      []FairCustomer     `json:"customers"`
+	ActivityCount  int                `json:"activity_count"`
+	ActivityTypes  []FairActivityType `json:"activity_types"`
+	RecentActivity []FairActivityItem `json:"recent_activity"`
 }
 
 type MessageAnalytics struct {

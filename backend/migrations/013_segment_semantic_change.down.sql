@@ -1,0 +1,2 @@
+-- Rollback: bu migration veriyi geri getiremez (segment_history'den manuel restore gerekir)
+-- No-op — history kayıtları audit için kalsın.

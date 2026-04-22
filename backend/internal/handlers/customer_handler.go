@@ -9,14 +9,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/repliq/backend/internal/database"
+	"github.com/repliq/backend/internal/services/translator"
 )
 
 type CustomerHandler struct {
-	db *database.DB
+	db         *database.DB
+	translator *translator.Translator
 }
 
 func NewCustomerHandler(db *database.DB) *CustomerHandler {
 	return &CustomerHandler{db: db}
+}
+
+func (h *CustomerHandler) SetTranslator(t *translator.Translator) {
+	h.translator = t
 }
 
 func (h *CustomerHandler) List(c *gin.Context) {
@@ -882,8 +888,9 @@ func (h *CustomerHandler) UpdatePipelineStage(c *gin.Context) {
 	}
 
 	// Auto segment rules: kartela/sample → Aktif(2), order/shipping → VIP(1)
+	// Katalog gönderimi segment değiştirmez (herkese gönderiliyor).
+	// Segment 3 (Stratejik) manuel atanır — otomatik kural yok.
 	stageAutoSegment := map[string]int{
-		"catalog_sent":   3, // Potansiyel
 		"kartela_sent":   2, // Aktif
 		"sample_sent":    2, // Aktif
 		"order_received": 1, // VIP
@@ -1496,7 +1503,7 @@ func (h *CustomerHandler) PatronFeed(c *gin.Context) {
 	// Recent conversations/messages
 	msgRows, err := h.db.Pool.Query(ctx,
 		`SELECT m.id, m.conversation_id, m.sender_type, m.content,
-		        COALESCE(m.content_type, 'text'), m.created_at,
+		        COALESCE(m.content_type, 'text'), COALESCE(m.content_tr, ''), m.created_at,
 		        COALESCE(u.full_name, co.name, '') as sender_name,
 		        co.name as contact_name, COALESCE(ch.type, '') as channel_type
 		 FROM messages m
@@ -1517,6 +1524,7 @@ func (h *CustomerHandler) PatronFeed(c *gin.Context) {
 		SenderType     string    `json:"sender_type"`
 		Content        string    `json:"content"`
 		ContentType    string    `json:"content_type"`
+		ContentTR      string    `json:"content_tr"`
 		CreatedAt      time.Time `json:"created_at"`
 		SenderName     string    `json:"sender_name"`
 		ContactName    string    `json:"contact_name"`
@@ -1528,7 +1536,7 @@ func (h *CustomerHandler) PatronFeed(c *gin.Context) {
 		for msgRows.Next() {
 			var m msgItem
 			if err := msgRows.Scan(&m.ID, &m.ConversationID, &m.SenderType, &m.Content,
-				&m.ContentType, &m.CreatedAt, &m.SenderName, &m.ContactName, &m.ChannelType); err != nil {
+				&m.ContentType, &m.ContentTR, &m.CreatedAt, &m.SenderName, &m.ContactName, &m.ChannelType); err != nil {
 				continue
 			}
 			// Truncate content for overview
@@ -1536,6 +1544,37 @@ func (h *CustomerHandler) PatronFeed(c *gin.Context) {
 				m.Content = m.Content[:200] + "..."
 			}
 			recentMessages = append(recentMessages, m)
+		}
+	}
+
+	// Translate non-Turkish messages on demand (cache in DB for next loads)
+	if h.translator != nil {
+		missingIdx := []int{}
+		missingTexts := []string{}
+		for i, m := range recentMessages {
+			if m.ContentTR == "" && translator.NeedsTranslation(m.Content) {
+				missingIdx = append(missingIdx, i)
+				missingTexts = append(missingTexts, m.Content)
+			}
+		}
+		if len(missingTexts) > 0 {
+			// Translation derives from the handler ctx so a client cancel or
+			// handler timeout stops the Haiku call and the follow-up UPDATEs
+			// atomically.
+			tCtx, tCancel := context.WithTimeout(ctx, 8*time.Second)
+			defer tCancel()
+			translations, terr := h.translator.TranslateBatch(tCtx, missingTexts)
+			if terr == nil && len(translations) == len(missingTexts) {
+				for j, idx := range missingIdx {
+					if translations[j] == "" {
+						continue
+					}
+					recentMessages[idx].ContentTR = translations[j]
+					h.db.Pool.Exec(ctx,
+						`UPDATE messages SET content_tr = $1 WHERE id = $2`,
+						translations[j], recentMessages[idx].ID)
+				}
+			}
 		}
 	}
 

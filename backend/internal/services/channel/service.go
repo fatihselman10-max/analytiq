@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/repliq/backend/internal/database"
@@ -135,12 +134,9 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 		} else {
 			// Create new conversation
 			isNew = true
-			subject := msg.Subject
-			if subject == "" {
-				subject = msg.Content
-			}
-			if len(subject) > 200 {
-				subject = subject[:200]
+			subject := msg.Content
+			if len(subject) > 100 {
+				subject = subject[:100]
 			}
 			err = s.db.Pool.QueryRow(ctx,
 				`INSERT INTO conversations (org_id, channel_id, contact_id, customer_id, status, priority, subject, last_message_at)
@@ -318,12 +314,6 @@ func (s *Service) HandleEchoMessage(ctx context.Context, channelID int64, msg *I
 }
 
 func (s *Service) SendReply(ctx context.Context, conversationID int64, senderID int64, content string) (int64, error) {
-	return s.SendReplyWithAttachments(ctx, conversationID, senderID, content, nil)
-}
-
-// SendReplyWithAttachments delivers a reply and embeds uploaded files where the
-// channel supports it (currently email). Attachments with empty Data are ignored.
-func (s *Service) SendReplyWithAttachments(ctx context.Context, conversationID int64, senderID int64, content string, attachments []IncomingAttachment) (int64, error) {
 	// Get conversation details
 	var channelID int64
 	var contactExternalID string
@@ -331,15 +321,14 @@ func (s *Service) SendReplyWithAttachments(ctx context.Context, conversationID i
 	var credsStr string
 	var orgID int64
 	var contactID int64
-	var convSubject string
 	err := s.db.Pool.QueryRow(ctx,
-		`SELECT c.channel_id, co.external_id, ch.type, COALESCE(ch.credentials::text, '{}'), c.org_id, c.contact_id, COALESCE(c.subject, '')
+		`SELECT c.channel_id, co.external_id, ch.type, COALESCE(ch.credentials::text, '{}'), c.org_id, c.contact_id
 		 FROM conversations c
 		 JOIN contacts co ON co.id = c.contact_id
 		 JOIN channels ch ON ch.id = c.channel_id
 		 WHERE c.id = $1`,
 		conversationID,
-	).Scan(&channelID, &contactExternalID, &channelType, &credsStr, &orgID, &contactID, &convSubject)
+	).Scan(&channelID, &contactExternalID, &channelType, &credsStr, &orgID, &contactID)
 	if err != nil {
 		return 0, fmt.Errorf("conversation not found: %w", err)
 	}
@@ -350,16 +339,8 @@ func (s *Service) SendReplyWithAttachments(ctx context.Context, conversationID i
 		json.Unmarshal([]byte(credsStr), &creds)
 		provider := s.registry.CreateProvider(channelType, creds)
 		if provider != nil {
-			if channelType == "email" {
-				if ep, ok := provider.(EmailSender); ok {
-					opts := s.buildEmailReplyOptions(ctx, conversationID, convSubject)
-					if _, err = ep.SendEmail(ctx, contactExternalID, content, opts, attachments); err != nil {
-						return 0, fmt.Errorf("failed to send email: %w", err)
-					}
-				} else if _, err = provider.SendMessage(ctx, contactExternalID, content, attachments); err != nil {
-					return 0, fmt.Errorf("failed to send message via %s: %w", channelType, err)
-				}
-			} else if _, err = provider.SendMessage(ctx, contactExternalID, content, attachments); err != nil {
+			_, err = provider.SendMessage(ctx, contactExternalID, content, nil)
+			if err != nil {
 				return 0, fmt.Errorf("failed to send message via %s: %w", channelType, err)
 			}
 		}
@@ -375,15 +356,6 @@ func (s *Service) SendReplyWithAttachments(ctx context.Context, conversationID i
 	).Scan(&messageID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to save message: %w", err)
-	}
-
-	// Persist attachments alongside the agent message so the UI shows what was sent.
-	for _, att := range attachments {
-		_, _ = s.db.Pool.Exec(ctx,
-			`INSERT INTO attachments (message_id, file_name, file_url, file_type, file_size)
-			 VALUES ($1, $2, $3, $4, $5)`,
-			messageID, att.FileName, att.FileURL, att.FileType, att.FileSize,
-		)
 	}
 
 	// Update conversation
@@ -403,158 +375,20 @@ func (s *Service) SendReplyWithAttachments(ctx context.Context, conversationID i
 	return messageID, nil
 }
 
-// buildEmailReplyOptions derives Subject/In-Reply-To/References from the latest
-// inbound message in the thread so outbound replies stay in the same Gmail thread.
-func (s *Service) buildEmailReplyOptions(ctx context.Context, conversationID int64, convSubject string) EmailSendOptions {
-	subject := strings.TrimSpace(convSubject)
-	if subject == "" {
-		subject = "Mesaj"
-	}
-	lower := strings.ToLower(subject)
-	if !strings.HasPrefix(lower, "re:") && !strings.HasPrefix(lower, "fw:") && !strings.HasPrefix(lower, "fwd:") {
-		subject = "Re: " + subject
-	}
-
-	opts := EmailSendOptions{Subject: subject}
-
-	var lastInbound string
-	_ = s.db.Pool.QueryRow(ctx,
-		`SELECT COALESCE(external_id, '') FROM messages
-		 WHERE conversation_id = $1 AND sender_type = 'contact' AND external_id <> ''
-		 ORDER BY created_at DESC LIMIT 1`,
-		conversationID,
-	).Scan(&lastInbound)
-	if lastInbound != "" {
-		opts.InReplyTo = lastInbound
-		opts.References = []string{lastInbound}
-	}
-	return opts
-}
-
-// StartEmailConversation creates a contact + open conversation + outbound
-// message for a brand-new outbound email, sends it via SMTP, and returns the IDs.
-func (s *Service) StartEmailConversation(ctx context.Context, channelID int64, senderID int64, toEmail, toName, subject, body string, attachments []IncomingAttachment) (*HandleResult, error) {
-	var orgID int64
-	var channelType string
-	var credsStr string
-	err := s.db.Pool.QueryRow(ctx,
-		`SELECT org_id, type, COALESCE(credentials::text,'{}') FROM channels WHERE id = $1 AND is_active = true`,
-		channelID,
-	).Scan(&orgID, &channelType, &credsStr)
-	if err != nil {
-		return nil, fmt.Errorf("channel not found: %w", err)
-	}
-	if channelType != "email" {
-		return nil, fmt.Errorf("StartEmailConversation: channel %d is not email", channelID)
-	}
-
-	name := strings.TrimSpace(toName)
-	if name == "" {
-		name = extractNameFromEmail(toEmail)
-	}
-
-	var contactID int64
-	err = s.db.Pool.QueryRow(ctx,
-		`INSERT INTO contacts (org_id, external_id, channel_type, name, email)
-		 VALUES ($1, $2, 'email', $3, $2)
-		 ON CONFLICT (org_id, channel_type, external_id) DO UPDATE
-		 SET name = CASE WHEN EXCLUDED.name <> '' THEN EXCLUDED.name ELSE contacts.name END,
-		     email = COALESCE(NULLIF(EXCLUDED.email,''), contacts.email)
-		 RETURNING id`,
-		orgID, toEmail, name,
-	).Scan(&contactID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to upsert contact: %w", err)
-	}
-
-	subj := strings.TrimSpace(subject)
-	if subj == "" {
-		subj = "Mesaj"
-	}
-
-	var conversationID int64
-	err = s.db.Pool.QueryRow(ctx,
-		`INSERT INTO conversations (org_id, channel_id, contact_id, status, priority, subject, last_message_at)
-		 VALUES ($1, $2, $3, 'open', 'normal', $4, NOW())
-		 RETURNING id`,
-		orgID, channelID, contactID, subj,
-	).Scan(&conversationID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create conversation: %w", err)
-	}
-
-	var creds map[string]string
-	json.Unmarshal([]byte(credsStr), &creds)
-	provider := s.registry.CreateProvider("email", creds)
-	ep, ok := provider.(EmailSender)
-	if !ok || ep == nil {
-		return nil, fmt.Errorf("email provider unavailable")
-	}
-	externalID, err := ep.SendEmail(ctx, toEmail, body, EmailSendOptions{Subject: subj}, attachments)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send email: %w", err)
-	}
-
-	var messageID int64
-	err = s.db.Pool.QueryRow(ctx,
-		`INSERT INTO messages (conversation_id, sender_type, sender_id, content, content_type, external_id)
-		 VALUES ($1, 'agent', $2, $3, 'text', $4)
-		 RETURNING id`,
-		conversationID, senderID, body, externalID,
-	).Scan(&messageID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to insert message: %w", err)
-	}
-	for _, att := range attachments {
-		_, _ = s.db.Pool.Exec(ctx,
-			`INSERT INTO attachments (message_id, file_name, file_url, file_type, file_size)
-			 VALUES ($1, $2, $3, $4, $5)`,
-			messageID, att.FileName, att.FileURL, att.FileType, att.FileSize,
-		)
-	}
-
-	now := time.Now()
-	_, _ = s.db.Pool.Exec(ctx,
-		`UPDATE conversations SET last_message_at = $1, updated_at = $1,
-		 first_response_at = COALESCE(first_response_at, $1)
-		 WHERE id = $2`,
-		now, conversationID,
-	)
-
-	s.recordJourney(orgID, contactID, messageID, "message_out", "email", body)
-
-	return &HandleResult{
-		ConversationID: conversationID,
-		MessageID:      messageID,
-		ContactID:      contactID,
-		OrgID:          orgID,
-		IsNew:          true,
-	}, nil
-}
-
-func extractNameFromEmail(addr string) string {
-	i := strings.IndexByte(addr, '@')
-	if i <= 0 {
-		return addr
-	}
-	return addr[:i]
-}
-
 // SendAttachment sends an uploaded file to the conversation's channel (Telegram, Instagram, etc.).
 // content is used as caption/text. Returns the channel-side external message id (may be empty).
 func (s *Service) SendAttachment(ctx context.Context, conversationID int64, content string, att IncomingAttachment) (string, error) {
 	var contactExternalID string
 	var channelType string
 	var credsStr string
-	var convSubject string
 	err := s.db.Pool.QueryRow(ctx,
-		`SELECT co.external_id, ch.type, COALESCE(ch.credentials::text, '{}'), COALESCE(c.subject,'')
+		`SELECT co.external_id, ch.type, COALESCE(ch.credentials::text, '{}')
 		 FROM conversations c
 		 JOIN contacts co ON co.id = c.contact_id
 		 JOIN channels ch ON ch.id = c.channel_id
 		 WHERE c.id = $1`,
 		conversationID,
-	).Scan(&contactExternalID, &channelType, &credsStr, &convSubject)
+	).Scan(&contactExternalID, &channelType, &credsStr)
 	if err != nil {
 		return "", fmt.Errorf("conversation not found: %w", err)
 	}
@@ -569,17 +403,5 @@ func (s *Service) SendAttachment(ctx context.Context, conversationID int64, cont
 	if provider == nil {
 		return "", fmt.Errorf("no provider for channel %s", channelType)
 	}
-
-	if channelType == "email" {
-		if ep, ok := provider.(EmailSender); ok {
-			body := content
-			if body == "" {
-				body = att.FileName
-			}
-			opts := s.buildEmailReplyOptions(ctx, conversationID, convSubject)
-			return ep.SendEmail(ctx, contactExternalID, body, opts, []IncomingAttachment{att})
-		}
-	}
-
 	return provider.SendMessage(ctx, contactExternalID, content, []IncomingAttachment{att})
 }

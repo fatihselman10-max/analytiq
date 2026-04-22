@@ -175,7 +175,6 @@ func (p *IMAPPoller) processMessage(imapMsg *imap.Message, section *imap.BodySec
 	}
 
 	content := ""
-	var plainAttachments []channelpkg.IncomingAttachment
 	mr, err := mail.CreateReader(body)
 	if err != nil {
 		// Fallback: use subject
@@ -186,30 +185,15 @@ func (p *IMAPPoller) processMessage(imapMsg *imap.Message, section *imap.BodySec
 			if err != nil {
 				break
 			}
-			switch h := part.Header.(type) {
+			switch part.Header.(type) {
 			case *mail.InlineHeader:
-				ct := h.Get("Content-Type")
+				ct := part.Header.Get("Content-Type")
 				if strings.HasPrefix(ct, "text/plain") || ct == "" {
 					b, err := io.ReadAll(part.Body)
 					if err == nil && len(b) > 0 {
 						content = string(b)
 					}
 				}
-			case *mail.AttachmentHeader:
-				filename, _ := h.Filename()
-				if filename == "" {
-					continue
-				}
-				data, err := io.ReadAll(part.Body)
-				if err != nil || len(data) == 0 {
-					continue
-				}
-				plainAttachments = append(plainAttachments, channelpkg.IncomingAttachment{
-					FileName: filename,
-					FileType: h.Get("Content-Type"),
-					FileSize: int64(len(data)),
-					Data:     data,
-				})
 			}
 		}
 	}
@@ -228,10 +212,8 @@ func (p *IMAPPoller) processMessage(imapMsg *imap.Message, section *imap.BodySec
 		ExternalID:  messageID,
 		SenderID:    senderEmail,
 		SenderName:  senderName,
-		Subject:     envelope.Subject,
 		Content:     content,
 		ContentType: "text",
-		Attachments: plainAttachments,
 	}
 
 	result, err := p.channelService.HandleIncomingMessage(ctx, p.channelID, incomingMsg)

@@ -22,7 +22,6 @@ import (
 	tgpkg "github.com/repliq/backend/internal/services/channel/telegram"
 	vkprovider "github.com/repliq/backend/internal/services/channel/vk"
 	"github.com/repliq/backend/internal/services/journey"
-	"github.com/repliq/backend/internal/services/translator"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -203,9 +202,6 @@ CREATE TABLE IF NOT EXISTS fabric_images (
 );
 CREATE INDEX IF NOT EXISTS idx_fabric_images_fabric ON fabric_images(fabric_id, sort_order);
 `},
-		{"014_message_translation", `
-ALTER TABLE messages ADD COLUMN IF NOT EXISTS content_tr TEXT NOT NULL DEFAULT '';
-`},
 	}
 
 	for _, m := range migrations {
@@ -256,76 +252,6 @@ func main() {
 				log.Printf("Password set for %s", u.email)
 			}
 		}
-	}()
-
-	// Ensure Burcu (patron) account exists with owner role for Messe org.
-	// Uses dynamic org lookup (slug OR name match) so this works even if
-	// the Messe org isn't id=1 on a fresh DB.
-	func() {
-		ctx := context.Background()
-		email := "burcu@messetekstil.com"
-		password := "Burcu2026!"
-		fullName := "Burcu Gece"
-
-		var orgID int64
-		orgErr := db.Pool.QueryRow(ctx,
-			`SELECT id FROM organizations WHERE slug = 'messe-tekstil' OR name ILIKE '%messe%' ORDER BY id LIMIT 1`,
-		).Scan(&orgID)
-		if orgErr != nil {
-			log.Printf("Burcu setup SKIPPED: messe org not found yet (%v) — will retry next startup", orgErr)
-			return
-		}
-
-		var userID int64
-		err := db.Pool.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, email).Scan(&userID)
-		if err != nil {
-			// Create user
-			hash, herr := authService.HashPassword(password)
-			if herr != nil {
-				log.Printf("Burcu ERROR: hash failed: %v", herr)
-				return
-			}
-			insertErr := db.Pool.QueryRow(ctx,
-				`INSERT INTO users (email, password_hash, full_name) VALUES ($1, $2, $3) RETURNING id`,
-				email, hash, fullName).Scan(&userID)
-			if insertErr != nil {
-				log.Printf("Burcu ERROR: user insert failed: %v", insertErr)
-				return
-			}
-			log.Printf("Burcu user created (id=%d, org=%d)", userID, orgID)
-		} else {
-			// Ensure password matches
-			var currentHash string
-			db.Pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&currentHash)
-			if !authService.CheckPassword(password, currentHash) {
-				newHash, herr := authService.HashPassword(password)
-				if herr == nil {
-					db.Pool.Exec(ctx, `UPDATE users SET password_hash = $1 WHERE id = $2`, newHash, userID)
-					log.Printf("Burcu password reset (id=%d)", userID)
-				}
-			}
-		}
-
-		// Ensure owner membership in Messe org
-		var memberID int64
-		err = db.Pool.QueryRow(ctx,
-			`SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2`, orgID, userID).Scan(&memberID)
-		if err != nil {
-			_, ierr := db.Pool.Exec(ctx,
-				`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`, orgID, userID)
-			if ierr != nil {
-				log.Printf("Burcu ERROR: org_member insert failed (user=%d, org=%d): %v — login will succeed but user has no access", userID, orgID, ierr)
-				return
-			}
-			log.Printf("Burcu membership granted as owner (user=%d, org=%d)", userID, orgID)
-		} else {
-			_, uerr := db.Pool.Exec(ctx,
-				`UPDATE org_members SET role = 'owner' WHERE id = $1`, memberID)
-			if uerr != nil {
-				log.Printf("Burcu WARN: role update failed: %v", uerr)
-			}
-		}
-		log.Printf("Burcu ready: %s / Burcu2026! (owner, org=%d)", email, orgID)
 	}()
 
 	// Channel registry & service
@@ -412,10 +338,33 @@ func main() {
 	activityService := activity.NewService(db, cfg.AnthropicAPIKey)
 	channelService.IncomingHook = activityService.AnalyzeIncoming
 
-	// Start IMAP pollers for active email channels (lifecycle managed by emailManager
-	// so the Settings UI can restart pollers when credentials change).
-	emailManager := email.NewManager(db, channelService)
-	emailManager.BootstrapAll(context.Background())
+	// Start IMAP poller for email channels
+	func() {
+		ctx := context.Background()
+		rows, err := db.Pool.Query(ctx,
+			`SELECT id, COALESCE(credentials::text, '{}') FROM channels WHERE type = 'email' AND is_active = true AND credentials IS NOT NULL AND credentials::text != '{}' AND credentials::text != 'null'`)
+		if err != nil {
+			log.Printf("Warning: failed to load email channels: %v", err)
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var chID int64
+			var credsStr string
+			if err := rows.Scan(&chID, &credsStr); err != nil {
+				continue
+			}
+			var creds map[string]string
+			if err := json.Unmarshal([]byte(credsStr), &creds); err != nil {
+				continue
+			}
+			if creds["imap_host"] != "" && creds["smtp_user"] != "" {
+				poller := email.NewIMAPPoller(db, channelService, chID, creds)
+				go poller.Start()
+				log.Printf("Started IMAP poller for email channel %d (%s)", chID, creds["smtp_user"])
+			}
+		}
+	}()
 
 	// Auto-resolve: close conversations where agent replied but no customer follow-up
 	go func() {
@@ -470,7 +419,6 @@ func main() {
 	messageHandler := handlers.NewMessageHandler(db, channelService, hub)
 	webhookHandler := handlers.NewWebhookHandler(db, channelService, registry, botEngine, aiBot, hub, cfg.InstagramWebhookVerifyToken)
 	channelHandler := handlers.NewChannelHandler(db)
-	emailChannelHandler := handlers.NewEmailChannelHandler(db, emailManager, channelService)
 	contactHandler := handlers.NewContactHandler(db)
 	reportHandler := handlers.NewReportHandler(db)
 	botHandler := handlers.NewBotHandler(db)
@@ -485,11 +433,6 @@ func main() {
 	kbHandler := handlers.NewKBHandler(db)
 	taskHandler := handlers.NewTaskHandler(db)
 	customerHandler := handlers.NewCustomerHandler(db)
-	if cfg.AnthropicAPIKey != "" {
-		t := translator.New(cfg.AnthropicAPIKey)
-		customerHandler.SetTranslator(t)
-		messageHandler.SetTranslator(t)
-	}
 	fabricHandler := handlers.NewFabricHandler(db)
 	briefingService := bot.NewBriefingService(db, cfg.AnthropicAPIKey)
 	briefingHandler := handlers.NewBriefingHandler(briefingService)
@@ -573,13 +516,6 @@ func main() {
 		api.PATCH("/channels/:id", channelHandler.Update)
 		api.DELETE("/channels/:id", channelHandler.Delete)
 
-		// Email channel (dedicated UX — test creds, connect, disconnect, compose)
-		api.GET("/channels/email", emailChannelHandler.Get)
-		api.POST("/channels/email/test", emailChannelHandler.Test)
-		api.PUT("/channels/email", emailChannelHandler.Save)
-		api.POST("/channels/email/disconnect", emailChannelHandler.Disconnect)
-		api.POST("/channels/email/compose", emailChannelHandler.Compose)
-
 		// Contacts
 		api.GET("/contacts", contactHandler.List)
 		api.GET("/contacts/:id", contactHandler.Get)
@@ -590,8 +526,6 @@ func main() {
 		api.GET("/reports/overview", reportHandler.Overview)
 		api.GET("/reports/agents", reportHandler.Agents)
 		api.GET("/reports/channels", reportHandler.Channels)
-		api.GET("/reports/social-channels", reportHandler.SocialChannels)
-		api.GET("/reports/fairs", reportHandler.Fairs)
 		api.GET("/reports/messages", reportHandler.MessageAnalytics)
 
 		// AI Bot

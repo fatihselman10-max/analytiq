@@ -105,23 +105,12 @@ func RateLimiter() gin.HandlerFunc {
 	clients := make(map[string]*client)
 	var mu sync.Mutex
 	const (
-		maxRequests = 600
+		maxRequests = 60
 		windowSecs  = 60
 	)
 
 	return func(c *gin.Context) {
-		// Prefer X-Forwarded-For (Vercel/Railway forward real client IP) so rate
-		// limit is per-user, not per-edge-proxy.
-		ip := c.GetHeader("X-Forwarded-For")
-		if ip != "" {
-			if comma := strings.IndexByte(ip, ','); comma > 0 {
-				ip = ip[:comma]
-			}
-			ip = strings.TrimSpace(ip)
-		}
-		if ip == "" {
-			ip = c.ClientIP()
-		}
+		ip := c.ClientIP()
 		now := time.Now().Unix()
 
 		mu.Lock()

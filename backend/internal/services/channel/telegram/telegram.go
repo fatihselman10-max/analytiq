@@ -188,7 +188,17 @@ func (p *Provider) callAPI(ctx context.Context, method string, payload map[strin
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("telegram: %s API error %d: %s", method, resp.StatusCode, string(respBody))
+		bodyStr := string(respBody)
+		if strings.Contains(bodyStr, "BUSINESS_PEER_USAGE_MISSING") {
+			return "", fmt.Errorf("Telegram: Müşteri son 24 saat içinde mesaj atmadığı için Business üzerinden gönderim engellendi. Lütfen patron hesabından önce manuel bir mesaj atın, sonra panelden devam edin.")
+		}
+		if strings.Contains(bodyStr, "bot was blocked") {
+			return "", fmt.Errorf("Telegram: Bu kullanıcı bot'u engellemiş, mesaj iletilemiyor.")
+		}
+		if strings.Contains(bodyStr, "chat not found") {
+			return "", fmt.Errorf("Telegram: Sohbet bulunamadı (chat_id geçersiz).")
+		}
+		return "", fmt.Errorf("telegram: %s API error %d: %s", method, resp.StatusCode, bodyStr)
 	}
 
 	var result struct {

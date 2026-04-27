@@ -613,6 +613,7 @@ func main() {
 		api.GET("/activities/pending", customerHandler.ListPendingActivities)
 		api.POST("/activities/:id/approve", customerHandler.ApprovePendingActivity)
 		api.POST("/activities/:id/reject", customerHandler.RejectPendingActivity)
+		api.DELETE("/activities/:id", customerHandler.DeleteActivity)
 		api.GET("/activities/stats", customerHandler.PendingActivityStats)
 		api.GET("/reports/crm/pipeline", customerHandler.PipelineOverview)
 		api.GET("/reports/patron", customerHandler.PatronFeed)

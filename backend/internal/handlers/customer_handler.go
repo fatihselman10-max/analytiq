@@ -1155,6 +1155,27 @@ func (h *CustomerHandler) RejectPendingActivity(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// DeleteActivity — hard-delete an activity from the timeline (any team member can remove)
+func (h *CustomerHandler) DeleteActivity(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	actID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	res, err := h.db.Pool.Exec(ctx,
+		`DELETE FROM customer_activities WHERE id=$1 AND org_id=$2`,
+		actID, orgID)
+	if err != nil || res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Activity not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // PendingActivityStats — weekly approve/reject ratio + top types (for patron widget)
 func (h *CustomerHandler) PendingActivityStats(c *gin.Context) {
 	orgID := c.GetInt64("org_id")

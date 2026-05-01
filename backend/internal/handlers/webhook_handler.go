@@ -16,6 +16,7 @@ import (
 	"github.com/repliq/backend/internal/services/channel/instagram"
 	tgpkg "github.com/repliq/backend/internal/services/channel/telegram"
 	vkprovider "github.com/repliq/backend/internal/services/channel/vk"
+	wapkg "github.com/repliq/backend/internal/services/channel/whatsapp"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 )
@@ -32,6 +33,38 @@ type WebhookHandler struct {
 
 func NewWebhookHandler(db *database.DB, channelService *channel.Service, registry *channel.Registry, botEngine *bot.Engine, aiBot *bot.AIBot, hub *ws.Hub, verifyToken string) *WebhookHandler {
 	return &WebhookHandler{db: db, channelService: channelService, registry: registry, botEngine: botEngine, aiBot: aiBot, hub: hub, verifyToken: verifyToken}
+}
+
+// loadWhatsAppProviderFromBody routes a WhatsApp webhook to the correct tenant
+// by extracting metadata.phone_number_id from the payload and looking up the
+// matching channel. This is mandatory for multi-tenant isolation: a global
+// `type='whatsapp' LIMIT 1` lookup would silently leak messages between tenants.
+func (h *WebhookHandler) loadWhatsAppProviderFromBody(ctx context.Context, body []byte) (channel.Provider, int64, error) {
+	phoneID, err := wapkg.ExtractPhoneNumberID(body)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var channelID int64
+	var credsStr string
+	err = h.db.Pool.QueryRow(ctx,
+		`SELECT id, COALESCE(credentials::text, '{}')
+		 FROM channels
+		 WHERE type='whatsapp'
+		   AND credentials->>'phone_number_id' = $1
+		   AND is_active = true
+		 LIMIT 1`,
+		phoneID,
+	).Scan(&channelID, &credsStr)
+	if err != nil {
+		return nil, 0, fmt.Errorf("no active whatsapp channel for phone_number_id=%s: %w", phoneID, err)
+	}
+
+	var creds map[string]string
+	if err := json.Unmarshal([]byte(credsStr), &creds); err != nil {
+		creds = make(map[string]string)
+	}
+	return wapkg.NewWhatsAppProvider(creds), channelID, nil
 }
 
 // loadProviderFromDB loads a channel provider with credentials from the database
@@ -83,9 +116,17 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
 		defer cancel()
 
-		// Load provider with credentials from DB
-		provider, channelID, err := h.loadProviderFromDB(ctx, channelType)
+		// Load provider with credentials from DB.
+		// WhatsApp routes by phone_number_id from the body to support multi-tenant.
+		var provider channel.Provider
+		var channelID int64
+		if channelType == "whatsapp" {
+			provider, channelID, err = h.loadWhatsAppProviderFromBody(ctx, body)
+		} else {
+			provider, channelID, err = h.loadProviderFromDB(ctx, channelType)
+		}
 		if err != nil {
+			fmt.Printf("[WEBHOOK] %s routing failed: %v\n", channelType, err)
 			c.JSON(http.StatusNotFound, gin.H{"error": "No active channel found"})
 			return
 		}
@@ -283,13 +324,36 @@ func (h *WebhookHandler) VerifyWebhook(c *gin.Context) {
 	token := c.Query("hub.verify_token")
 	challenge := c.Query("hub.challenge")
 
-	if mode == "subscribe" && token == h.verifyToken {
-		fmt.Printf("[WEBHOOK] Verification successful for token: %s\n", token)
+	if mode != "subscribe" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Verification failed"})
+		return
+	}
+
+	// Legacy single-tenant verify token (Instagram/Facebook still use this).
+	if token != "" && token == h.verifyToken {
+		fmt.Printf("[WEBHOOK] Verification successful (global token)\n")
 		c.String(http.StatusOK, challenge)
 		return
 	}
 
-	fmt.Printf("[WEBHOOK] Verification failed - mode: %s, token: %s, expected: %s\n", mode, token, h.verifyToken)
+	// Multi-tenant: try to match the verify_token against any active channel's credentials.
+	// Allows each tenant (e.g. Estedis WhatsApp) to register its own verify_token.
+	if token != "" {
+		var matched bool
+		err := h.db.Pool.QueryRow(c.Request.Context(),
+			`SELECT EXISTS(
+				SELECT 1 FROM channels
+				WHERE is_active = true
+				  AND credentials->>'verify_token' = $1
+			)`, token).Scan(&matched)
+		if err == nil && matched {
+			fmt.Printf("[WEBHOOK] Verification successful (tenant token)\n")
+			c.String(http.StatusOK, challenge)
+			return
+		}
+	}
+
+	fmt.Printf("[WEBHOOK] Verification failed - mode: %s, token: %s\n", mode, token)
 	c.JSON(http.StatusForbidden, gin.H{"error": "Verification failed"})
 }
 

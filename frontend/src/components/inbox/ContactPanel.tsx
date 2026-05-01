@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Conversation, Tag } from "@/types";
 import { OrgMember } from "@/types";
 import { teamAPI, tagsAPI, conversationsAPI, contactsAPI, messagesAPI } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
 import {
   Mail,
   MessageCircle,
@@ -210,6 +211,11 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
   const [journeyLoading, setJourneyLoading] = useState(false);
   const [showJourney, setShowJourney] = useState(true);
 
+  // Shopify and unified-journey integrations are wired to the LessandRomance store.
+  // Other tenants (e.g. Estedis dental) must not see LR's orders or product timeline.
+  const orgSlug = useAuthStore(s => s.organization?.slug);
+  const shopifyEnabled = orgSlug === "less-and-romance";
+
   useEffect(() => {
     teamAPI.listMembers().then((res) => setMembers(res.data?.members || [])).catch(() => {});
     tagsAPI.list().then((res) => setAllTags(res.data?.tags || [])).catch(() => {});
@@ -217,6 +223,7 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
 
   // Fetch unified journey (Shopify events + messages) for this contact
   useEffect(() => {
+    if (!shopifyEnabled) { setJourney([]); setJourneyLoading(false); return; }
     const contactId = conversation.contact?.id;
     if (!contactId) { setJourney([]); return; }
     setJourneyLoading(true);
@@ -224,12 +231,13 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
       .then((res) => setJourney(res.data?.events || []))
       .catch(() => setJourney([]))
       .finally(() => setJourneyLoading(false));
-  }, [conversation.contact?.id, conversation.id]);
+  }, [conversation.contact?.id, conversation.id, shopifyEnabled]);
 
   // Fetch Shopify orders across TR + EU stores.
   // Combines contact fields with identifiers extracted from recent chat messages
   // (name-in-chat, order numbers, email mentions, phone numbers).
   useEffect(() => {
+    if (!shopifyEnabled) { setOrders([]); setOrdersLoading(false); return; }
     const contact = conversation.contact;
     if (!contact) { setOrders([]); return; }
 
@@ -284,7 +292,7 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
     })();
 
     return () => { cancelled = true; };
-  }, [conversation.id, conversation.contact?.id, conversation.contact?.email, conversation.contact?.name, conversation.contact?.phone]);
+  }, [conversation.id, conversation.contact?.id, conversation.contact?.email, conversation.contact?.name, conversation.contact?.phone, shopifyEnabled]);
 
   const contact = conversation.contact;
   const channel = channelLabels[conversation.channel_type || "web"] || channelLabels.web;
@@ -550,7 +558,8 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
         </div>
       </div>
 
-      {/* Journey timeline (Shopify events + messages, unified) */}
+      {/* Journey timeline (Shopify events + messages, unified) — LR only */}
+      {shopifyEnabled && (
       <div className="p-4 border-t border-gray-200">
         <button
           onClick={() => setShowJourney(!showJourney)}
@@ -615,8 +624,10 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
           )
         )}
       </div>
+      )}
 
-      {/* Shopify Orders */}
+      {/* Shopify Orders — LR only */}
+      {shopifyEnabled && (
       <div className="p-4 border-t border-gray-200">
         <button
           onClick={() => setShowOrders(!showOrders)}
@@ -804,6 +815,7 @@ export default function ContactPanel({ conversation, onUpdate, onSendMessage }: 
           )
         )}
       </div>
+      )}
 
       {/* Conversation details */}
       <div className="mt-auto p-4 border-t border-gray-200">

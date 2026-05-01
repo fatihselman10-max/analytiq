@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react";
 import { Send, StickyNote, MessageSquare, Zap, Sparkles, Loader2, X } from "lucide-react";
 import { cannedAPI } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
 
 interface CannedResponse {
   id: number;
@@ -47,8 +48,18 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
     }).catch(() => {});
   }, []);
 
+  // /api/suggest is wired to LessandRomance brand context (Shopify + Stoq preorder, kargo).
+  // Only enable for LR; other tenants (e.g. Estedis dental) would see misleading suggestions.
+  const orgSlug = useAuthStore(s => s.organization?.slug);
+  const aiSuggestEnabled = orgSlug === "less-and-romance";
+
   // Generate AI suggestions via dedicated fast endpoint
   useEffect(() => {
+    if (!aiSuggestEnabled) {
+      setSuggestions([]);
+      setSuggestLoading(false);
+      return;
+    }
     const msgs = conversationMessages || [];
     const lastCustomerMsg = [...msgs].reverse().find(m => m.sender_type === "contact");
     if (!lastCustomerMsg) return;
@@ -73,7 +84,7 @@ export default function MessageInput({ onSend, onNote, conversationMessages, con
       .then(data => setSuggestions(data.suggestions || []))
       .catch(() => setSuggestions([]))
       .finally(() => setSuggestLoading(false));
-  }, [conversationMessages, contactName, contactEmail, contactPhone]);
+  }, [conversationMessages, contactName, contactEmail, contactPhone, aiSuggestEnabled]);
 
   // Close canned panel on outside click
   useEffect(() => {

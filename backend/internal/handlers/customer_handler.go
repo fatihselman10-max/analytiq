@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -1128,6 +1129,45 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 		}
 	}
 
+	// Patron directive (2026-05-11): onaylanan AI tespitleri "Yapılacaklar"a düşsün.
+	// Customer adıyla birlikte standart bir görev oluştur. Source_type=ai_approval ile
+	// manuel görevlerden ayrılır. Aynı activity için tekrar onay verilirse duplicate üretmemek
+	// adına source_id alanı yok — bunun yerine 30 dakika içinde aynı (customer, action) tekrarını
+	// yazmadan önce dedupe.
+	taskTitleMap := map[string]struct{ title, department string }{
+		"order_intent":    {"Sipariş işle", "operations"},
+		"sample_request":  {"Numune gönder", "operations"},
+		"kartela_request": {"Kartela gönder", "operations"},
+		"catalog_request": {"Katalog gönder", "operations"},
+		"shipping_info":   {"Kargo bilgisi paylaş", "operations"},
+		"meeting_request": {"Görüşme planla", "sales"},
+		"factory_visit":   {"Fabrika ziyareti planla", "sales"},
+		"price_inquiry":   {"Fiyat bilgisi gönder", "sales"},
+	}
+	if action, ok := taskTitleMap[activityType]; ok {
+		var customerName string
+		_ = h.db.Pool.QueryRow(ctx, `SELECT COALESCE(NULLIF(name,''), '') FROM customers WHERE id=$1`, customerID).Scan(&customerName)
+		taskTitle := action.title
+		if customerName != "" {
+			taskTitle = action.title + " — " + customerName
+		}
+		var existing int64
+		_ = h.db.Pool.QueryRow(ctx,
+			`SELECT id FROM tasks
+			 WHERE org_id=$1 AND customer_id=$2 AND pipeline_action=$3 AND status IN ('todo','in_progress')
+			   AND created_at > NOW() - INTERVAL '30 minutes'
+			 LIMIT 1`,
+			orgID, customerID, activityType,
+		).Scan(&existing)
+		if existing == 0 {
+			h.db.Pool.Exec(ctx,
+				`INSERT INTO tasks (org_id, customer_id, title, department, category, source_type, pipeline_action, priority, status)
+				 VALUES ($1,$2,$3,$4,$5,'ai_approval',$6,'normal','todo')`,
+				orgID, customerID, taskTitle, action.department, "AI Tespit", activityType,
+			)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -1153,6 +1193,221 @@ func (h *CustomerHandler) RejectPendingActivity(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// BulkActivity — patron'un haftalık toplu aksiyonlarını seçili segmentlerdeki tüm müşterilerin
+// timeline'ına işler (örn "Depo videosu gönderildi" → segment 1+2+3'teki herkesin kartına).
+// Body: { activity_type, segments: [int], title?, description? }
+func (h *CustomerHandler) BulkActivity(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	userID := c.GetInt64("user_id")
+
+	var req struct {
+		ActivityType string  `json:"activity_type"`
+		Segments     []int   `json:"segments"`
+		Title        string  `json:"title"`
+		Description  string  `json:"description"`
+		Channel      string  `json:"channel"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.ActivityType) == "" || len(req.Segments) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "activity_type ve segments zorunlu"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+
+	// Hedef müşterileri çek
+	rows, err := h.db.Pool.Query(ctx,
+		`SELECT id, COALESCE(pipeline_stage,'new_contact') FROM customers
+		 WHERE org_id=$1 AND segment = ANY($2::int[])`,
+		orgID, req.Segments,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Müşteri sorgusu başarısız"})
+		return
+	}
+	type custInfo struct {
+		id    int64
+		stage string
+	}
+	var targets []custInfo
+	for rows.Next() {
+		var ci custInfo
+		if err := rows.Scan(&ci.id, &ci.stage); err == nil {
+			targets = append(targets, ci)
+		}
+	}
+	rows.Close()
+
+	if len(targets) == 0 {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "processed": 0})
+		return
+	}
+
+	// Aynı pipeline ilerletme map'i (ApprovePendingActivity ile aynı)
+	stageForActivity := map[string]string{
+		"catalog_request":      "catalog_sent",
+		"kartela_request":      "kartela_sent",
+		"sample_request":       "kartela_sent",
+		"shipping_info":        "shipping",
+		"order_intent":         "order_received",
+		"intro_video_sent":     "catalog_sent",
+		"warehouse_video_sent": "catalog_sent",
+	}
+	stageOrder := map[string]int{
+		"new_contact": 0, "catalog_sent": 1, "kartela_sent": 2,
+		"sample_sent": 3, "order_received": 4, "shipping": 5,
+	}
+
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		title = req.ActivityType
+	}
+	channel := strings.TrimSpace(req.Channel)
+	if channel == "" {
+		channel = "bulk"
+	}
+
+	processed := 0
+	for _, t := range targets {
+		_, err := h.db.Pool.Exec(ctx,
+			`INSERT INTO customer_activities
+			   (org_id, customer_id, activity_type, title, description, channel, metadata,
+			    status, detected_by, confidence, created_by)
+			 VALUES ($1,$2,$3,$4,$5,$6,'{}','approved','manual',100,$7)`,
+			orgID, t.id, req.ActivityType, title, req.Description, channel, userID,
+		)
+		if err != nil {
+			continue
+		}
+		h.db.Pool.Exec(ctx, `UPDATE customers SET last_contact_at=NOW(), updated_at=NOW() WHERE id=$1`, t.id)
+		if newStage, ok := stageForActivity[req.ActivityType]; ok {
+			if stageOrder[newStage] > stageOrder[t.stage] {
+				h.db.Pool.Exec(ctx,
+					`UPDATE customers SET pipeline_stage=$1, pipeline_updated_at=NOW() WHERE id=$2 AND org_id=$3`,
+					newStage, t.id, orgID)
+			}
+		}
+		processed++
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "processed": processed, "targeted": len(targets)})
+}
+
+// LinkConversationToCustomer — Inbox'taki orphan konuşmadan tek tıkla CRM kartı yarat.
+// Çağrı: POST /conversations/:id/link-customer body: { name, company?, segment?, country?, customer_type? }
+// Mevcut conversation'ın contact'ından external_id'yi alıp customer_channels'a yazar ve
+// conversation.customer_id'yi set eder. Mevcut müşteri verilirse (existing_customer_id) onu kullanır.
+func (h *CustomerHandler) LinkConversationToCustomer(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	convID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid conversation ID"})
+		return
+	}
+
+	var req struct {
+		Name               string `json:"name"`
+		Company            string `json:"company"`
+		Segment            int    `json:"segment"`
+		Country            string `json:"country"`
+		CustomerType       string `json:"customer_type"`
+		ExistingCustomerID int64  `json:"existing_customer_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid body"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	// Konuşma + contact bilgileri
+	var contactID, channelID int64
+	var channelType string
+	var externalID, contactName string
+	err = h.db.Pool.QueryRow(ctx, `
+		SELECT c.contact_id, c.channel_id, ch.type,
+		       COALESCE(co.external_id, ''), COALESCE(co.name, '')
+		FROM conversations c
+		JOIN channels ch ON ch.id = c.channel_id
+		LEFT JOIN contacts co ON co.id = c.contact_id
+		WHERE c.id = $1 AND c.org_id = $2
+	`, convID, orgID).Scan(&contactID, &channelID, &channelType, &externalID, &contactName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Conversation not found"})
+		return
+	}
+
+	var customerID int64
+	if req.ExistingCustomerID > 0 {
+		// Mevcut müşteriye bağla
+		var exists int64
+		_ = h.db.Pool.QueryRow(ctx, `SELECT id FROM customers WHERE id=$1 AND org_id=$2`, req.ExistingCustomerID, orgID).Scan(&exists)
+		if exists == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Mevcut müşteri bulunamadı"})
+			return
+		}
+		customerID = exists
+	} else {
+		// Yeni müşteri yarat
+		name := strings.TrimSpace(req.Name)
+		if name == "" {
+			name = strings.TrimSpace(contactName)
+		}
+		if name == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Müşteri adı zorunlu"})
+			return
+		}
+		segment := req.Segment
+		if segment < 1 || segment > 4 {
+			segment = 4
+		}
+		country := strings.TrimSpace(req.Country)
+		err = h.db.Pool.QueryRow(ctx, `
+			INSERT INTO customers (org_id, name, company, country, segment, customer_type, source, source_detail, last_contact_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+			RETURNING id
+		`, orgID, name, strings.TrimSpace(req.Company), country, segment, strings.TrimSpace(req.CustomerType),
+			"Inbox", "Konuşmadan eklendi").Scan(&customerID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Müşteri yaratılamadı: " + err.Error()})
+			return
+		}
+	}
+
+	// Channel link (varsa upsert)
+	if externalID != "" {
+		channelLabel := channelType
+		switch strings.ToLower(channelType) {
+		case "instagram":
+			channelLabel = "Instagram"
+		case "telegram":
+			channelLabel = "Telegram"
+		case "whatsapp":
+			channelLabel = "WhatsApp"
+		case "vk":
+			channelLabel = "VK"
+		case "email":
+			channelLabel = "Email"
+		case "facebook":
+			channelLabel = "Facebook"
+		}
+		h.db.Pool.Exec(ctx, `
+			INSERT INTO customer_channels (customer_id, channel_type, channel_identifier)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (customer_id, channel_type) DO UPDATE SET channel_identifier = EXCLUDED.channel_identifier
+		`, customerID, channelLabel, externalID)
+	}
+
+	// Bu kontağın tüm conversation'larını bağla
+	h.db.Pool.Exec(ctx, `
+		UPDATE conversations SET customer_id = $1, updated_at = NOW()
+		WHERE org_id = $2 AND contact_id = $3 AND customer_id IS NULL
+	`, customerID, orgID, contactID)
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "customer_id": customerID})
 }
 
 // DeleteActivity — hard-delete an activity from the timeline (any team member can remove)

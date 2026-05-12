@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/repliq/backend/internal/database"
@@ -66,6 +67,10 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 		return nil, fmt.Errorf("channel not found: %w", err)
 	}
 
+	// Normalize channel_type so the (org_id, channel_type, external_id) UNIQUE constraint
+	// doesn't split a single Telegram user across "Telegram" / "telegram" / userbot+webhook.
+	normChType := strings.ToLower(channelType)
+
 	// Find or create contact
 	var contactID int64
 	err = s.db.Pool.QueryRow(ctx,
@@ -75,7 +80,7 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 		 SET name = CASE WHEN EXCLUDED.name != '' THEN EXCLUDED.name ELSE contacts.name END,
 		     avatar_url = CASE WHEN EXCLUDED.avatar_url != '' THEN EXCLUDED.avatar_url ELSE contacts.avatar_url END
 		 RETURNING id`,
-		orgID, msg.SenderID, channelType, msg.SenderName, msg.AvatarURL,
+		orgID, msg.SenderID, normChType, msg.SenderName, msg.AvatarURL,
 	).Scan(&contactID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to upsert contact: %w", err)
@@ -108,53 +113,76 @@ func (s *Service) HandleIncomingMessage(ctx context.Context, channelID int64, ms
 		}
 	}
 
-	// Find existing open/pending conversation or reopen a resolved one
+	// Find/reopen/create conversation atomically under an advisory lock so two
+	// concurrent inbound messages from the same (org, contact, channel) cannot
+	// race and produce duplicate "open" conversations.
 	var conversationID int64
 	isNew := false
-	err = s.db.Pool.QueryRow(ctx,
+	tx, err := s.db.Pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin conv tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	// 64-bit advisory key — collisions just cause harmless extra waits.
+	lockKey := orgID ^ (contactID << 16) ^ (channelID << 32)
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, lockKey); err != nil {
+		return nil, fmt.Errorf("advisory lock: %w", err)
+	}
+
+	err = tx.QueryRow(ctx,
 		`SELECT id FROM conversations
 		 WHERE org_id = $1 AND contact_id = $2 AND channel_id = $3 AND status IN ('open', 'pending')
 		 ORDER BY created_at DESC LIMIT 1`,
 		orgID, contactID, channelID,
 	).Scan(&conversationID)
 	if err != nil {
-		// No open/pending conversation — check if there's a recently resolved one to reopen
-		err = s.db.Pool.QueryRow(ctx,
+		err = tx.QueryRow(ctx,
 			`SELECT id FROM conversations
 			 WHERE org_id = $1 AND contact_id = $2 AND channel_id = $3 AND status = 'resolved'
 			 ORDER BY last_message_at DESC LIMIT 1`,
 			orgID, contactID, channelID,
 		).Scan(&conversationID)
 		if err == nil {
-			// Reopen the resolved conversation
-			_, _ = s.db.Pool.Exec(ctx,
+			if _, err = tx.Exec(ctx,
 				`UPDATE conversations SET status = 'open', resolved_at = NULL, updated_at = NOW(), customer_id = COALESCE(customer_id, $2) WHERE id = $1`,
 				conversationID, customerID,
-			)
+			); err != nil {
+				return nil, fmt.Errorf("reopen conversation: %w", err)
+			}
 		} else {
-			// Create new conversation
 			isNew = true
 			subject := msg.Content
 			if len(subject) > 100 {
 				subject = subject[:100]
 			}
-			err = s.db.Pool.QueryRow(ctx,
+			if err = tx.QueryRow(ctx,
 				`INSERT INTO conversations (org_id, channel_id, contact_id, customer_id, status, priority, subject, last_message_at)
 				 VALUES ($1, $2, $3, $4, 'open', 'normal', $5, NOW())
 				 RETURNING id`,
 				orgID, channelID, contactID, customerID, subject,
-			).Scan(&conversationID)
-			if err != nil {
+			).Scan(&conversationID); err != nil {
 				return nil, fmt.Errorf("failed to create conversation: %w", err)
 			}
 		}
 	} else if customerID != nil {
-		// Update existing conversation with customer_id if not set
-		s.db.Pool.Exec(ctx,
+		if _, err = tx.Exec(ctx,
 			`UPDATE conversations SET customer_id = COALESCE(customer_id, $2) WHERE id = $1`,
 			conversationID, customerID,
-		)
+		); err != nil {
+			return nil, fmt.Errorf("link customer to conversation: %w", err)
+		}
 	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit conv tx: %w", err)
+	}
+	committed = true
 
 	// Insert message
 	var messageID int64

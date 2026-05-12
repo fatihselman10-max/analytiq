@@ -173,6 +173,12 @@ CREATE INDEX IF NOT EXISTS idx_customer_events_org_time ON customer_events(org_i
 CREATE INDEX IF NOT EXISTS idx_customer_events_external ON customer_events(org_id, source, external_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_email_lower ON contacts(org_id, (LOWER(email))) WHERE email IS NOT NULL AND email != '';
 `},
+		{"022_active_conv_unique", `
+UPDATE contacts SET channel_type = LOWER(channel_type) WHERE channel_type != LOWER(channel_type);
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_conv_per_channel_contact
+  ON conversations (org_id, contact_id, channel_id)
+  WHERE status IN ('open', 'pending');
+`},
 		{"020_fabrics", `
 CREATE TABLE IF NOT EXISTS fabrics (
     id BIGSERIAL PRIMARY KEY,
@@ -413,6 +419,38 @@ func main() {
 	igPoller := instagram.NewPoller(db, channelService, hub)
 	go igPoller.Start(30 * time.Second)
 
+	// VK community DM poller - was registered but never started; fixes 24-day silence on Messe VK channel.
+	vkPoller := vkprovider.NewPoller(db, channelService, hub)
+	go vkPoller.Start(30 * time.Second)
+
+	// Auto-resolve idle conversations so the inbox doesn't pile up with stale threads (>30 days
+	// silent). Resolved threads still get reopened on next inbound (HandleIncomingMessage).
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		run := func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			ct, err := db.Pool.Exec(ctx, `
+				UPDATE conversations
+				   SET status = 'resolved', resolved_at = NOW(), updated_at = NOW()
+				 WHERE status = 'open'
+				   AND COALESCE(last_message_at, created_at) < NOW() - INTERVAL '30 days'
+			`)
+			if err != nil {
+				log.Printf("[AUTO-RESOLVE] error: %v", err)
+				return
+			}
+			if n := ct.RowsAffected(); n > 0 {
+				log.Printf("[AUTO-RESOLVE] resolved %d idle conversations", n)
+			}
+		}
+		run()
+		for range ticker.C {
+			run()
+		}
+	}()
+
 	// Handlers
 	authHandler := handlers.NewAuthHandler(db, authService)
 	conversationHandler := handlers.NewConversationHandler(db)
@@ -442,7 +480,11 @@ func main() {
 	wsHandler := handlers.NewWSHandler(hub, authService)
 
 	// Router
-	r := gin.Default()
+	// gin.Default = Logger + Recovery. We replace Logger with a config that skips /ws because
+	// the frontend keeps trying to upgrade (token expired path), generating ~10 noise lines/sec.
+	r := gin.New()
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/ws"}}))
+	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORSMiddleware())
 	r.Use(middleware.RateLimiter())
@@ -607,6 +649,8 @@ func main() {
 		api.POST("/customers/:id/channels", customerHandler.AddChannel)
 		api.DELETE("/customers/:id/channels/:channel_id", customerHandler.RemoveChannel)
 		api.POST("/customers/import", customerHandler.Import)
+		api.POST("/customers/bulk-activity", customerHandler.BulkActivity)
+		api.POST("/conversations/:id/create-customer", customerHandler.LinkConversationToCustomer)
 		api.PATCH("/customers/:id/pipeline", customerHandler.UpdatePipelineStage)
 		api.GET("/customers/:id/activities", customerHandler.ListActivities)
 		api.POST("/customers/:id/activities", customerHandler.CreateActivity)

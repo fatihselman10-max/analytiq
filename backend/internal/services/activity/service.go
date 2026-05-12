@@ -22,9 +22,12 @@ func NewService(db *database.DB, apiKey string) *Service {
 }
 
 // AnalyzeIncoming runs the analyzer on a contact-sent message and inserts pending activities.
-// If no CRM customer is matched (customerID nil) and AI detects intent, the contact is auto-promoted
-// to a Segment 4 (Yeni) customer so the task surfaces in Görevler immediately. Designed to run in a goroutine.
-func (s *Service) AnalyzeIncoming(orgID int64, customerID *int64, contactID int64, senderID, senderName string, messageID int64, channel, text string) {
+// Signature matches channel.IncomingHook. If no CRM customer is matched (customerID nil), we
+// skip — patron directive 2026-05-11 disabled auto-creating customer cards from inbound messages.
+func (s *Service) AnalyzeIncoming(orgID int64, customerID *int64, messageID int64, channel, text string) {
+	if customerID == nil || *customerID == 0 {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
@@ -33,19 +36,6 @@ func (s *Service) AnalyzeIncoming(orgID int64, customerID *int64, contactID int6
 		detections = s.analyzer.AnalyzeWithAI(ctx, text, channel)
 	}
 	if len(detections) == 0 {
-		return
-	}
-
-	// Patron directive (2026-05-11): auto-creating a CRM customer card from a Telegram/Instagram
-	// inbound silently was producing duplicates (token match couldn't catch every wording variant
-	// like "Decoding" vs "d e coding"). Staff now decides — if there's no CRM match, we skip the
-	// pending task entirely. The contact + conversation still exist in Inbox; staff promotes them
-	// to CRM by hand. Keep autoCreateCustomer/helpers around (still useful for non-detection flows
-	// and for the future "suggest existing match" approval UX).
-	_ = senderID
-	_ = senderName
-	_ = contactID
-	if customerID == nil || *customerID == 0 {
 		return
 	}
 

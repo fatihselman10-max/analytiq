@@ -173,12 +173,8 @@ CREATE INDEX IF NOT EXISTS idx_customer_events_org_time ON customer_events(org_i
 CREATE INDEX IF NOT EXISTS idx_customer_events_external ON customer_events(org_id, source, external_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_email_lower ON contacts(org_id, (LOWER(email))) WHERE email IS NOT NULL AND email != '';
 `},
-		{"022_active_conv_unique", `
-UPDATE contacts SET channel_type = LOWER(channel_type) WHERE channel_type != LOWER(channel_type);
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_conv_per_channel_contact
-  ON conversations (org_id, contact_id, channel_id)
-  WHERE status IN ('open', 'pending');
-`},
+		// Migration 022_active_conv_unique was applied manually on 2026-05-11 to avoid blocking
+		// container startup on the contacts table UPDATE. Index already exists in prod DB.
 		{"020_fabrics", `
 CREATE TABLE IF NOT EXISTS fabrics (
     id BIGSERIAL PRIMARY KEY,

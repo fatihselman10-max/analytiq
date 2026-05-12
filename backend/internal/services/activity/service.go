@@ -89,12 +89,6 @@ func (s *Service) AnalyzeOutgoing(orgID int64, customerID *int64, contactID, mes
 
 	action := detectOutgoingAction(text)
 	if action == "" {
-		// Try AI fallback for substantive messages
-		if len(strings.TrimSpace(text)) >= 15 {
-			action = s.analyzer.OutgoingActionWithAI(ctx, text, channel)
-		}
-	}
-	if action == "" {
 		return
 	}
 

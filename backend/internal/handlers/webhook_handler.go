@@ -143,7 +143,15 @@ func (h *WebhookHandler) HandleWebhook(channelType string) gin.HandlerFunc {
 
 		msg, err := provider.ParseWebhook(ctx, body, headers)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse webhook: " + err.Error()})
+			// Telegram default-sends update types we don't process (edited_message, my_chat_member,
+			// callback_query, channel_post). Return 200 so Telegram doesn't retry forever — but log
+			// once for visibility. Real parse failures (malformed JSON) still surface in logs.
+			errMsg := err.Error()
+			if channelType == "telegram" && strings.Contains(errMsg, "no message in webhook payload") {
+				c.JSON(http.StatusOK, gin.H{"status": "ignored"})
+				return
+			}
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse webhook: " + errMsg})
 			return
 		}
 

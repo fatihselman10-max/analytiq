@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -990,12 +991,18 @@ func (h *CustomerHandler) ListPendingActivities(c *gin.Context) {
 	defer cancel()
 
 	rows, err := h.db.Pool.Query(ctx,
-		`SELECT a.id, a.customer_id, c.name, COALESCE(c.company,''), COALESCE(c.country,''),
+		`SELECT a.id, a.customer_id, a.contact_id, a.conversation_id,
+		        COALESCE(c.name, ct.name, 'İsimsiz') AS display_name,
+		        COALESCE(c.company,'') AS customer_company,
+		        COALESCE(c.country,'') AS customer_country,
+		        COALESCE(ct.channel_type, a.channel, '') AS contact_channel,
+		        COALESCE(ct.external_id,'') AS contact_external,
 		        a.activity_type, a.title, COALESCE(a.description,''), COALESCE(a.channel,''),
 		        COALESCE(a.metadata,'{}'), COALESCE(a.detected_by,'manual'), COALESCE(a.confidence,0),
 		        COALESCE(a.source_text,''), a.source_message_id, a.created_at
 		 FROM customer_activities a
-		 JOIN customers c ON c.id = a.customer_id
+		 LEFT JOIN customers c ON c.id = a.customer_id
+		 LEFT JOIN contacts  ct ON ct.id = a.contact_id
 		 WHERE a.org_id = $1 AND COALESCE(a.status,'approved') = 'pending'
 		 ORDER BY a.created_at DESC
 		 LIMIT 200`, orgID)
@@ -1007,10 +1014,15 @@ func (h *CustomerHandler) ListPendingActivities(c *gin.Context) {
 
 	type pendingItem struct {
 		ID              int64     `json:"id"`
-		CustomerID      int64     `json:"customer_id"`
+		CustomerID      *int64    `json:"customer_id"`
+		ContactID       *int64    `json:"contact_id"`
+		ConversationID  *int64    `json:"conversation_id"`
 		CustomerName    string    `json:"customer_name"`
 		CustomerCompany string    `json:"customer_company"`
 		CustomerCountry string    `json:"customer_country"`
+		ContactChannel  string    `json:"contact_channel"`
+		ContactExternal string    `json:"contact_external"`
+		IsOrphan        bool      `json:"is_orphan"`
 		ActivityType    string    `json:"activity_type"`
 		Title           string    `json:"title"`
 		Description     string    `json:"description"`
@@ -1025,18 +1037,24 @@ func (h *CustomerHandler) ListPendingActivities(c *gin.Context) {
 	items := []pendingItem{}
 	for rows.Next() {
 		var p pendingItem
-		if err := rows.Scan(&p.ID, &p.CustomerID, &p.CustomerName, &p.CustomerCompany, &p.CustomerCountry,
+		if err := rows.Scan(&p.ID, &p.CustomerID, &p.ContactID, &p.ConversationID,
+			&p.CustomerName, &p.CustomerCompany, &p.CustomerCountry,
+			&p.ContactChannel, &p.ContactExternal,
 			&p.ActivityType, &p.Title, &p.Description, &p.Channel, &p.Metadata, &p.DetectedBy, &p.Confidence,
 			&p.SourceText, &p.SourceMessageID, &p.CreatedAt); err != nil {
 			continue
 		}
+		p.IsOrphan = p.CustomerID == nil
 		items = append(items, p)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"pending": items, "count": len(items)})
 }
 
-// ApprovePendingActivity — confirms detected activity, applies pipeline+segment effects
+// ApprovePendingActivity — confirms detected activity, applies pipeline+segment effects.
+// 2026-05-16: orphan (customer_id IS NULL) activities can be approved by providing
+// `create_customer` in the request body — the customer card is created at approval time,
+// then the standard pipeline/segment/task flow runs as if the activity had a customer all along.
 func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 	orgID := c.GetInt64("org_id")
 	userID := c.GetInt64("user_id")
@@ -1047,23 +1065,110 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 	}
 
 	var req struct {
-		Title       string `json:"title"`
-		Description string `json:"description"`
+		Title          string `json:"title"`
+		Description    string `json:"description"`
+		CreateCustomer *struct {
+			Name    string `json:"name"`
+			Company string `json:"company"`
+			Country string `json:"country"`
+		} `json:"create_customer"`
 	}
 	_ = c.ShouldBindJSON(&req)
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Second)
 	defer cancel()
 
-	var customerID int64
-	var activityType string
+	var customerID *int64
+	var contactID *int64
+	var conversationID *int64
+	var activityType, activityChannel string
 	err = h.db.Pool.QueryRow(ctx,
-		`SELECT customer_id, activity_type FROM customer_activities
+		`SELECT customer_id, contact_id, conversation_id, activity_type, COALESCE(channel,'')
+		 FROM customer_activities
 		 WHERE id=$1 AND org_id=$2 AND COALESCE(status,'approved')='pending'`,
-		actID, orgID).Scan(&customerID, &activityType)
+		actID, orgID).Scan(&customerID, &contactID, &conversationID, &activityType, &activityChannel)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pending activity not found"})
 		return
+	}
+
+	// Orphan path: müşteri kartı yoksa, body'deki create_customer ile yarat.
+	if customerID == nil {
+		if req.CreateCustomer == nil || strings.TrimSpace(req.CreateCustomer.Name) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":      "Bu önerinin müşteri kartı yok. Onaylamak için müşteri bilgisi gönder.",
+				"orphan":     true,
+				"contact_id": contactID,
+			})
+			return
+		}
+
+		// Contact bilgisinden kanal-specifik alanı doldur (telegram, instagram, phone, email).
+		var contactChannel, contactExternal, contactPhone, contactName string
+		if contactID != nil {
+			h.db.Pool.QueryRow(ctx,
+				`SELECT COALESCE(channel_type,''), COALESCE(external_id,''), COALESCE(phone,''), COALESCE(name,'')
+				 FROM contacts WHERE id=$1 AND org_id=$2`, *contactID, orgID,
+			).Scan(&contactChannel, &contactExternal, &contactPhone, &contactName)
+		}
+
+		// Channel-specific identifier kolonuna düş
+		var tgVal, igVal, emailVal, phoneVal, websiteVal string
+		switch contactChannel {
+		case "telegram":
+			tgVal = "t.me/" + contactExternal
+		case "instagram":
+			igVal = contactExternal
+		case "email":
+			emailVal = contactExternal
+		case "vk":
+			websiteVal = "https://vk.com/id" + contactExternal
+		}
+		if contactPhone != "" {
+			phoneVal = contactPhone
+		}
+
+		var newCustomerID int64
+		err = h.db.Pool.QueryRow(ctx,
+			`INSERT INTO customers
+			   (org_id, name, company, country, phone, telegram, instagram, email, website,
+			    source, source_detail, segment, pipeline_stage, created_at, updated_at)
+			 VALUES ($1,$2,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),NULLIF($9,''),
+			         'inbound','AI onayından oluşturuldu',4,'new_contact',NOW(),NOW())
+			 RETURNING id`,
+			orgID, strings.TrimSpace(req.CreateCustomer.Name),
+			strings.TrimSpace(req.CreateCustomer.Company),
+			strings.TrimSpace(req.CreateCustomer.Country),
+			phoneVal, tgVal, igVal, emailVal, websiteVal,
+		).Scan(&newCustomerID)
+		if err != nil {
+			log.Printf("approve: customer create failed: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Müşteri kartı oluşturulamadı"})
+			return
+		}
+
+		// Activity'yi bu yeni customer'a bağla
+		h.db.Pool.Exec(ctx,
+			`UPDATE customer_activities SET customer_id=$1 WHERE id=$2 AND org_id=$3`,
+			newCustomerID, actID, orgID)
+
+		// Aynı contact'ın bu org'taki diğer pending orphan kayıtlarını da bağla
+		if contactID != nil {
+			h.db.Pool.Exec(ctx,
+				`UPDATE customer_activities SET customer_id=$1
+				 WHERE org_id=$2 AND contact_id=$3 AND customer_id IS NULL`,
+				newCustomerID, orgID, *contactID)
+		}
+
+		// Conversation'ı da bu customer'a bağla (panelde aynı kart altında görünsün)
+		if conversationID != nil {
+			h.db.Pool.Exec(ctx,
+				`UPDATE conversations SET customer_id=$1 WHERE id=$2 AND org_id=$3 AND customer_id IS NULL`,
+				newCustomerID, *conversationID, orgID)
+		}
+
+		customerID = &newCustomerID
+		_ = contactName // reserved for future "kullan contact ismini default doldur"
 	}
 
 	updateFields := `status='approved', reviewed_by=$1, reviewed_at=NOW()`
@@ -1088,8 +1193,10 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 		return
 	}
 
+	cid := *customerID // artık nil olamaz (orphan path yarattı veya zaten doluydu)
+
 	// Apply pipeline+segment side effects (mirrors CreateActivity logic)
-	h.db.Pool.Exec(ctx, `UPDATE customers SET last_contact_at=NOW(), updated_at=NOW() WHERE id=$1`, customerID)
+	h.db.Pool.Exec(ctx, `UPDATE customers SET last_contact_at=NOW(), updated_at=NOW() WHERE id=$1`, cid)
 
 	stageForActivity := map[string]string{
 		"catalog_request":      "catalog_sent",
@@ -1111,21 +1218,21 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 	}
 	if newStage, ok := stageForActivity[activityType]; ok {
 		var currentStage string
-		h.db.Pool.QueryRow(ctx, `SELECT COALESCE(pipeline_stage,'new_contact') FROM customers WHERE id=$1`, customerID).Scan(&currentStage)
+		h.db.Pool.QueryRow(ctx, `SELECT COALESCE(pipeline_stage,'new_contact') FROM customers WHERE id=$1`, cid).Scan(&currentStage)
 		if stageOrder[newStage] > stageOrder[currentStage] {
 			h.db.Pool.Exec(ctx,
 				`UPDATE customers SET pipeline_stage=$1, pipeline_updated_at=NOW() WHERE id=$2 AND org_id=$3`,
-				newStage, customerID, orgID)
+				newStage, cid, orgID)
 		}
 	}
 	if newSeg, ok := segmentForActivity[activityType]; ok {
 		var oldSeg int
-		err := h.db.Pool.QueryRow(ctx, `SELECT segment FROM customers WHERE id=$1`, customerID).Scan(&oldSeg)
+		err := h.db.Pool.QueryRow(ctx, `SELECT segment FROM customers WHERE id=$1`, cid).Scan(&oldSeg)
 		if err == nil && newSeg < oldSeg {
-			h.db.Pool.Exec(ctx, `UPDATE customers SET segment=$1 WHERE id=$2`, newSeg, customerID)
+			h.db.Pool.Exec(ctx, `UPDATE customers SET segment=$1 WHERE id=$2`, newSeg, cid)
 			h.db.Pool.Exec(ctx,
 				`INSERT INTO segment_history (org_id, customer_id, old_segment, new_segment, changed_by)
-				 VALUES ($1,$2,$3,$4,$5)`, orgID, customerID, oldSeg, newSeg, userID)
+				 VALUES ($1,$2,$3,$4,$5)`, orgID, cid, oldSeg, newSeg, userID)
 		}
 	}
 
@@ -1135,18 +1242,19 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 	// adına source_id alanı yok — bunun yerine 30 dakika içinde aynı (customer, action) tekrarını
 	// yazmadan önce dedupe.
 	taskTitleMap := map[string]struct{ title, department string }{
-		"order_intent":    {"Sipariş işle", "operations"},
-		"sample_request":  {"Numune gönder", "operations"},
-		"kartela_request": {"Kartela gönder", "operations"},
-		"catalog_request": {"Katalog gönder", "operations"},
-		"shipping_info":   {"Kargo bilgisi paylaş", "operations"},
-		"meeting_request": {"Görüşme planla", "sales"},
-		"factory_visit":   {"Fabrika ziyareti planla", "sales"},
-		"price_inquiry":   {"Fiyat bilgisi gönder", "sales"},
+		"order_intent":        {"Sipariş işle", "operations"},
+		"sample_request":      {"Numune gönder", "operations"},
+		"kartela_request":     {"Kartela gönder", "operations"},
+		"catalog_request":     {"Katalog gönder", "operations"},
+		"shipping_info":       {"Kargo bilgisi paylaş", "operations"},
+		"meeting_request":     {"Görüşme planla", "sales"},
+		"factory_visit":       {"Fabrika ziyareti planla", "sales"},
+		"price_inquiry":       {"Fiyat bilgisi gönder", "sales"},
+		"price_clarification": {"Fiyat detayı netleştir", "sales"},
 	}
 	if action, ok := taskTitleMap[activityType]; ok {
 		var customerName string
-		_ = h.db.Pool.QueryRow(ctx, `SELECT COALESCE(NULLIF(name,''), '') FROM customers WHERE id=$1`, customerID).Scan(&customerName)
+		_ = h.db.Pool.QueryRow(ctx, `SELECT COALESCE(NULLIF(name,''), '') FROM customers WHERE id=$1`, cid).Scan(&customerName)
 		taskTitle := action.title
 		if customerName != "" {
 			taskTitle = action.title + " — " + customerName
@@ -1157,18 +1265,18 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 			 WHERE org_id=$1 AND customer_id=$2 AND pipeline_action=$3 AND status IN ('todo','in_progress')
 			   AND created_at > NOW() - INTERVAL '30 minutes'
 			 LIMIT 1`,
-			orgID, customerID, activityType,
+			orgID, cid, activityType,
 		).Scan(&existing)
 		if existing == 0 {
 			h.db.Pool.Exec(ctx,
 				`INSERT INTO tasks (org_id, customer_id, title, department, category, source_type, pipeline_action, priority, status)
 				 VALUES ($1,$2,$3,$4,$5,'ai_approval',$6,'normal','todo')`,
-				orgID, customerID, taskTitle, action.department, "AI Tespit", activityType,
+				orgID, cid, taskTitle, action.department, "AI Tespit", activityType,
 			)
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "customer_id": cid})
 }
 
 // RejectPendingActivity — discards a detected activity

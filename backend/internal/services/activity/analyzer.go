@@ -55,6 +55,12 @@ var rules = map[string]ruleMatch{
 	}},
 	"price_inquiry": {keywords: []string{
 		"fiyat", "price", "cost", "стоимость", "цена", "сколько стоит", "по чем", "почем",
+		"kaç para", "kac para", "ne kadar", "ne kadara", "metre fiyat", "metre fiyatı",
+		"fiyat alabilir", "fiyat bilgisi", "fiyatı nedir", "сколько за",
+	}},
+	"price_clarification": {keywords: []string{
+		"погонн", "квадрат", "за метр", "за м²", "за м2", "м²",
+		"ölçü cinsi", "metre mi", "metre mi kg", "kg mı", "metre mi metre",
 	}},
 	"order_intent": {keywords: []string{
 		"siparis", "sipariş", "order", "заказ", "заказать", "хочу взять", "купить", "alacağım", "almak istiyorum",
@@ -93,6 +99,7 @@ var titleByType = map[string]string{
 	"kartela_request":      "Kartela talebi",
 	"catalog_request":      "Katalog talebi",
 	"price_inquiry":        "Fiyat sorgusu",
+	"price_clarification":  "Fiyat detay sorusu",
 	"order_intent":         "Sipariş niyeti",
 	"shipping_info":        "Kargo bilgisi",
 	"meeting_request":      "Görüşme talebi",
@@ -153,11 +160,11 @@ func (a *Analyzer) AnalyzeWithAI(ctx context.Context, text, channel string) []De
 		return nil
 	}
 	text = strings.TrimSpace(text)
-	if len(text) < 15 {
+	if len(text) < 5 {
 		return nil
 	}
 
-	prompt := fmt.Sprintf(`Sen bir B2B tekstil firmasının CRM asistanısın. Müşteri mesajlarını analiz edip iş aksiyonlarını yakalıyorsun.
+	prompt := fmt.Sprintf(`Sen bir B2B tekstil firmasının CRM asistanısın. Müşteri mesajlarını analiz edip iş aksiyonlarını yakalıyorsun. Müşteriler Türkçe, Rusça veya İngilizce yazabilir.
 
 Mesaj (%s kanalı):
 """
@@ -170,7 +177,8 @@ Geçerli activity_type değerleri:
 - sample_request (numune talebi)
 - kartela_request (kartela/renk kartı talebi)
 - catalog_request (katalog talebi)
-- price_inquiry (fiyat sorusu)
+- price_inquiry (fiyat sorusu — "fiyat nedir", "kaç para", "сколько стоит")
+- price_clarification (fiyat detayı / ölçü cinsi sorusu — "metre mi kg mı", "погонный или квадратный")
 - order_intent (sipariş niyeti veya verme)
 - shipping_info (kargo/takip bilgisi)
 - meeting_request (görüşme/toplantı talebi)
@@ -178,9 +186,13 @@ Geçerli activity_type değerleri:
 - sample_feedback (numuneden memnun/memnun değil)
 
 Yanıt formatı (sadece JSON):
-{"actions":[{"activity_type":"...","title":"kısa Türkçe başlık","description":"1 cümle","confidence":0-100}]}
+{"actions":[{"activity_type":"...","title":"kısa Türkçe başlık","description":"1 cümle Türkçe özet","confidence":0-100}]}
 
-Sadece açıkça anlaşılan aksiyonları yaz. Selamlama, sıradan mesajlar için boş döndür.`, channel, text)
+Kurallar:
+- Kısa mesajlar bile (örn "Fiyat?", "Цена?") fiyat sorgusu olarak yakalanmalı.
+- Önceki mesajdaki bir fiyat/ölçü üzerine soru sorma → price_clarification.
+- Spam, otomatik bildirim (Instagram güvenlik uyarısı, mail track linki) → boş döndür.
+- Selamlama, "tamam", "sağol" gibi sıradan onaylar → boş döndür.`, channel, text)
 
 	type msg struct {
 		Role    string `json:"role"`

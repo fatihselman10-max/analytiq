@@ -22,12 +22,15 @@ func NewService(db *database.DB, apiKey string) *Service {
 }
 
 // AnalyzeIncoming runs the analyzer on a contact-sent message and inserts pending activities.
-// Signature matches channel.IncomingHook. If no CRM customer is matched (customerID nil), we
-// skip — patron directive 2026-05-11 disabled auto-creating customer cards from inbound messages.
+// Signature matches channel.IncomingHook.
+//
+// Patron directive 2026-05-11 disabled auto-creating customer CARDS from inbound messages.
+// That does NOT mean "skip AI" — the directive was about customer creation, not detection.
+// Earlier code mistakenly early-returned when customerID was nil, causing ~%91 of Telegram
+// conversations (orphan) to bypass detection entirely. 2026-05-16: we now analyze every
+// inbound message; orphan detections are stored with customer_id NULL and surfaced in the
+// pending queue tagged "Müşterisiz". Approval flow creates the customer at that point.
 func (s *Service) AnalyzeIncoming(orgID int64, customerID *int64, messageID int64, channel, text string) {
-	if customerID == nil || *customerID == 0 {
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
@@ -39,26 +42,61 @@ func (s *Service) AnalyzeIncoming(orgID int64, customerID *int64, messageID int6
 		return
 	}
 
-	for _, d := range detections {
-		// Dedupe: skip if same activity_type for same customer in pending status within last hour
-		var dupID int64
+	// Resolve contact_id + conversation_id from the message so orphan activities are still
+	// pointing at a real conversation/contact (essential for the "Müşteri olarak ekle" approval flow).
+	var contactID, conversationID *int64
+	{
+		var cid, cvid int64
 		err := s.db.Pool.QueryRow(ctx,
-			`SELECT id FROM customer_activities
-			 WHERE customer_id=$1 AND activity_type=$2 AND status='pending'
-			   AND created_at > NOW() - INTERVAL '1 hour'
-			 LIMIT 1`,
-			*customerID, d.ActivityType).Scan(&dupID)
-		if err == nil && dupID > 0 {
+			`SELECT cv.contact_id, cv.id
+			 FROM messages m JOIN conversations cv ON cv.id = m.conversation_id
+			 WHERE m.id = $1 AND cv.org_id = $2`,
+			messageID, orgID).Scan(&cid, &cvid)
+		if err == nil {
+			if cid > 0 {
+				contactID = &cid
+			}
+			if cvid > 0 {
+				conversationID = &cvid
+			}
+		}
+	}
+
+	hasCustomer := customerID != nil && *customerID > 0
+
+	for _, d := range detections {
+		// Dedupe within 1 hour. Customer varsa customer'a göre, yoksa contact'a göre.
+		var dupID int64
+		if hasCustomer {
+			s.db.Pool.QueryRow(ctx,
+				`SELECT id FROM customer_activities
+				 WHERE customer_id=$1 AND activity_type=$2 AND status='pending'
+				   AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1`,
+				*customerID, d.ActivityType).Scan(&dupID)
+		} else if contactID != nil {
+			s.db.Pool.QueryRow(ctx,
+				`SELECT id FROM customer_activities
+				 WHERE contact_id=$1 AND activity_type=$2 AND status='pending'
+				   AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1`,
+				*contactID, d.ActivityType).Scan(&dupID)
+		}
+		if dupID > 0 {
 			continue
 		}
 
-		_, err = s.db.Pool.Exec(ctx,
+		var custArg interface{}
+		if hasCustomer {
+			custArg = *customerID
+		} else {
+			custArg = nil
+		}
+		_, err := s.db.Pool.Exec(ctx,
 			`INSERT INTO customer_activities
-			   (org_id, customer_id, activity_type, title, description, channel, metadata,
-			    status, detected_by, confidence, source_message_id, source_text)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9,$10,$11)`,
-			orgID, *customerID, d.ActivityType, d.Title, d.Description, channel, d.Metadata,
-			d.DetectedBy, d.Confidence, messageID, text,
+			   (org_id, customer_id, contact_id, conversation_id, activity_type, title, description,
+			    channel, metadata, status, detected_by, confidence, source_message_id, source_text)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10,$11,$12,$13)`,
+			orgID, custArg, contactID, conversationID, d.ActivityType, d.Title, d.Description,
+			channel, d.Metadata, d.DetectedBy, d.Confidence, messageID, text,
 		)
 		if err != nil {
 			log.Printf("activity: failed to insert pending: %v", err)

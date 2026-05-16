@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -337,8 +338,12 @@ func main() {
 	channelService.Journey = journeyService
 
 	// Activity analyzer (auto-detects pending CRM activities from messages)
+	// 2026-05-16 (Katman 2): IncomingHook artık queue'ya enqueue ediyor; gerçek AI çağrısı
+	// arka plandaki worker'da. Crash/restart sırasında kuyrukta kalan mesajlar boot sonrası
+	// işlenir → kayıp matematiksel olarak imkansız.
 	activityService := activity.NewService(db, cfg.AnthropicAPIKey)
 	channelService.IncomingHook = activityService.AnalyzeIncoming
+	go activityService.StartQueueWorker(context.Background())
 
 	// Start IMAP poller for email channels
 	func() {
@@ -655,6 +660,63 @@ func main() {
 		api.POST("/activities/:id/reject", customerHandler.RejectPendingActivity)
 		api.DELETE("/activities/:id", customerHandler.DeleteActivity)
 		api.GET("/activities/stats", customerHandler.PendingActivityStats)
+		// AI coverage: outbox kuyruğunun sağlığı (Katman 2 — 2026-05-16)
+		api.GET("/ai/coverage", func(c *gin.Context) {
+			orgID := c.GetInt64("org_id")
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+			defer cancel()
+
+			type window struct {
+				Label    string `json:"label"`
+				Hours    int    `json:"hours"`
+				Enqueued int64  `json:"enqueued"`
+				Done     int64  `json:"done"`
+				Pending  int64  `json:"pending"`
+				Failed   int64  `json:"failed"`
+				AvgMs    int64  `json:"avg_ms"`
+				RuleHits int64  `json:"rule_hits"`
+				AIHits   int64  `json:"ai_hits"`
+				NoneHits int64  `json:"none_hits"`
+			}
+
+			results := []window{}
+			for _, w := range []struct {
+				label string
+				hours int
+			}{{"24h", 24}, {"7g", 24 * 7}, {"30g", 24 * 30}} {
+				var win window
+				win.Label = w.label
+				win.Hours = w.hours
+
+				// Queue snapshot
+				_ = db.Pool.QueryRow(ctx,
+					`SELECT
+					   COUNT(*),
+					   COUNT(*) FILTER (WHERE status='done'),
+					   COUNT(*) FILTER (WHERE status='pending'),
+					   COUNT(*) FILTER (WHERE status='failed')
+					 FROM analysis_queue
+					 WHERE org_id=$1 AND enqueued_at > NOW() - ($2 || ' hours')::interval`,
+					orgID, w.hours,
+				).Scan(&win.Enqueued, &win.Done, &win.Pending, &win.Failed)
+
+				// Attempts metrics
+				_ = db.Pool.QueryRow(ctx,
+					`SELECT
+					   COALESCE(AVG(duration_ms),0)::bigint,
+					   COUNT(*) FILTER (WHERE matched_by LIKE 'rule%' OR matched_by='rule'),
+					   COUNT(*) FILTER (WHERE matched_by='haiku'),
+					   COUNT(*) FILTER (WHERE matched_by='none')
+					 FROM analysis_attempts
+					 WHERE org_id=$1 AND attempted_at > NOW() - ($2 || ' hours')::interval`,
+					orgID, w.hours,
+				).Scan(&win.AvgMs, &win.RuleHits, &win.AIHits, &win.NoneHits)
+
+				results = append(results, win)
+			}
+
+			c.JSON(http.StatusOK, gin.H{"windows": results})
+		})
 		api.GET("/reports/crm/pipeline", customerHandler.PipelineOverview)
 		api.GET("/reports/patron", customerHandler.PatronFeed)
 		api.GET("/reports/briefing", briefingHandler.GetBriefing)

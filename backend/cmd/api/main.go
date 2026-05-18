@@ -759,6 +759,8 @@ func main() {
 		api.POST("/activities/:id/approve", customerHandler.ApprovePendingActivity)
 		api.POST("/activities/:id/reject", customerHandler.RejectPendingActivity)
 		api.DELETE("/activities/:id", customerHandler.DeleteActivity)
+		api.GET("/activities/trash", customerHandler.ListTrashedActivities)
+		api.POST("/activities/:id/restore", customerHandler.RestoreActivity)
 		api.GET("/activities/stats", customerHandler.PendingActivityStats)
 		// AI coverage: outbox kuyruğunun sağlığı (Katman 2 — 2026-05-16)
 		api.GET("/ai/coverage", func(c *gin.Context) {

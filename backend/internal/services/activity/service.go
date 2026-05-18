@@ -74,7 +74,8 @@ func (s *Service) AnalyzeOutgoing(orgID int64, customerID *int64, contactID, mes
 	err := s.db.Pool.QueryRow(ctx,
 		`SELECT id FROM customer_activities
 		 WHERE customer_id=$1 AND activity_type=$2
-		   AND created_at > NOW() - INTERVAL '30 minutes' LIMIT 1`,
+		   AND created_at > NOW() - INTERVAL '30 minutes'
+		   AND deleted_at IS NULL LIMIT 1`,
 		*customerID, mapping.activityType).Scan(&dupID)
 	if err == nil && dupID > 0 {
 		return
@@ -277,7 +278,8 @@ func (s *Service) BackfillUnlinked(orgID int64) (created int, customers int, sca
 				err := s.db.Pool.QueryRow(ctx,
 					`SELECT id FROM customer_activities
 					 WHERE customer_id=$1 AND activity_type=$2 AND status='pending'
-					   AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1`,
+					   AND created_at > NOW() - INTERVAL '1 hour'
+					   AND deleted_at IS NULL LIMIT 1`,
 					*customerID, d.ActivityType).Scan(&dupID)
 				if err == nil && dupID > 0 {
 					continue

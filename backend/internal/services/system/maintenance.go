@@ -43,16 +43,27 @@ func nextWeeklySunday4UTC() time.Time {
 
 func runVacuum(ctx context.Context, db *database.DB) {
 	start := time.Now()
-	log.Printf("[maintenance] VACUUM ANALYZE başlıyor")
+	log.Printf("[maintenance] başlangıç")
 
-	// Tüm tabloları analyze et — vacuum-only değil. ANALYZE planner istatistiklerini günceller.
-	// VACUUM (lock-free) + ANALYZE birleşik komut: yoğun tablolara yardımcı olur.
-	// Hata olsa da loglar ve devam eder; kritik path değil.
+	// 1) Çöp Kutusu auto-purge: 30 günden eski deleted_at olan customer_activities gerçek silinir.
+	//    Soft-delete penceresi (Ayarlar → Silinenler'den geri al) 30 gün.
+	ctx1, cancel1 := context.WithTimeout(ctx, 5*time.Minute)
+	if tag, err := db.Pool.Exec(ctx1,
+		`DELETE FROM customer_activities
+		 WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days'`); err != nil {
+		log.Printf("[maintenance] trash purge error: %v", err)
+	} else if n := tag.RowsAffected(); n > 0 {
+		log.Printf("[maintenance] trash purge: %d eski silinmiş aktivite gerçek silindi", n)
+	}
+	cancel1()
+
+	// 2) VACUUM ANALYZE — tüm tabloları analyze et + bloat temizlik
+	log.Printf("[maintenance] VACUUM ANALYZE başlıyor")
 	ctx2, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	if _, err := db.Pool.Exec(ctx2, "VACUUM ANALYZE"); err != nil {
 		log.Printf("[maintenance] VACUUM ANALYZE error: %v", err)
 		return
 	}
-	log.Printf("[maintenance] VACUUM ANALYZE tamam (süre=%s)", time.Since(start).Round(time.Second))
+	log.Printf("[maintenance] tamam (toplam süre=%s)", time.Since(start).Round(time.Second))
 }

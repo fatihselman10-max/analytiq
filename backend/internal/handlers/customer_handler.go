@@ -952,6 +952,7 @@ func (h *CustomerHandler) ListActivities(c *gin.Context) {
 		 LEFT JOIN users u ON a.created_by = u.id
 		 WHERE a.customer_id = $1 AND a.org_id = $2
 		   AND COALESCE(a.status, 'approved') = 'approved'
+		   AND a.deleted_at IS NULL
 		 ORDER BY a.created_at DESC
 		 LIMIT 100`,
 		customerID, orgID)
@@ -1004,6 +1005,7 @@ func (h *CustomerHandler) ListPendingActivities(c *gin.Context) {
 		 LEFT JOIN customers c ON c.id = a.customer_id
 		 LEFT JOIN contacts  ct ON ct.id = a.contact_id
 		 WHERE a.org_id = $1 AND COALESCE(a.status,'approved') = 'pending'
+		   AND a.deleted_at IS NULL
 		 ORDER BY a.created_at DESC
 		 LIMIT 200`, orgID)
 	if err != nil {
@@ -1085,7 +1087,8 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 	err = h.db.Pool.QueryRow(ctx,
 		`SELECT customer_id, contact_id, conversation_id, activity_type, COALESCE(channel,'')
 		 FROM customer_activities
-		 WHERE id=$1 AND org_id=$2 AND COALESCE(status,'approved')='pending'`,
+		 WHERE id=$1 AND org_id=$2 AND COALESCE(status,'approved')='pending'
+		   AND deleted_at IS NULL`,
 		actID, orgID).Scan(&customerID, &contactID, &conversationID, &activityType, &activityChannel)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pending activity not found"})
@@ -1518,8 +1521,85 @@ func (h *CustomerHandler) LinkConversationToCustomer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true, "customer_id": customerID})
 }
 
-// DeleteActivity — hard-delete an activity from the timeline (any team member can remove)
+// DeleteActivity — soft-delete an activity (Çöp Kutusu pattern).
+// deleted_at = NOW(), deleted_by = current user. 30 gün sonra weekly cron tarafından gerçek silinir.
+// Personel "Ayarlar → Silinenler" sayfasından Geri Al ile kurtarabilir.
 func (h *CustomerHandler) DeleteActivity(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	userID := c.GetInt64("user_id")
+	actID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	res, err := h.db.Pool.Exec(ctx,
+		`UPDATE customer_activities
+		 SET deleted_at = NOW(), deleted_by = $1
+		 WHERE id = $2 AND org_id = $3 AND deleted_at IS NULL`,
+		userID, actID, orgID)
+	if err != nil || res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Activity not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// ListTrashedActivities — son 30 günde silinmiş aktiviteleri listeler ("Çöp Kutusu").
+// Müşteri adı, silen kullanıcı adı join'li döner ki frontend kolay göstersin.
+func (h *CustomerHandler) ListTrashedActivities(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	rows, err := h.db.Pool.Query(ctx,
+		`SELECT a.id, a.customer_id, COALESCE(c.name, ''), COALESCE(c.company, ''),
+		        a.activity_type, COALESCE(a.title, ''), COALESCE(a.description, ''),
+		        a.created_at, a.deleted_at,
+		        a.deleted_by, COALESCE(u.name, '')
+		 FROM customer_activities a
+		 LEFT JOIN customers c ON c.id = a.customer_id
+		 LEFT JOIN users u ON u.id = a.deleted_by
+		 WHERE a.org_id = $1 AND a.deleted_at IS NOT NULL
+		   AND a.deleted_at > NOW() - INTERVAL '30 days'
+		 ORDER BY a.deleted_at DESC
+		 LIMIT 500`, orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type item struct {
+		ID            int64     `json:"id"`
+		CustomerID    *int64    `json:"customer_id"`
+		CustomerName  string    `json:"customer_name"`
+		Company       string    `json:"company"`
+		ActivityType  string    `json:"activity_type"`
+		Title         string    `json:"title"`
+		Description   string    `json:"description"`
+		CreatedAt     time.Time `json:"created_at"`
+		DeletedAt     time.Time `json:"deleted_at"`
+		DeletedBy     *int64    `json:"deleted_by"`
+		DeletedByName string    `json:"deleted_by_name"`
+	}
+	items := []item{}
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.ID, &it.CustomerID, &it.CustomerName, &it.Company,
+			&it.ActivityType, &it.Title, &it.Description,
+			&it.CreatedAt, &it.DeletedAt, &it.DeletedBy, &it.DeletedByName); err != nil {
+			continue
+		}
+		items = append(items, it)
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+// RestoreActivity — silinen aktiviteyi Çöp Kutusu'ndan geri alır.
+func (h *CustomerHandler) RestoreActivity(c *gin.Context) {
 	orgID := c.GetInt64("org_id")
 	actID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -1530,10 +1610,12 @@ func (h *CustomerHandler) DeleteActivity(c *gin.Context) {
 	defer cancel()
 
 	res, err := h.db.Pool.Exec(ctx,
-		`DELETE FROM customer_activities WHERE id=$1 AND org_id=$2`,
+		`UPDATE customer_activities
+		 SET deleted_at = NULL, deleted_by = NULL
+		 WHERE id = $1 AND org_id = $2 AND deleted_at IS NOT NULL`,
 		actID, orgID)
 	if err != nil || res.RowsAffected() == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Activity not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Trashed activity not found"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -1547,23 +1629,23 @@ func (h *CustomerHandler) PendingActivityStats(c *gin.Context) {
 
 	var pendingCount, approvedWeek, rejectedWeek int
 	h.db.Pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM customer_activities WHERE org_id=$1 AND status='pending'`, orgID,
+		`SELECT COUNT(*) FROM customer_activities WHERE org_id=$1 AND status='pending' AND deleted_at IS NULL`, orgID,
 	).Scan(&pendingCount)
 	h.db.Pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM customer_activities
 		 WHERE org_id=$1 AND status='approved' AND detected_by IN ('rule','ai')
-		   AND reviewed_at > NOW() - INTERVAL '7 days'`, orgID,
+		   AND reviewed_at > NOW() - INTERVAL '7 days' AND deleted_at IS NULL`, orgID,
 	).Scan(&approvedWeek)
 	h.db.Pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM customer_activities
 		 WHERE org_id=$1 AND status='rejected'
-		   AND reviewed_at > NOW() - INTERVAL '7 days'`, orgID,
+		   AND reviewed_at > NOW() - INTERVAL '7 days' AND deleted_at IS NULL`, orgID,
 	).Scan(&rejectedWeek)
 
 	rows, _ := h.db.Pool.Query(ctx,
 		`SELECT activity_type, COUNT(*) FROM customer_activities
 		 WHERE org_id=$1 AND detected_by IN ('rule','ai')
-		   AND created_at > NOW() - INTERVAL '7 days'
+		   AND created_at > NOW() - INTERVAL '7 days' AND deleted_at IS NULL
 		 GROUP BY activity_type ORDER BY 2 DESC LIMIT 5`, orgID)
 	type topItem struct {
 		ActivityType string `json:"activity_type"`
@@ -1751,6 +1833,7 @@ func (h *CustomerHandler) PatronFeed(c *gin.Context) {
 		 JOIN customers c ON a.customer_id = c.id
 		 LEFT JOIN users u ON a.created_by = u.id
 		 WHERE a.org_id = $1 AND a.created_at >= NOW() - ($2 || ' days')::INTERVAL
+		   AND a.deleted_at IS NULL
 		 ORDER BY a.created_at DESC
 		 LIMIT 200`,
 		orgID, strconv.Itoa(days))
@@ -1832,6 +1915,7 @@ func (h *CustomerHandler) PatronFeed(c *gin.Context) {
 		 FROM customer_activities a
 		 LEFT JOIN users u ON a.created_by = u.id
 		 WHERE a.org_id = $1 AND a.created_at >= NOW() - ($2 || ' days')::INTERVAL
+		   AND a.deleted_at IS NULL
 		 GROUP BY u.full_name
 		 ORDER BY count DESC`,
 		orgID, strconv.Itoa(days))

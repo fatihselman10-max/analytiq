@@ -1547,6 +1547,45 @@ func (h *CustomerHandler) DeleteActivity(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// AppendNote — müşteri kartının notes alanına yeni bir satır ekler (race-safe).
+// Wizard form'larındaki "Not" alanı bu endpoint'i çağırır. Zaman damgası eklenir.
+func (h *CustomerHandler) AppendNote(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+	var req struct {
+		Note string `json:"note" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	note := strings.TrimSpace(req.Note)
+	if note == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Empty note"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	// Zaman damgalı satır: "[2026-05-18 14:32] not içeriği"
+	tsLine := fmt.Sprintf("[%s] %s", time.Now().Format("2006-01-02 15:04"), note)
+	res, err := h.db.Pool.Exec(ctx,
+		`UPDATE customers
+		 SET notes = CASE WHEN COALESCE(notes,'') = '' THEN $1 ELSE notes || E'\n' || $1 END,
+		     updated_at = NOW()
+		 WHERE id = $2 AND org_id = $3`,
+		tsLine, customerID, orgID)
+	if err != nil || res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // ListTrashedActivities — son 30 günde silinmiş aktiviteleri listeler ("Çöp Kutusu").
 // Müşteri adı, silen kullanıcı adı join'li döner ki frontend kolay göstersin.
 func (h *CustomerHandler) ListTrashedActivities(c *gin.Context) {

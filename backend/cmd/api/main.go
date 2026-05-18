@@ -25,6 +25,8 @@ import (
 	"github.com/repliq/backend/internal/services/journey"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/joho/godotenv"
 )
 
@@ -219,6 +221,25 @@ CREATE INDEX IF NOT EXISTS idx_fabric_images_fabric ON fabric_images(fabric_id, 
 
 func main() {
 	_ = godotenv.Load()
+
+	// Sentry: hata izleme (Katman 3). DSN yoksa devre dışı (lokal dev için sessizlik).
+	if dsn := os.Getenv("SENTRY_DSN"); dsn != "" {
+		env := os.Getenv("RAILWAY_ENVIRONMENT")
+		if env == "" {
+			env = "development"
+		}
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:              dsn,
+			Environment:      env,
+			TracesSampleRate: 0.1,
+			AttachStacktrace: true,
+		}); err != nil {
+			log.Printf("sentry.Init failed: %v", err)
+		} else {
+			log.Printf("sentry: initialized (env=%s)", env)
+			defer sentry.Flush(2 * time.Second)
+		}
+	}
 
 	cfg := config.Load()
 
@@ -485,6 +506,13 @@ func main() {
 	// the frontend keeps trying to upgrade (token expired path), generating ~10 noise lines/sec.
 	r := gin.New()
 	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/ws"}}))
+	// Sentry middleware: panic'i yakalar, Sentry'e gönderir, sonra repanic ile gin.Recovery'e devreder.
+	// Sıralama önemli: Recovery'den ÖNCE çağrılmalı.
+	r.Use(sentrygin.New(sentrygin.Options{
+		Repanic:         true,
+		WaitForDelivery: false,
+		Timeout:         3 * time.Second,
+	}))
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORSMiddleware())

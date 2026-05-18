@@ -3,8 +3,10 @@ package activity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -125,6 +127,18 @@ func (s *Service) markFailedOrRetry(ctx context.Context, queueID int64, attemptC
 			`UPDATE analysis_queue SET status='failed', last_error=$1 WHERE id=$2`,
 			errMsg, queueID,
 		)
+		// Sentry: terminal failed (geçici retry'ları gürültü yapmamak için
+		// sadece max-attempts dolduğunda gönderiyoruz).
+		sentry.WithScope(func(scope *sentry.Scope) {
+			scope.SetTag("subsystem", "ai-outbox")
+			scope.SetTag("queue_id", fmt.Sprintf("%d", queueID))
+			scope.SetLevel(sentry.LevelError)
+			scope.SetContext("outbox", sentry.Context{
+				"attempt_count": attemptCount,
+				"last_error":    errMsg,
+			})
+			sentry.CaptureMessage(fmt.Sprintf("analysis_queue failed: %s", errMsg))
+		})
 		return
 	}
 	// claim sırasında attempt_count zaten 1 artırıldı; backoffSchedule[attemptCount-1] uygula.

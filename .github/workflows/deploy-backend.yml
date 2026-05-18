@@ -1,0 +1,44 @@
+name: Deploy backend to Railway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'Dockerfile'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    name: railway up (messe-backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.com/install.sh | sh
+          echo "$HOME/.railway/bin" >> $GITHUB_PATH
+
+      - name: Verify Railway CLI
+        run: railway --version
+
+      - name: Deploy to messe-backend
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_TOKEN secret is not set. Add it under Settings → Secrets → Actions."
+            exit 1
+          fi
+          railway up --service thriving-forgiveness --detach
+
+      - name: Postdeploy smoke check
+        run: |
+          echo "Waiting 90s for new deploy to boot..."
+          sleep 90
+          STATUS=$(curl -fsS -m 10 https://thriving-forgiveness-production-f490.up.railway.app/api/v1/system/postdeploy-check | tee /dev/stderr)
+          echo "$STATUS" | grep -q '"status":"ok"' || (echo "::error::postdeploy status not ok" && exit 1)

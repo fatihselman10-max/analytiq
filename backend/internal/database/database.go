@@ -21,6 +21,9 @@ func New(databaseURL string) (*DB, error) {
 	config.MaxConns = 25
 	config.MinConns = 5
 
+	// Katman 5: slow query tracer — >1sn'lik query'leri log + Sentry warning olarak yakalar.
+	config.ConnConfig.Tracer = &SlowQueryTracer{}
+
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create connection pool: %w", err)

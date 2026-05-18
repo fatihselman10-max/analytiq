@@ -22,12 +22,21 @@ import (
 const (
 	workerPollInterval = 5 * time.Second
 	workerBatchSize    = 20
+	// Reaper: 5dk'dan uzun süredir 'processing'te kalan kayıtları pending'e geri al.
+	// Worker crash anında stuck olan job'ları kurtarır (Katman 5).
+	reaperInterval = 5 * time.Minute
+	reaperStuckAge = "5 minutes"
 )
 
 // StartQueueWorker, ctx iptal edilene kadar arka planda kuyruğu boşaltır.
 // Graceful shutdown: ctx kapanır → tick'i bitirmeyi bekler → return eder.
+// Paralel olarak reaper goroutine başlatır.
 func (s *Service) StartQueueWorker(ctx context.Context) {
 	log.Printf("[activity-worker] başlatıldı (poll=%v, batch=%d)", workerPollInterval, workerBatchSize)
+
+	// Reaper goroutine — stuck 'processing' kayıtları geri kazanır.
+	go s.runReaper(ctx)
+
 	t := time.NewTicker(workerPollInterval)
 	defer t.Stop()
 
@@ -42,6 +51,47 @@ func (s *Service) StartQueueWorker(ctx context.Context) {
 		case <-t.C:
 			s.drainOnce(ctx)
 		}
+	}
+}
+
+// runReaper, periyodik olarak 5dk'dan uzun süredir 'processing' kalan kayıtları
+// pending'e geri çevirir. Worker crash veya pod restart sonrası stuck job'ları
+// kurtarır (Cumartesi memory'de bahsedilen Katman 5 iyileştirmesi).
+func (s *Service) runReaper(ctx context.Context) {
+	log.Printf("[activity-reaper] başlatıldı (interval=%v, stuck_age=%s)", reaperInterval, reaperStuckAge)
+	t := time.NewTicker(reaperInterval)
+	defer t.Stop()
+
+	// Boot'ta hemen bir tur — restart sonrası bekleyenler hızla kurtarılsın
+	s.reapStuck(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			s.reapStuck(ctx)
+		}
+	}
+}
+
+// reapStuck, stuck 'processing' kayıtları pending'e geri alır.
+func (s *Service) reapStuck(ctx context.Context) {
+	tag, err := s.db.Pool.Exec(ctx,
+		`UPDATE analysis_queue
+		 SET status = 'pending', next_attempt_at = NOW()
+		 WHERE status = 'processing'
+		   AND last_attempt_at < NOW() - $1::interval`,
+		reaperStuckAge,
+	)
+	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			log.Printf("[activity-reaper] update error: %v", err)
+		}
+		return
+	}
+	if n := tag.RowsAffected(); n > 0 {
+		log.Printf("[activity-reaper] %d stuck kayıt pending'e geri çekildi", n)
 	}
 }
 

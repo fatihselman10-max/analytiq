@@ -23,6 +23,7 @@ import (
 	tgpkg "github.com/repliq/backend/internal/services/channel/telegram"
 	vkprovider "github.com/repliq/backend/internal/services/channel/vk"
 	"github.com/repliq/backend/internal/services/journey"
+	syspkg "github.com/repliq/backend/internal/services/system"
 	"github.com/repliq/backend/internal/ws"
 	"github.com/gin-gonic/gin"
 	"github.com/getsentry/sentry-go"
@@ -209,13 +210,23 @@ CREATE INDEX IF NOT EXISTS idx_fabric_images_fabric ON fabric_images(fabric_id, 
 `},
 	}
 
+	// _migrations tracking tablosunu boot'ta ilk iş olarak yarat (idempotent).
+	if err := db.EnsureMigrationsTable(ctx); err != nil {
+		log.Printf("EnsureMigrationsTable failed: %v", err)
+	}
+
+	// Inline migration'lar (legacy — kademeli olarak migrations/*.up.sql'e taşınacak).
+	// Tracking sayesinde her boot'ta tekrar exec edilmez.
 	for _, m := range migrations {
-		_, err := db.Pool.Exec(ctx, m.sql)
-		if err != nil {
-			log.Printf("Migration %s warning: %v", m.name, err)
-		} else {
-			log.Printf("Migration %s applied successfully", m.name)
-		}
+		db.ApplyMigration(ctx, m.name, "inline", m.sql)
+	}
+
+	// Filesystem migration'ları. Cumartesi'nin "untracked dosyalar deploy
+	// edilmemiş" sorununu kalıcı olarak çözer — yeni .up.sql dosyaları
+	// boot'ta otomatik uygulanır.
+	// Container'da working dir /app, dev'de backend/. Her ikisinde de "migrations" göreceli.
+	if err := db.ApplyFileMigrations(ctx, "migrations"); err != nil {
+		log.Printf("ApplyFileMigrations failed: %v", err)
 	}
 }
 
@@ -365,6 +376,13 @@ func main() {
 	activityService := activity.NewService(db, cfg.AnthropicAPIKey)
 	channelService.IncomingHook = activityService.AnalyzeIncoming
 	go activityService.StartQueueWorker(context.Background())
+
+	// Katman 5: günlük IG token sağlık kontrolü (TR 09:00 / UTC 06:00).
+	// 60g'lik IGAA token süre dolmadan önce Sentry warning verir.
+	go syspkg.StartIGTokenHealthCheck(context.Background(), db)
+
+	// Katman 5: haftalık DB maintenance (Pazar 04:00 UTC).
+	go syspkg.StartWeeklyMaintenance(context.Background(), db)
 
 	// Start IMAP poller for email channels
 	func() {
@@ -521,6 +539,60 @@ func main() {
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	// Postdeploy smoke check (Katman 4). Public — CI/CD veya operatör pinglesin.
+	// Aşağıdakileri kontrol eder: DB, worker heartbeat, son webhook, kanal sağlığı, migration versiyonu.
+	r.GET("/api/v1/system/postdeploy-check", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+		defer cancel()
+
+		result := gin.H{}
+		overallOK := true
+
+		// 1) DB ping
+		dbOK := db.Pool.Ping(ctx) == nil
+		result["db"] = dbOK
+		if !dbOK {
+			overallOK = false
+		}
+
+		// 2) Migration versiyonu (en son uygulanmış)
+		if v, err := db.MigrationVersion(ctx); err == nil {
+			result["migration_version"] = v
+		}
+
+		// 3) Worker heartbeat — analysis_attempts'taki son denemeden bu yana geçen saniye
+		var workerAgo int64 = -1
+		_ = db.Pool.QueryRow(ctx,
+			`SELECT COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(attempted_at)))::bigint, -1) FROM analysis_attempts`,
+		).Scan(&workerAgo)
+		result["worker_last_attempt_seconds_ago"] = workerAgo
+
+		// 4) Son webhook/mesaj — messages tablosu
+		var msgAgo int64 = -1
+		_ = db.Pool.QueryRow(ctx,
+			`SELECT COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(created_at)))::bigint, -1) FROM messages`,
+		).Scan(&msgAgo)
+		result["last_message_seconds_ago"] = msgAgo
+
+		// 5) Aktif kanal sayısı (kanal-bazlı detay /reports/channel-health'te)
+		var activeChannels int
+		_ = db.Pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM channels WHERE is_active = true`,
+		).Scan(&activeChannels)
+		result["active_channels"] = activeChannels
+
+		// 6) Sentry bağlı mı (env varsa true)
+		result["sentry_enabled"] = os.Getenv("SENTRY_DSN") != ""
+
+		if overallOK {
+			result["status"] = "ok"
+		} else {
+			result["status"] = "degraded"
+		}
+		result["checked_at"] = time.Now().UTC().Format(time.RFC3339)
+		c.JSON(200, result)
 	})
 
 	// Auth routes (public)

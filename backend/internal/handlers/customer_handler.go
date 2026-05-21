@@ -1067,9 +1067,10 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 	}
 
 	var req struct {
-		Title          string `json:"title"`
-		Description    string `json:"description"`
-		CreateCustomer *struct {
+		Title             string `json:"title"`
+		Description       string `json:"description"`
+		LinkToCustomerID  *int64 `json:"link_to_customer_id"`
+		CreateCustomer    *struct {
 			Name    string `json:"name"`
 			Company string `json:"company"`
 			Country string `json:"country"`
@@ -1095,11 +1096,77 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 		return
 	}
 
-	// Orphan path: müşteri kartı yoksa, body'deki create_customer ile yarat.
+	// Orphan path: müşteri kartı yoksa, ya mevcut müşteriye bağla (link_to_customer_id) ya da yeni yarat (create_customer).
+	// Patron Teyzem + Meryem 2026-05-20: "Murmur sistemde var ama bulamıyor, eşleştir butonu olsun" geri bildirimi.
+	if customerID == nil && req.LinkToCustomerID != nil && *req.LinkToCustomerID > 0 {
+		// Link to existing customer path
+		var existing int64
+		if err := h.db.Pool.QueryRow(ctx,
+			`SELECT id FROM customers WHERE id=$1 AND org_id=$2`,
+			*req.LinkToCustomerID, orgID).Scan(&existing); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Eşleştirilecek müşteri bulunamadı"})
+			return
+		}
+
+		// Activity'yi bu müşteriye bağla
+		h.db.Pool.Exec(ctx,
+			`UPDATE customer_activities SET customer_id=$1 WHERE id=$2 AND org_id=$3`,
+			existing, actID, orgID)
+
+		// Aynı contact'ın diğer orphan kayıtlarını da bağla
+		if contactID != nil {
+			h.db.Pool.Exec(ctx,
+				`UPDATE customer_activities SET customer_id=$1
+				 WHERE org_id=$2 AND contact_id=$3 AND customer_id IS NULL`,
+				existing, orgID, *contactID)
+
+			// Contact kanal bilgisini müşteri kartına yansıt — sonraki match-candidates bulabilsin
+			var cch, cExt, cPhone string
+			h.db.Pool.QueryRow(ctx,
+				`SELECT COALESCE(channel_type,''), COALESCE(external_id,''), COALESCE(phone,'')
+				 FROM contacts WHERE id=$1 AND org_id=$2`, *contactID, orgID,
+			).Scan(&cch, &cExt, &cPhone)
+			switch cch {
+			case "telegram":
+				if cExt != "" {
+					h.db.Pool.Exec(ctx,
+						`UPDATE customers SET telegram=COALESCE(NULLIF(telegram,''), $1) WHERE id=$2 AND org_id=$3`,
+						"t.me/"+cExt, existing, orgID)
+				}
+			case "instagram":
+				if cExt != "" {
+					h.db.Pool.Exec(ctx,
+						`UPDATE customers SET instagram=COALESCE(NULLIF(instagram,''), $1) WHERE id=$2 AND org_id=$3`,
+						cExt, existing, orgID)
+				}
+			case "email":
+				if cExt != "" {
+					h.db.Pool.Exec(ctx,
+						`UPDATE customers SET email=COALESCE(NULLIF(email,''), $1) WHERE id=$2 AND org_id=$3`,
+						cExt, existing, orgID)
+				}
+			}
+			if cPhone != "" {
+				h.db.Pool.Exec(ctx,
+					`UPDATE customers SET phone=COALESCE(NULLIF(phone,''), $1) WHERE id=$2 AND org_id=$3`,
+					cPhone, existing, orgID)
+			}
+		}
+
+		// Conversation'ı da bu müşteriye bağla
+		if conversationID != nil {
+			h.db.Pool.Exec(ctx,
+				`UPDATE conversations SET customer_id=$1 WHERE id=$2 AND org_id=$3 AND customer_id IS NULL`,
+				existing, *conversationID, orgID)
+		}
+
+		customerID = &existing
+	}
+
 	if customerID == nil {
 		if req.CreateCustomer == nil || strings.TrimSpace(req.CreateCustomer.Name) == "" {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error":      "Bu önerinin müşteri kartı yok. Onaylamak için müşteri bilgisi gönder.",
+				"error":      "Bu önerinin müşteri kartı yok. Onaylamak için müşteri bilgisi gönder veya mevcut müşteriyle eşleştir.",
 				"orphan":     true,
 				"contact_id": contactID,
 			})
@@ -2053,4 +2120,272 @@ func (h *CustomerHandler) PatronFeed(c *gin.Context) {
 		"pipeline_stats":   pipeStats,
 		"recent_messages":  recentMessages,
 	})
+}
+
+// MatchCandidatesForPending — orphan pending activity için olası müşteri eşleşme adaylarını döndürür.
+// Patron Teyzem + Meryem 2026-05-20: "Murmur sistemde var ama onay'da bulamıyor" geri bildirimi.
+// Skor: phone=100, channel_external=85, name_exact=70, company_exact=70, name_token=40, company_token=30.
+// Max 10 aday, skor>=20 olanlar.
+func (h *CustomerHandler) MatchCandidatesForPending(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	actID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Second)
+	defer cancel()
+
+	// Pending activity'nin contact'ını çek
+	var contactID *int64
+	var customerID *int64
+	if err := h.db.Pool.QueryRow(ctx,
+		`SELECT customer_id, contact_id FROM customer_activities
+		 WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+		actID, orgID).Scan(&customerID, &contactID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pending activity not found"})
+		return
+	}
+	if customerID != nil {
+		c.JSON(http.StatusOK, gin.H{"candidates": []any{}, "linked": true, "customer_id": *customerID})
+		return
+	}
+	if contactID == nil {
+		c.JSON(http.StatusOK, gin.H{"candidates": []any{}, "linked": false})
+		return
+	}
+
+	// Contact bilgisi
+	var contactName, contactChannel, contactExternal, contactPhone string
+	if err := h.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(name,''), COALESCE(channel_type,''), COALESCE(external_id,''), COALESCE(phone,'')
+		 FROM contacts WHERE id=$1 AND org_id=$2`,
+		*contactID, orgID).Scan(&contactName, &contactChannel, &contactExternal, &contactPhone); err != nil {
+		c.JSON(http.StatusOK, gin.H{"candidates": []any{}, "linked": false})
+		return
+	}
+
+	normalizedName := normalizeForMatch(contactName)
+	nameTokens := tokenizeName(normalizedName)
+
+	// Tüm müşterileri çek (org'da bir kaç bin tane var, in-memory skor)
+	rows, err := h.db.Pool.Query(ctx,
+		`SELECT id, COALESCE(name,''), COALESCE(company,''), COALESCE(phone,''),
+		        COALESCE(telegram,''), COALESCE(instagram,''), COALESCE(email,''), COALESCE(website,''),
+		        COALESCE(country,''), COALESCE(segment,4), COALESCE(pipeline_stage,'new_contact')
+		 FROM customers WHERE org_id=$1 ORDER BY updated_at DESC NULLS LAST LIMIT 5000`, orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch customers"})
+		return
+	}
+	defer rows.Close()
+
+	type candidate struct {
+		ID            int64    `json:"id"`
+		Name          string   `json:"name"`
+		Company       string   `json:"company"`
+		Country       string   `json:"country"`
+		Segment       int      `json:"segment"`
+		PipelineStage string   `json:"pipeline_stage"`
+		Score         int      `json:"score"`
+		Reasons       []string `json:"reasons"`
+	}
+	out := []candidate{}
+
+	for rows.Next() {
+		var (
+			cid                                                      int64
+			cName, cCompany, cPhone, cTelegram, cInstagram, cEmail   string
+			cWebsite, cCountry, cStage                               string
+			cSegment                                                 int
+		)
+		if err := rows.Scan(&cid, &cName, &cCompany, &cPhone, &cTelegram, &cInstagram, &cEmail, &cWebsite, &cCountry, &cSegment, &cStage); err != nil {
+			continue
+		}
+
+		score := 0
+		reasons := []string{}
+
+		// 1. Phone match (sayıları normalize et)
+		if contactPhone != "" && cPhone != "" && phoneDigitsEqual(contactPhone, cPhone) {
+			score += 100
+			reasons = append(reasons, "telefon eşleşti")
+		}
+
+		// 2. Channel external match
+		if contactExternal != "" {
+			switch contactChannel {
+			case "telegram":
+				if cTelegram != "" && strings.Contains(strings.ToLower(cTelegram), strings.ToLower(contactExternal)) {
+					score += 85
+					reasons = append(reasons, "telegram eşleşti")
+				}
+			case "instagram":
+				if cInstagram != "" && strings.EqualFold(strings.TrimPrefix(cInstagram, "@"), strings.TrimPrefix(contactExternal, "@")) {
+					score += 85
+					reasons = append(reasons, "instagram eşleşti")
+				}
+			case "email":
+				if cEmail != "" && strings.EqualFold(cEmail, contactExternal) {
+					score += 85
+					reasons = append(reasons, "email eşleşti")
+				}
+			case "vk":
+				if cWebsite != "" && strings.Contains(strings.ToLower(cWebsite), strings.ToLower(contactExternal)) {
+					score += 85
+					reasons = append(reasons, "VK eşleşti")
+				}
+			}
+		}
+
+		// 3. Name / Company normalized exact + token match
+		nCName := normalizeForMatch(cName)
+		nCCompany := normalizeForMatch(cCompany)
+
+		if normalizedName != "" {
+			if nCName == normalizedName || nCCompany == normalizedName {
+				score += 70
+				reasons = append(reasons, "isim tam eşleşti")
+			} else {
+				tokenScore := tokenOverlapScore(nameTokens, tokenizeName(nCName))
+				if tokenScore == 0 {
+					tokenScore = tokenOverlapScore(nameTokens, tokenizeName(nCCompany))
+				}
+				if tokenScore >= 40 {
+					score += tokenScore
+					reasons = append(reasons, "isim kısmi eşleşti")
+				}
+			}
+		}
+
+		if score >= 20 {
+			out = append(out, candidate{
+				ID: cid, Name: cName, Company: cCompany, Country: cCountry,
+				Segment: cSegment, PipelineStage: cStage,
+				Score: score, Reasons: reasons,
+			})
+		}
+	}
+
+	// Skora göre azalan sırala (basit bubble — max 5000 girdi, max 10 aday)
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			if out[j].Score > out[i].Score {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	if len(out) > 10 {
+		out = out[:10]
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"candidates":       out,
+		"linked":           false,
+		"contact_name":     contactName,
+		"contact_channel":  contactChannel,
+		"contact_external": contactExternal,
+		"contact_phone":    contactPhone,
+	})
+}
+
+// normalizeForMatch — lowercase + boşluk/noktalama temizleme + TR aksan ve Cyrillic transliterasyon basitleştirme
+func normalizeForMatch(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return ""
+	}
+	repl := strings.NewReplacer(
+		"ı", "i", "İ", "i", "ş", "s", "ş", "s", "ğ", "g", "Ğ", "g",
+		"ç", "c", "Ç", "c", "ö", "o", "Ö", "o", "ü", "u", "Ü", "u",
+		"é", "e", "è", "e", "ê", "e",
+	)
+	s = repl.Replace(s)
+	// Punctuation + extra whitespace
+	cleaner := strings.NewReplacer(
+		".", " ", ",", " ", "-", " ", "_", " ", "/", " ", "\\", " ",
+		"(", " ", ")", " ", "[", " ", "]", " ", "\"", " ", "'", " ",
+		"!", " ", "?", " ", "&", " ", "+", " ", "*", " ",
+	)
+	s = cleaner.Replace(s)
+	// Collapse whitespace
+	fields := strings.Fields(s)
+	return strings.Join(fields, " ")
+}
+
+// tokenizeName — normalize edilmiş ismi kelimelere ayır, 2 karakterden kısa olanları (and, of, &, vb) at
+func tokenizeName(s string) []string {
+	if s == "" {
+		return nil
+	}
+	stop := map[string]bool{
+		"ve": true, "and": true, "of": true, "the": true, "ltd": true, "limited": true,
+		"san": true, "tic": true, "tekstil": true, "textile": true, "as": true, "a.s": true,
+	}
+	out := []string{}
+	for _, t := range strings.Fields(s) {
+		if len(t) < 2 || stop[t] {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// tokenOverlapScore — iki token listesi arasında ortak token sayısına göre skor (0..70)
+func tokenOverlapScore(a, b []string) int {
+	if len(a) == 0 || len(b) == 0 {
+		return 0
+	}
+	set := make(map[string]bool, len(b))
+	for _, t := range b {
+		set[t] = true
+	}
+	common := 0
+	for _, t := range a {
+		if set[t] {
+			common++
+		}
+	}
+	if common == 0 {
+		return 0
+	}
+	// Tüm tokenlar eşleşirse 70, kısmi ise oransal
+	minLen := len(a)
+	if len(b) < minLen {
+		minLen = len(b)
+	}
+	score := 70 * common / minLen
+	if score < 30 {
+		score = 0 // Çok zayıf eşleşme, gürültü
+	}
+	return score
+}
+
+// phoneDigitsEqual — telefonlardaki sadece rakamları kıyaslar, son 10 hane (varsa)
+func phoneDigitsEqual(a, b string) bool {
+	da := digitsOnly(a)
+	db := digitsOnly(b)
+	if len(da) == 0 || len(db) == 0 {
+		return false
+	}
+	// Son 10 haneyi karşılaştır (ülke kodu farkını yutar)
+	if len(da) > 10 {
+		da = da[len(da)-10:]
+	}
+	if len(db) > 10 {
+		db = db[len(db)-10:]
+	}
+	return da == db
+}
+
+func digitsOnly(s string) string {
+	b := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			b = append(b, s[i])
+		}
+	}
+	return string(b)
 }

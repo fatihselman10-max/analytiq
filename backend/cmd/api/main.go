@@ -757,6 +757,7 @@ func main() {
 		api.POST("/customers/:id/activities", customerHandler.CreateActivity)
 		api.POST("/customers/:id/notes-append", customerHandler.AppendNote)
 		api.GET("/activities/pending", customerHandler.ListPendingActivities)
+		api.GET("/activities/:id/match-candidates", customerHandler.MatchCandidatesForPending)
 		api.POST("/activities/:id/approve", customerHandler.ApprovePendingActivity)
 		api.POST("/activities/:id/reject", customerHandler.RejectPendingActivity)
 		api.DELETE("/activities/:id", customerHandler.DeleteActivity)

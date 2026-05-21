@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/repliq/backend/internal/database"
@@ -101,16 +102,17 @@ func (h *TaskHandler) List(c *gin.Context) {
 func (h *TaskHandler) Create(c *gin.Context) {
 	orgID := c.GetInt64("org_id")
 	var req struct {
-		Title      string   `json:"title" binding:"required"`
-		Assignee   string   `json:"assignee"`
-		Department string   `json:"department"`
-		Priority   string   `json:"priority"`
-		DueDate    string   `json:"due_date"`
-		Tags       []string `json:"tags"`
-		KpiWeight  int      `json:"kpi_weight"`
-		Category   string   `json:"category"`
-		CustomerID *int64   `json:"customer_id"`
-		SourceType string   `json:"source_type"`
+		Title       string   `json:"title" binding:"required"`
+		Description string   `json:"description"`
+		Assignee    string   `json:"assignee"`
+		Department  string   `json:"department"`
+		Priority    string   `json:"priority"`
+		DueDate     string   `json:"due_date"`
+		Tags        []string `json:"tags"`
+		KpiWeight   int      `json:"kpi_weight"`
+		Category    string   `json:"category"`
+		CustomerID  *int64   `json:"customer_id"`
+		SourceType  string   `json:"source_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -156,6 +158,13 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create"})
 		return
+	}
+
+	// Description varsa ilk note olarak yaz (Video 5 — onay sonrası inline görev formundaki açıklama)
+	if desc := strings.TrimSpace(req.Description); desc != "" {
+		h.db.Pool.Exec(ctx,
+			`UPDATE tasks SET notes = array_append(notes, $1), updated_at=NOW() WHERE id=$2 AND org_id=$3`,
+			desc, id, orgID)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"id": id})

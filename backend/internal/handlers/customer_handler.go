@@ -1588,6 +1588,258 @@ func (h *CustomerHandler) LinkConversationToCustomer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true, "customer_id": customerID})
 }
 
+// QueuePendingActivity — Video 1 (Meryem 2026-05-20): "Numune gönderildi direkt aktiviteye düşmesin,
+// önce Yapılacaklar'a gitsin, biz tamamlayınca timeline'a yazılsın."
+// Bu yol: status='queued' (timeline'da görünmez) + tasks.source_type='ai_queued' + activity.source_task_id bağı.
+// Task tamamlanınca taskHandler.MoveStatus → customer_activities güncellenmesi gerçekleşir.
+func (h *CustomerHandler) QueuePendingActivity(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	userID := c.GetInt64("user_id")
+	actID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	var req struct {
+		Title             string `json:"title"`
+		Description       string `json:"description"`
+		LinkToCustomerID  *int64 `json:"link_to_customer_id"`
+		CreateCustomer    *struct {
+			Name    string `json:"name"`
+			Company string `json:"company"`
+			Country string `json:"country"`
+		} `json:"create_customer"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Second)
+	defer cancel()
+
+	var customerID *int64
+	var contactID *int64
+	var conversationID *int64
+	var activityType, activityChannel string
+	err = h.db.Pool.QueryRow(ctx,
+		`SELECT customer_id, contact_id, conversation_id, activity_type, COALESCE(channel,'')
+		 FROM customer_activities
+		 WHERE id=$1 AND org_id=$2 AND COALESCE(status,'approved')='pending'
+		   AND deleted_at IS NULL`,
+		actID, orgID).Scan(&customerID, &contactID, &conversationID, &activityType, &activityChannel)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pending activity not found"})
+		return
+	}
+
+	// Orphan path — yeni veya mevcut müşteriye bağla (Approve ile aynı mantık)
+	if customerID == nil && req.LinkToCustomerID != nil && *req.LinkToCustomerID > 0 {
+		var existing int64
+		if err := h.db.Pool.QueryRow(ctx,
+			`SELECT id FROM customers WHERE id=$1 AND org_id=$2`,
+			*req.LinkToCustomerID, orgID).Scan(&existing); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Eşleştirilecek müşteri bulunamadı"})
+			return
+		}
+		h.db.Pool.Exec(ctx,
+			`UPDATE customer_activities SET customer_id=$1 WHERE id=$2 AND org_id=$3`,
+			existing, actID, orgID)
+		if contactID != nil {
+			h.db.Pool.Exec(ctx,
+				`UPDATE customer_activities SET customer_id=$1 WHERE org_id=$2 AND contact_id=$3 AND customer_id IS NULL`,
+				existing, orgID, *contactID)
+		}
+		if conversationID != nil {
+			h.db.Pool.Exec(ctx,
+				`UPDATE conversations SET customer_id=$1 WHERE id=$2 AND org_id=$3 AND customer_id IS NULL`,
+				existing, *conversationID, orgID)
+		}
+		customerID = &existing
+	}
+
+	if customerID == nil {
+		if req.CreateCustomer == nil || strings.TrimSpace(req.CreateCustomer.Name) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":      "Bu önerinin müşteri kartı yok. Müşteri bilgisi gönder veya mevcut müşteriyle eşleştir.",
+				"orphan":     true,
+				"contact_id": contactID,
+			})
+			return
+		}
+		// Yeni müşteri yarat (ApprovePendingActivity ile aynı blok)
+		var contactChannel, contactExternal, contactPhone string
+		if contactID != nil {
+			h.db.Pool.QueryRow(ctx,
+				`SELECT COALESCE(channel_type,''), COALESCE(external_id,''), COALESCE(phone,'')
+				 FROM contacts WHERE id=$1 AND org_id=$2`, *contactID, orgID,
+			).Scan(&contactChannel, &contactExternal, &contactPhone)
+		}
+		var tgVal, igVal, emailVal, phoneVal, websiteVal string
+		switch contactChannel {
+		case "telegram":
+			tgVal = "t.me/" + contactExternal
+		case "instagram":
+			igVal = contactExternal
+		case "email":
+			emailVal = contactExternal
+		case "vk":
+			websiteVal = "https://vk.com/id" + contactExternal
+		}
+		if contactPhone != "" {
+			phoneVal = contactPhone
+		}
+		var newCustomerID int64
+		err = h.db.Pool.QueryRow(ctx,
+			`INSERT INTO customers
+			   (org_id, name, company, country, phone, telegram, instagram, email, website,
+			    source, source_detail, segment, pipeline_stage, created_at, updated_at)
+			 VALUES ($1,$2,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),NULLIF($9,''),
+			         'inbound','AI onayından oluşturuldu',4,'new_contact',NOW(),NOW())
+			 RETURNING id`,
+			orgID, strings.TrimSpace(req.CreateCustomer.Name),
+			strings.TrimSpace(req.CreateCustomer.Company),
+			strings.TrimSpace(req.CreateCustomer.Country),
+			phoneVal, tgVal, igVal, emailVal, websiteVal,
+		).Scan(&newCustomerID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Müşteri kartı oluşturulamadı"})
+			return
+		}
+		h.db.Pool.Exec(ctx,
+			`UPDATE customer_activities SET customer_id=$1 WHERE id=$2 AND org_id=$3`,
+			newCustomerID, actID, orgID)
+		if contactID != nil {
+			h.db.Pool.Exec(ctx,
+				`UPDATE customer_activities SET customer_id=$1 WHERE org_id=$2 AND contact_id=$3 AND customer_id IS NULL`,
+				newCustomerID, orgID, *contactID)
+		}
+		if conversationID != nil {
+			h.db.Pool.Exec(ctx,
+				`UPDATE conversations SET customer_id=$1 WHERE id=$2 AND org_id=$3 AND customer_id IS NULL`,
+				newCustomerID, *conversationID, orgID)
+		}
+		customerID = &newCustomerID
+	}
+
+	cid := *customerID
+
+	// title/description opsiyonel güncelleme + status='queued'
+	updateFields := `status='queued', reviewed_by=$1, reviewed_at=NOW()`
+	args := []interface{}{userID}
+	idx := 2
+	if req.Title != "" {
+		updateFields += fmt.Sprintf(", title=$%d", idx)
+		args = append(args, req.Title)
+		idx++
+	}
+	if req.Description != "" {
+		updateFields += fmt.Sprintf(", description=$%d", idx)
+		args = append(args, req.Description)
+		idx++
+	}
+	args = append(args, actID, orgID)
+	_, err = h.db.Pool.Exec(ctx,
+		fmt.Sprintf(`UPDATE customer_activities SET %s WHERE id=$%d AND org_id=$%d`, updateFields, idx, idx+1),
+		args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to queue"})
+		return
+	}
+
+	// Task oluştur — taskTitleMap (Approve ile aynı)
+	taskTitleMap := map[string]struct{ title, department string }{
+		"order_intent":        {"Sipariş işle", "operations"},
+		"sample_request":      {"Numune gönder", "operations"},
+		"kartela_request":     {"Kartela gönder", "operations"},
+		"catalog_request":     {"Katalog gönder", "operations"},
+		"shipping_info":       {"Kargo bilgisi paylaş", "operations"},
+		"meeting_request":     {"Görüşme planla", "sales"},
+		"factory_visit":       {"Fabrika ziyareti planla", "sales"},
+		"price_inquiry":       {"Fiyat bilgisi gönder", "sales"},
+		"price_clarification": {"Fiyat detayı netleştir", "sales"},
+	}
+	action, ok := taskTitleMap[activityType]
+	if !ok {
+		action = struct{ title, department string }{"Takip et", "sales"}
+	}
+	var customerName string
+	_ = h.db.Pool.QueryRow(ctx, `SELECT COALESCE(NULLIF(name,''), '') FROM customers WHERE id=$1`, cid).Scan(&customerName)
+	taskTitle := action.title
+	if customerName != "" {
+		taskTitle = action.title + " — " + customerName
+	}
+
+	var newTaskID int64
+	err = h.db.Pool.QueryRow(ctx,
+		`INSERT INTO tasks (org_id, customer_id, title, department, category, source_type, pipeline_action, priority, status)
+		 VALUES ($1,$2,$3,$4,$5,'ai_queued',$6,'normal','todo')
+		 RETURNING id`,
+		orgID, cid, taskTitle, action.department, "Yapılacak", activityType,
+	).Scan(&newTaskID)
+	if err == nil {
+		// Activity ↔ task bağı: task tamamlanınca activity 'approved' yapılacak
+		h.db.Pool.Exec(ctx,
+			`UPDATE customer_activities SET source_task_id=$1 WHERE id=$2 AND org_id=$3`,
+			newTaskID, actID, orgID)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "customer_id": cid, "task_id": newTaskID, "queued": true})
+}
+
+// UpdateActivity — onaylanmış aktivitenin title/description'ını düzenle.
+// Video 3 (Meryem 2026-05-20): "Numune kodu yanlış yazıldı, düzeltme olabilir mi?"
+// edited_at + edited_by audit alanları doldurulur. Silinmemiş ve onaylanmış aktiviteler güncellenir.
+func (h *CustomerHandler) UpdateActivity(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	userID := c.GetInt64("user_id")
+	actID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+	var req struct {
+		Title       *string `json:"title"`
+		Description *string `json:"description"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Title == nil && req.Description == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title veya description gönderilmeli"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	setParts := []string{"edited_at = NOW()", "edited_by = $1"}
+	args := []interface{}{userID}
+	idx := 2
+	if req.Title != nil {
+		setParts = append(setParts, fmt.Sprintf("title = $%d", idx))
+		args = append(args, strings.TrimSpace(*req.Title))
+		idx++
+	}
+	if req.Description != nil {
+		setParts = append(setParts, fmt.Sprintf("description = $%d", idx))
+		args = append(args, strings.TrimSpace(*req.Description))
+		idx++
+	}
+	args = append(args, actID, orgID)
+
+	q := fmt.Sprintf(
+		`UPDATE customer_activities SET %s
+		 WHERE id = $%d AND org_id = $%d AND deleted_at IS NULL`,
+		strings.Join(setParts, ", "), idx, idx+1)
+
+	res, err := h.db.Pool.Exec(ctx, q, args...)
+	if err != nil || res.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Activity not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // DeleteActivity — soft-delete an activity (Çöp Kutusu pattern).
 // deleted_at = NOW(), deleted_by = current user. 30 gün sonra weekly cron tarafından gerçek silinir.
 // Personel "Ayarlar → Silinenler" sayfasından Geri Al ile kurtarabilir.

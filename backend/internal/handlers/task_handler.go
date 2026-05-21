@@ -355,6 +355,20 @@ func (h *TaskHandler) MoveStatus(c *gin.Context) {
 		return
 	}
 
+	// Video 1 (Meryem 2026-05-20) — "Yapılacaklar"a düşmüş queued aktivite, task tamamlanınca timeline'a yazılır.
+	// Eski state'e geri dönülürse (done → todo) activity tekrar queued olur.
+	if req.Status == "done" {
+		h.db.Pool.Exec(ctx,
+			`UPDATE customer_activities SET status='approved', reviewed_at=NOW()
+			 WHERE org_id=$1 AND source_task_id=$2 AND status='queued' AND deleted_at IS NULL`,
+			orgID, id)
+	} else {
+		h.db.Pool.Exec(ctx,
+			`UPDATE customer_activities SET status='queued'
+			 WHERE org_id=$1 AND source_task_id=$2 AND status='approved' AND deleted_at IS NULL`,
+			orgID, id)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Status updated"})
 }
 

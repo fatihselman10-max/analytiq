@@ -755,6 +755,7 @@ func main() {
 		api.PATCH("/customers/:id/pipeline", customerHandler.UpdatePipelineStage)
 		api.GET("/customers/:id/activities", customerHandler.ListActivities)
 		api.POST("/customers/:id/activities", customerHandler.CreateActivity)
+		api.POST("/customers/:id/activities/queued", customerHandler.CreateQueuedActivity)
 		api.POST("/customers/:id/notes-append", customerHandler.AppendNote)
 		api.GET("/activities/pending", customerHandler.ListPendingActivities)
 		api.GET("/activities/:id/match-candidates", customerHandler.MatchCandidatesForPending)

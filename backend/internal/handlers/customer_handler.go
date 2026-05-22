@@ -2135,6 +2135,117 @@ func (h *CustomerHandler) CreateActivity(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
+// CreateQueuedActivity — manuel "Yeni Görev" wizard'ı için one-shot endpoint.
+// Aktiviteyi status='queued' insert eder (timeline'da görünmez), eşzamanlı bir task açar
+// ve source_task_id ile ikisini bağlar. Task done olunca task_handler.MoveStatus
+// activity'i 'approved' yapar → timeline'a düşer.
+//
+// Meryem 2026-05-22 feedback: manuel oluşturulan görev "Yapılacaklar"a düşmüyor,
+// direkt müşteri kartına gidiyordu — CreateActivity yerine bu endpoint kullanılmalı.
+func (h *CustomerHandler) CreateQueuedActivity(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	userID := c.GetInt64("user_id")
+	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	var req struct {
+		ActivityType string `json:"activity_type" binding:"required"`
+		Title        string `json:"title" binding:"required"`
+		Description  string `json:"description"`
+		Channel      string `json:"channel"`
+		Metadata     string `json:"metadata"`
+		Assignee     string `json:"assignee"`
+		Priority     string `json:"priority"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Metadata == "" {
+		req.Metadata = "{}"
+	}
+	if req.Priority == "" {
+		req.Priority = "normal"
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Second)
+	defer cancel()
+
+	// Verify customer belongs to org + adı al (task title için)
+	var customerName string
+	err = h.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(NULLIF(name,''),'') FROM customers WHERE id=$1 AND org_id=$2`,
+		customerID, orgID).Scan(&customerName)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
+		return
+	}
+
+	// 1) Activity insert (status='queued', detected_by='manual')
+	var activityID int64
+	err = h.db.Pool.QueryRow(ctx,
+		`INSERT INTO customer_activities
+		   (org_id, customer_id, activity_type, title, description, channel, metadata,
+		    created_by, status, detected_by)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'queued','manual')
+		 RETURNING id`,
+		orgID, customerID, req.ActivityType, req.Title, req.Description,
+		req.Channel, req.Metadata, userID,
+	).Scan(&activityID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create activity"})
+		return
+	}
+
+	// 2) Task insert — department activity_type'tan derive
+	// Operasyon eylemleri: numune/kartela/katalog/sevkiyat/medya
+	// Satış: fiyat/fuar/ziyaret/görüşme/takip
+	department := "operations"
+	switch req.ActivityType {
+	case "price_quoted", "price_inquiry", "fair_invitation", "visit_invitation",
+		"meeting_request", "factory_visit":
+		department = "sales"
+	}
+
+	taskTitle := req.Title
+	if customerName != "" {
+		taskTitle = req.Title + " — " + customerName
+	}
+
+	var taskID int64
+	err = h.db.Pool.QueryRow(ctx,
+		`INSERT INTO tasks (org_id, customer_id, title, department, category,
+		                    source_type, pipeline_action, priority, status)
+		 VALUES ($1,$2,$3,$4,'Yapılacak','manual_queued',$5,$6,'todo')
+		 RETURNING id`,
+		orgID, customerID, taskTitle, department, req.ActivityType, req.Priority,
+	).Scan(&taskID)
+	if err != nil {
+		// Activity oluştu, task açılamadı — temizle
+		h.db.Pool.Exec(ctx, `DELETE FROM customer_activities WHERE id=$1`, activityID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
+		return
+	}
+
+	// 3) Activity ↔ task bağı
+	h.db.Pool.Exec(ctx,
+		`UPDATE customer_activities SET source_task_id=$1 WHERE id=$2 AND org_id=$3`,
+		taskID, activityID, orgID)
+
+	// Müşterinin son_temas_at güncelle (task açıldı, etkileşim var)
+	h.db.Pool.Exec(ctx, `UPDATE customers SET updated_at=NOW() WHERE id=$1`, customerID)
+
+	c.JSON(http.StatusCreated, gin.H{
+		"activity_id": activityID,
+		"task_id":     taskID,
+		"queued":      true,
+	})
+}
+
 // Pipeline: Overview (counts per stage)
 func (h *CustomerHandler) PipelineOverview(c *gin.Context) {
 	orgID := c.GetInt64("org_id")

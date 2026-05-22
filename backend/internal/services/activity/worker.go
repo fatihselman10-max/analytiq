@@ -3,6 +3,7 @@ package activity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 )
@@ -166,6 +167,7 @@ func (s *Service) processQueueItem(ctx context.Context, it claimedItem) {
 
 	var lastInsertedID int64
 	insertErrs := 0
+	lastInsertErr := ""
 	for _, d := range detections {
 		// Dedupe: aynı saatte aynı tipte pending varsa atla
 		var dupID int64
@@ -205,6 +207,7 @@ func (s *Service) processQueueItem(ctx context.Context, it claimedItem) {
 		if err != nil {
 			log.Printf("[activity-worker] insert pending failed (msg=%d type=%s): %v", it.messageID, d.ActivityType, err)
 			insertErrs++
+			lastInsertErr = fmt.Sprintf("insert %s: %v", d.ActivityType, err)
 			continue
 		}
 		lastInsertedID = inserted
@@ -218,8 +221,15 @@ func (s *Service) processQueueItem(ctx context.Context, it claimedItem) {
 	s.recordAttempt(ctx, it.orgID, it.messageID, time.Since(start), matchedBy, producedID, "")
 
 	if insertErrs > 0 && producedID == nil {
-		// Tüm insert'ler başarısızsa retry
-		s.markFailedOrRetry(ctx, it.queueID, it.attemptCount, "all activity inserts failed")
+		// Tüm insert'ler başarısızsa retry — gerçek hatayı queue.last_error'a yaz ki diagnose edilebilsin.
+		reason := "all activity inserts failed"
+		if lastInsertErr != "" {
+			reason = reason + " — " + lastInsertErr
+			if len(reason) > 400 {
+				reason = reason[:400]
+			}
+		}
+		s.markFailedOrRetry(ctx, it.queueID, it.attemptCount, reason)
 		return
 	}
 	_ = s.markDone(ctx, it.queueID)

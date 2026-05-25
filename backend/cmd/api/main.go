@@ -518,6 +518,7 @@ func main() {
 	journeyHandler := handlers.NewJourneyHandler(journeyService)
 	shopifyWebhookHandler := handlers.NewShopifyWebhookHandler(journeyService)
 	wsHandler := handlers.NewWSHandler(hub, authService)
+	systemHandler := handlers.NewSystemHandler(db)
 
 	// Router
 	// gin.Default = Logger + Recovery. We replace Logger with a config that skips /ws because
@@ -670,6 +671,12 @@ func main() {
 		api.GET("/reports/agents", reportHandler.Agents)
 		api.GET("/reports/channels", reportHandler.Channels)
 		api.GET("/reports/messages", reportHandler.MessageAnalytics)
+		// Messe panel: per-channel last-message + telegram subscription health for Patron page.
+		api.GET("/reports/channel-health", reportHandler.ChannelHealth)
+		// Messe panel: dashboard banner (cached snapshot, refreshed every 5min).
+		api.GET("/reports/system-status", systemHandler.Status)
+		// Messe panel: fuar bazlı müşteri + aktivite agregasyonu.
+		api.GET("/reports/fairs", customerHandler.FairsReport)
 
 		// AI Bot
 		api.GET("/ai-bot/config", aiBotHandler.GetConfig)

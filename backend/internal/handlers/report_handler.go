@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -410,4 +411,110 @@ func extractWords(text string) []string {
 		}
 	}
 	return words
+}
+
+// ChannelHealth returns per-channel liveness for the Patron page.
+// Status is derived from seconds-since-last-inbound-message:
+//   - ok      : last message within 24h
+//   - warn    : 24h-72h
+//   - stale   : >72h on an active channel
+//   - no_data : channel active but never received a message
+//   - disabled: is_active=false
+//
+// Telegram channels additionally surface subscription_ok + missing_updates + pending_updates
+// pulled from credentials.last_subscription_status (populated by EnsureSubscription).
+func (h *ReportHandler) ChannelHealth(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	rows, err := h.db.Pool.Query(ctx, `
+		SELECT ch.id, ch.type, ch.name, ch.is_active,
+		       COALESCE(EXTRACT(EPOCH FROM (NOW() - last_msg.last_at))::bigint, -1) AS seconds_since_last,
+		       COALESCE(ch.credentials::text, '{}') AS credentials
+		FROM channels ch
+		LEFT JOIN LATERAL (
+			SELECT MAX(m.created_at) AS last_at
+			FROM conversations c
+			JOIN messages m ON m.conversation_id = c.id
+			WHERE c.channel_id = ch.id AND c.org_id = ch.org_id
+			  AND m.sender_type = 'contact'
+		) last_msg ON TRUE
+		WHERE ch.org_id = $1
+		ORDER BY ch.is_active DESC, seconds_since_last ASC NULLS LAST, ch.id`, orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch channel health"})
+		return
+	}
+	defer rows.Close()
+
+	type channelItem struct {
+		ID                       int64    `json:"id"`
+		Type                     string   `json:"type"`
+		Name                     string   `json:"name"`
+		Status                   string   `json:"status"`
+		SecondsSinceLastMessage  int64    `json:"seconds_since_last_message"`
+		SubscriptionOK           *bool    `json:"subscription_ok,omitempty"`
+		MissingUpdates           []string `json:"missing_updates,omitempty"`
+		PendingUpdates           *int     `json:"pending_updates,omitempty"`
+	}
+
+	channels := []channelItem{}
+	for rows.Next() {
+		var (
+			id, secs int64
+			ct, name, credsStr string
+			active bool
+		)
+		if err := rows.Scan(&id, &ct, &name, &active, &secs, &credsStr); err != nil {
+			continue
+		}
+
+		item := channelItem{ID: id, Type: ct, Name: name, SecondsSinceLastMessage: secs}
+
+		switch {
+		case !active:
+			item.Status = "disabled"
+		case secs < 0:
+			item.Status = "no_data"
+		case secs < 24*3600:
+			item.Status = "ok"
+		case secs < 72*3600:
+			item.Status = "warn"
+		default:
+			item.Status = "stale"
+		}
+
+		// Telegram-specific: read last_subscription_status from credentials JSON.
+		// EnsureSubscription writes { last_subscription_status: { ok, missing_updates, pending_update_count } }
+		if ct == "telegram" {
+			var creds map[string]interface{}
+			if err := jsonUnmarshalString(credsStr, &creds); err == nil {
+				if sub, ok := creds["last_subscription_status"].(map[string]interface{}); ok {
+					if okVal, ok := sub["ok"].(bool); ok {
+						item.SubscriptionOK = &okVal
+					}
+					if missing, ok := sub["missing_updates"].([]interface{}); ok {
+						for _, m := range missing {
+							if s, ok := m.(string); ok {
+								item.MissingUpdates = append(item.MissingUpdates, s)
+							}
+						}
+					}
+					if pc, ok := sub["pending_update_count"].(float64); ok {
+						p := int(pc)
+						item.PendingUpdates = &p
+					}
+				}
+			}
+		}
+
+		channels = append(channels, item)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"channels": channels})
+}
+
+func jsonUnmarshalString(s string, v interface{}) error {
+	return json.Unmarshal([]byte(s), v)
 }

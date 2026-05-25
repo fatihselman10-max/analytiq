@@ -2752,3 +2752,222 @@ func digitsOnly(s string) string {
 	}
 	return string(b)
 }
+
+// activityTypeLabel: short Turkish labels for activity types surfaced on the Fairs page.
+// Mirrors backend/internal/services/activity/analyzer.go titleByType but kept local to avoid
+// a cross-package import of an unexported map.
+var activityTypeLabel = map[string]string{
+	"sample_request":       "Numune talebi",
+	"kartela_request":      "Kartela talebi",
+	"catalog_request":      "Katalog talebi",
+	"price_inquiry":        "Fiyat sorgusu",
+	"price_clarification":  "Fiyat detay sorusu",
+	"order_intent":         "Sipariş niyeti",
+	"shipping_info":        "Kargo bilgisi",
+	"meeting_request":      "Görüşme talebi",
+	"factory_visit":        "Ziyaret talebi",
+	"sample_feedback":      "Numune geri bildirimi",
+	"intro_video_sent":     "Tanıtım videosu",
+	"warehouse_video_sent": "Depo videosu",
+	"fair_invitation":      "Fuara davet",
+	"bulk_message":         "Toplu mesaj",
+	"initial_contact":      "İlk tanıtım",
+	"note":                 "Not",
+}
+
+func labelForActivityType(t string) string {
+	if l, ok := activityTypeLabel[t]; ok {
+		return l
+	}
+	return t
+}
+
+// FairsReport returns per-fair customer + activity aggregates for the Fairs page.
+// Fair grouping comes from customers.source='fair' GROUP BY source_detail, which the
+// foreign customer import (scripts/import_messe_foreign_customers.py) populates with
+// values like CPM, TS, INTERTEX, VIPTEX, B2B.
+func (h *CustomerHandler) FairsReport(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Second)
+	defer cancel()
+
+	// Pass 1: every fair-sourced customer with their stage/segment.
+	custRows, err := h.db.Pool.Query(ctx, `
+		SELECT c.id, COALESCE(c.source_detail, '') AS fair,
+		       c.name, COALESCE(c.company, ''), COALESCE(c.country, ''),
+		       c.segment, COALESCE(c.pipeline_stage, 'new_contact'),
+		       COALESCE(c.orders, '') != '' AS has_orders,
+		       c.last_contact_at
+		FROM customers c
+		WHERE c.org_id = $1 AND c.source = 'fair' AND COALESCE(c.source_detail, '') <> ''
+		ORDER BY fair, c.segment, c.name`, orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch fair customers"})
+		return
+	}
+	defer custRows.Close()
+
+	type fairCustomer struct {
+		ID            int64      `json:"id"`
+		Name          string     `json:"name"`
+		Company       string     `json:"company"`
+		Country       string     `json:"country"`
+		Segment       int        `json:"segment"`
+		PipelineStage string     `json:"pipeline_stage"`
+		HasOrders     bool       `json:"has_orders"`
+		LastContactAt *time.Time `json:"last_contact_at"`
+	}
+	type fairActivityType struct {
+		Type  string `json:"type"`
+		Label string `json:"label"`
+		Count int    `json:"count"`
+	}
+	type fairActivityItem struct {
+		ID           int64     `json:"id"`
+		CustomerID   int64     `json:"customer_id"`
+		CustomerName string    `json:"customer_name"`
+		Type         string    `json:"type"`
+		Title        string    `json:"title"`
+		CreatedAt    time.Time `json:"created_at"`
+	}
+	type fairReport struct {
+		Name           string             `json:"name"`
+		TotalContacts  int                `json:"total_contacts"`
+		VIPCount       int                `json:"vip_count"`
+		ActiveCount    int                `json:"active_count"`
+		PotentialCount int                `json:"potential_count"`
+		ColdCount      int                `json:"cold_count"`
+		WithOrders     int                `json:"with_orders"`
+		OrderStage     int                `json:"order_stage"`
+		SampleStage    int                `json:"sample_stage"`
+		CatalogStage   int                `json:"catalog_stage"`
+		NewStage       int                `json:"new_stage"`
+		LastContactAt  *time.Time         `json:"last_contact_at"`
+		Customers      []fairCustomer     `json:"customers"`
+		ActivityCount  int                `json:"activity_count"`
+		ActivityTypes  []fairActivityType `json:"activity_types"`
+		RecentActivity []fairActivityItem `json:"recent_activity"`
+	}
+
+	fairs := map[string]*fairReport{}
+	customerFair := map[int64]string{}
+	for custRows.Next() {
+		var (
+			cid     int64
+			fair    string
+			fc      fairCustomer
+		)
+		if err := custRows.Scan(&cid, &fair, &fc.Name, &fc.Company, &fc.Country,
+			&fc.Segment, &fc.PipelineStage, &fc.HasOrders, &fc.LastContactAt); err != nil {
+			continue
+		}
+		fc.ID = cid
+		customerFair[cid] = fair
+
+		f, ok := fairs[fair]
+		if !ok {
+			f = &fairReport{Name: fair, Customers: []fairCustomer{}, ActivityTypes: []fairActivityType{}, RecentActivity: []fairActivityItem{}}
+			fairs[fair] = f
+		}
+		f.TotalContacts++
+		switch fc.Segment {
+		case 1:
+			f.VIPCount++
+		case 2:
+			f.ActiveCount++
+		case 3:
+			f.PotentialCount++
+		case 4:
+			f.ColdCount++
+		}
+		if fc.HasOrders {
+			f.WithOrders++
+		}
+		switch fc.PipelineStage {
+		case "order_received", "shipping":
+			f.OrderStage++
+		case "sample_sent":
+			f.SampleStage++
+		case "catalog_sent", "kartela_sent":
+			f.CatalogStage++
+		default:
+			f.NewStage++
+		}
+		if fc.LastContactAt != nil && (f.LastContactAt == nil || fc.LastContactAt.After(*f.LastContactAt)) {
+			f.LastContactAt = fc.LastContactAt
+		}
+		f.Customers = append(f.Customers, fc)
+	}
+
+	// Pass 2: activities, joined to fair-sourced customers only.
+	if len(customerFair) > 0 {
+		actRows, err := h.db.Pool.Query(ctx, `
+			SELECT a.id, a.customer_id, c.name, a.activity_type, a.title, a.created_at
+			FROM customer_activities a
+			JOIN customers c ON c.id = a.customer_id
+			WHERE a.org_id = $1
+			  AND a.deleted_at IS NULL
+			  AND c.source = 'fair' AND COALESCE(c.source_detail, '') <> ''
+			ORDER BY a.created_at DESC`, orgID)
+		if err == nil {
+			defer actRows.Close()
+			typeBuckets := map[string]map[string]int{}
+			for actRows.Next() {
+				var ai fairActivityItem
+				if err := actRows.Scan(&ai.ID, &ai.CustomerID, &ai.CustomerName, &ai.Type, &ai.Title, &ai.CreatedAt); err != nil {
+					continue
+				}
+				fair, ok := customerFair[ai.CustomerID]
+				if !ok {
+					continue
+				}
+				f := fairs[fair]
+				if f == nil {
+					continue
+				}
+				f.ActivityCount++
+				if len(f.RecentActivity) < 10 {
+					f.RecentActivity = append(f.RecentActivity, ai)
+				}
+				if _, ok := typeBuckets[fair]; !ok {
+					typeBuckets[fair] = map[string]int{}
+				}
+				typeBuckets[fair][ai.Type]++
+			}
+			for fair, buckets := range typeBuckets {
+				f := fairs[fair]
+				if f == nil {
+					continue
+				}
+				for t, n := range buckets {
+					f.ActivityTypes = append(f.ActivityTypes, fairActivityType{
+						Type: t, Label: labelForActivityType(t), Count: n,
+					})
+				}
+				// Sort by count desc, stable enough without importing sort just for this — quick bubble.
+				for i := 0; i < len(f.ActivityTypes); i++ {
+					for j := i + 1; j < len(f.ActivityTypes); j++ {
+						if f.ActivityTypes[j].Count > f.ActivityTypes[i].Count {
+							f.ActivityTypes[i], f.ActivityTypes[j] = f.ActivityTypes[j], f.ActivityTypes[i]
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Materialize map -> ordered slice (by total_contacts desc).
+	out := make([]*fairReport, 0, len(fairs))
+	for _, f := range fairs {
+		out = append(out, f)
+	}
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			if out[j].TotalContacts > out[i].TotalContacts {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"fairs": out})
+}

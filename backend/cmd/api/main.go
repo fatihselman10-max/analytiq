@@ -347,9 +347,10 @@ func main() {
 	if _, err := registry.Get("instagram"); err != nil {
 		if token := cfg.InstagramToken; token != "" {
 			config := map[string]string{
-				"page_id":      os.Getenv("INSTAGRAM_PAGE_ID"),
-				"access_token": token,
-				"app_secret":   cfg.InstagramAppSecret,
+				"page_id":       os.Getenv("INSTAGRAM_PAGE_ID"),
+				"access_token":  token,
+				"app_secret":    cfg.InstagramAppSecret,
+				"ig_account_id": os.Getenv("INSTAGRAM_IG_ACCOUNT_ID"), // echo tespiti (IGAA) için
 			}
 			registry.Register(instagram.NewInstagramProvider(config))
 			log.Printf("Registered Instagram provider from env vars")

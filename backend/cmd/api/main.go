@@ -381,6 +381,11 @@ func main() {
 	// 60g'lik IGAA token süre dolmadan önce Sentry warning verir.
 	go syspkg.StartIGTokenHealthCheck(context.Background(), db)
 
+	// IGAA token oto-yenileme (günde 1, eşik 30g). Health check sadece uyarır;
+	// bu rutin token'ı kendisi yeniler ve çalışan provider'ı hot-swap eder.
+	// 2026-05-08 sessiz expire olayının kalıcı çözümü.
+	go instagram.StartTokenRefresh(context.Background(), db, registry)
+
 	// Katman 5: haftalık DB maintenance (Pazar 04:00 UTC).
 	go syspkg.StartWeeklyMaintenance(context.Background(), db)
 

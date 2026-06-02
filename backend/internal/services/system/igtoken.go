@@ -99,28 +99,40 @@ func runIGTokenCheck(ctx context.Context, db *database.DB) {
 	log.Printf("[ig-token-health] tur tamam: checked=%d failed=%d", checked, failed)
 }
 
-// pingIGToken, Instagram Graph API /me endpoint'ine token ile ping atar.
+// pingIGToken, /me endpoint'ine token ile ping atar. IGAA token'lar yalnızca
+// graph.instagram.com'da, FB/Page token'lar graph.facebook.com'da geçerli
+// olduğundan iki host da denenir; herhangi birinde 200 → ok.
 // 200 → ok. 4xx → token expired/invalid. 5xx → API geçici hatası (warn değil, log).
 func pingIGToken(ctx context.Context, token string) (bool, int, string) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	url := "https://graph.facebook.com/v21.0/me?access_token=" + token
-	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false, 0, err.Error()
+	hosts := []string{
+		"https://graph.instagram.com/v21.0/me?access_token=",
+		"https://graph.facebook.com/v21.0/me?access_token=",
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-	if resp.StatusCode == 200 {
-		return true, 200, ""
+	var lastStatus int
+	var lastBody string
+	for _, base := range hosts {
+		req, _ := http.NewRequestWithContext(ctx, "GET", base+token, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			lastBody = err.Error()
+			continue
+		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		resp.Body.Close()
+		if resp.StatusCode == 200 {
+			return true, 200, ""
+		}
+		// 5xx: API geçici sorunu, alarm verme
+		if resp.StatusCode >= 500 {
+			log.Printf("[ig-token-health] graph API 5xx (transient): %d", resp.StatusCode)
+			return true, resp.StatusCode, string(body)
+		}
+		lastStatus = resp.StatusCode
+		lastBody = string(body)
 	}
-	// 5xx: API geçici sorunu, alarm verme
-	if resp.StatusCode >= 500 {
-		log.Printf("[ig-token-health] graph API 5xx (transient): %d", resp.StatusCode)
-		return true, resp.StatusCode, string(body)
-	}
-	return false, resp.StatusCode, string(body)
+	return false, lastStatus, lastBody
 }
 
 func truncate(s string, n int) string {

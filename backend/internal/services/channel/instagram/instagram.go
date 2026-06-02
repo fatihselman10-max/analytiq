@@ -19,6 +19,7 @@ const fbGraphAPIBase = "https://graph.facebook.com/v21.0"
 // Provider implements the channel.Provider interface for Instagram Messaging API.
 type Provider struct {
 	pageID      string
+	igAccountID string // IGAA akışında echo tespiti için işletmenin IG hesap ID'si
 	accessToken string
 	appSecret   string
 	httpClient  *http.Client
@@ -33,6 +34,7 @@ func NewInstagramProvider(config map[string]string) *Provider {
 	}
 	return &Provider{
 		pageID:      config["page_id"],
+		igAccountID: config["ig_account_id"],
 		accessToken: token,
 		appSecret:   config["app_secret"],
 		httpClient:  &http.Client{},
@@ -206,8 +208,12 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 
 	messaging := payload.Entry[0].Messaging[0]
 
-	// Check if this is an echo (sent by our own page)
-	isEcho := messaging.Sender.ID == p.pageID
+	// Check if this is an echo (sent by our own page/account).
+	// IGAA (Instagram Login) akışında echo'nun sender.id'si Page ID değil
+	// IG hesap ID'sidir (ig_account_id); ikisini de kontrol et. Aksi halde
+	// işletmenin kendi cevapları "gelen müşteri mesajı" sanılır (conv 87 bug'ı).
+	isEcho := messaging.Sender.ID == p.pageID ||
+		(p.igAccountID != "" && messaging.Sender.ID == p.igAccountID)
 
 	// Skip deleted messages
 	if messaging.Message.IsDeleted {

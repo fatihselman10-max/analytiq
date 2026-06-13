@@ -1381,61 +1381,58 @@ func (h *CustomerHandler) BulkActivity(c *gin.Context) {
 	userID := c.GetInt64("user_id")
 
 	var req struct {
-		ActivityType string  `json:"activity_type"`
-		Segments     []int   `json:"segments"`
-		Title        string  `json:"title"`
-		Description  string  `json:"description"`
-		Channel      string  `json:"channel"`
+		ActivityType string `json:"activity_type"`
+		Segments     []int  `json:"segments"`
+		Country      string `json:"country"`
+		Title        string `json:"title"`
+		Description  string `json:"description"`
+		Channel      string `json:"channel"`
+		Metadata     string `json:"metadata"`
+		Priority     string `json:"priority"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.ActivityType) == "" || len(req.Segments) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "activity_type ve segments zorunlu"})
 		return
 	}
+	if strings.TrimSpace(req.Metadata) == "" {
+		req.Metadata = "{}"
+	}
+	if strings.TrimSpace(req.Priority) == "" {
+		req.Priority = "normal"
+	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 	defer cancel()
 
-	// Hedef müşterileri çek
+	// Hedef müşterileri çek (segment + opsiyonel ülke filtresi).
+	// Not: frontend ülke gönderiyordu ama eskiden yok sayılıyordu → yanlış/fazla müşteriye işlenirdi.
+	country := strings.TrimSpace(req.Country)
 	rows, err := h.db.Pool.Query(ctx,
-		`SELECT id, COALESCE(pipeline_stage,'new_contact') FROM customers
-		 WHERE org_id=$1 AND segment = ANY($2::int[])`,
-		orgID, req.Segments,
+		`SELECT id, COALESCE(NULLIF(name,''),'') FROM customers
+		 WHERE org_id=$1 AND segment = ANY($2::int[])
+		   AND ($3 = '' OR country = $3)`,
+		orgID, req.Segments, country,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Müşteri sorgusu başarısız"})
 		return
 	}
 	type custInfo struct {
-		id    int64
-		stage string
+		id   int64
+		name string
 	}
 	var targets []custInfo
 	for rows.Next() {
 		var ci custInfo
-		if err := rows.Scan(&ci.id, &ci.stage); err == nil {
+		if err := rows.Scan(&ci.id, &ci.name); err == nil {
 			targets = append(targets, ci)
 		}
 	}
 	rows.Close()
 
 	if len(targets) == 0 {
-		c.JSON(http.StatusOK, gin.H{"ok": true, "processed": 0})
+		c.JSON(http.StatusOK, gin.H{"ok": true, "processed": 0, "targeted": 0})
 		return
-	}
-
-	// Aynı pipeline ilerletme map'i (ApprovePendingActivity ile aynı)
-	stageForActivity := map[string]string{
-		"catalog_request":      "catalog_sent",
-		"kartela_request":      "kartela_sent",
-		"sample_request":       "kartela_sent",
-		"shipping_info":        "shipping",
-		"order_intent":         "order_received",
-		"intro_video_sent":     "catalog_sent",
-		"warehouse_video_sent": "catalog_sent",
-	}
-	stageOrder := map[string]int{
-		"new_contact": 0, "catalog_sent": 1, "kartela_sent": 2,
-		"sample_sent": 3, "order_received": 4, "shipping": 5,
 	}
 
 	title := strings.TrimSpace(req.Title)
@@ -1447,30 +1444,58 @@ func (h *CustomerHandler) BulkActivity(c *gin.Context) {
 		channel = "bulk"
 	}
 
+	// Department activity_type'tan derive (CreateQueuedActivity ile aynı kural).
+	department := "operations"
+	switch req.ActivityType {
+	case "price_quoted", "price_inquiry", "fair_invitation", "visit_invitation",
+		"meeting_request", "factory_visit":
+		department = "sales"
+	}
+
+	// Her müşteri için queued activity + task — tek müşterilik "Yeni Görev" akışıyla aynı.
+	// (Teyze 2026-06-13: toplu aksiyon direkt timeline'a yazılmasın, önce Görevler'e/onaya düşsün.
+	//  Task done olunca task_handler.MoveStatus activity'i 'approved' yapar → timeline + pipeline ilerler.)
 	processed := 0
 	for _, t := range targets {
-		_, err := h.db.Pool.Exec(ctx,
+		var activityID int64
+		err := h.db.Pool.QueryRow(ctx,
 			`INSERT INTO customer_activities
 			   (org_id, customer_id, activity_type, title, description, channel, metadata,
-			    status, detected_by, confidence, created_by)
-			 VALUES ($1,$2,$3,$4,$5,$6,'{}','approved','manual',100,$7)`,
-			orgID, t.id, req.ActivityType, title, req.Description, channel, userID,
-		)
+			    created_by, status, detected_by)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'queued','manual')
+			 RETURNING id`,
+			orgID, t.id, req.ActivityType, title, req.Description, channel, req.Metadata, userID,
+		).Scan(&activityID)
 		if err != nil {
 			continue
 		}
-		h.db.Pool.Exec(ctx, `UPDATE customers SET last_contact_at=NOW(), updated_at=NOW() WHERE id=$1`, t.id)
-		if newStage, ok := stageForActivity[req.ActivityType]; ok {
-			if stageOrder[newStage] > stageOrder[t.stage] {
-				h.db.Pool.Exec(ctx,
-					`UPDATE customers SET pipeline_stage=$1, pipeline_updated_at=NOW() WHERE id=$2 AND org_id=$3`,
-					newStage, t.id, orgID)
-			}
+
+		taskTitle := title
+		if t.name != "" {
+			taskTitle = title + " — " + t.name
 		}
+		var taskID int64
+		err = h.db.Pool.QueryRow(ctx,
+			`INSERT INTO tasks (org_id, customer_id, title, department, category,
+			                    source_type, pipeline_action, priority, status)
+			 VALUES ($1,$2,$3,$4,'Yapılacak','manual_queued',$5,$6,'todo')
+			 RETURNING id`,
+			orgID, t.id, taskTitle, department, req.ActivityType, req.Priority,
+		).Scan(&taskID)
+		if err != nil {
+			// Activity oluştu, task açılamadı — temizle (orphan queued activity kalmasın)
+			h.db.Pool.Exec(ctx, `DELETE FROM customer_activities WHERE id=$1`, activityID)
+			continue
+		}
+
+		h.db.Pool.Exec(ctx,
+			`UPDATE customer_activities SET source_task_id=$1 WHERE id=$2 AND org_id=$3`,
+			taskID, activityID, orgID)
+		h.db.Pool.Exec(ctx, `UPDATE customers SET updated_at=NOW() WHERE id=$1`, t.id)
 		processed++
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true, "processed": processed, "targeted": len(targets)})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "processed": processed, "targeted": len(targets), "queued": true})
 }
 
 // LinkConversationToCustomer — Inbox'taki orphan konuşmadan tek tıkla CRM kartı yarat.

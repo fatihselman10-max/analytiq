@@ -186,6 +186,7 @@ type webhookPayload struct {
 					} `json:"story"`
 				} `json:"reply_to"`
 				IsDeleted bool `json:"is_deleted"`
+				IsEcho    bool `json:"is_echo"`
 			} `json:"message"`
 			Referral *struct {
 				Ref    string `json:"ref"`
@@ -209,10 +210,12 @@ func (p *Provider) ParseWebhook(ctx context.Context, body []byte, headers map[st
 	messaging := payload.Entry[0].Messaging[0]
 
 	// Check if this is an echo (sent by our own page/account).
-	// IGAA (Instagram Login) akışında echo'nun sender.id'si Page ID değil
-	// IG hesap ID'sidir (ig_account_id); ikisini de kontrol et. Aksi halde
-	// işletmenin kendi cevapları "gelen müşteri mesajı" sanılır (conv 87 bug'ı).
-	isEcho := messaging.Sender.ID == p.pageID ||
+	// Birincil sinyal Instagram'ın gönderdiği message.is_echo flag'i — IGAA akışında
+	// işletmenin gerçek IG IGSID'si (ör. 17841...) ne page_id ne ig_account_id ile eşleşir,
+	// id karşılaştırması echo'yu kaçırıp kendi cevaplarımızı müşteri lead'i sanırdı.
+	// (Teyze 2026-06-13: messe'nin kendi mesajları "ig_<id>" müşteri kartı oluşturuyordu)
+	isEcho := messaging.Message.IsEcho ||
+		messaging.Sender.ID == p.pageID ||
 		(p.igAccountID != "" && messaging.Sender.ID == p.igAccountID)
 
 	// Skip deleted messages

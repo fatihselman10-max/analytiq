@@ -26,6 +26,11 @@ type Poller struct {
 	orgID          int64
 	httpClient     *http.Client
 	lastPollTime   time.Time
+	// IG-native (Instagram Login) akışı: webhook ile AYNI IGSID uzayını kullanmak için
+	// graph.facebook.com yerine graph.instagram.com + /me, ve işletmenin gerçek IGSID'si.
+	apiBase   string // graphAPIBase (IG-native) veya fbGraphAPIBase
+	convOwner string // "me" (IG-native) veya pageID (FB)
+	selfIGSID string // /me?fields=user_id — kendi mesajlarımızı (agent) ayırt etmek için
 }
 
 // NewPoller creates a new Instagram DM poller
@@ -94,12 +99,49 @@ func (p *Poller) loadConfig() bool {
 		return false
 	}
 
-	// If we still don't have a page ID, try to get it
-	if p.pageID == "" {
-		p.loadPageID()
+	// API base seçimi. instagram_login (IGAA) hesaplarında graph.facebook.com/<page>/conversations
+	// ya hiç veri döndürmez ya da webhook'tan FARKLI id uzayında id verir → aynı kullanıcı iki contact.
+	// IG-native (graph.instagram.com/me/conversations) webhook ile AYNI IGSID'leri döndürür.
+	// Facebook-login hesapları (ör. lessandromance) eski davranışta kalsın diye login_type ile gate'liyoruz.
+	p.apiBase = fbGraphAPIBase
+	p.convOwner = p.pageID
+	if creds["login_type"] == "instagram_login" {
+		p.apiBase = graphAPIBase // graph.instagram.com/v21.0
+		p.convOwner = "me"
+		p.selfIGSID = p.fetchSelfIGSID()
+		log.Printf("[IG-POLLER] IG-native mode (instagram_login), self_igsid=%s", p.selfIGSID)
 	}
 
+	// If we still don't have a page ID, try to get it (yalnız FB modunda gerekli)
+	if p.pageID == "" && p.apiBase == fbGraphAPIBase {
+		p.loadPageID()
+		p.convOwner = p.pageID
+	}
+
+	// IG-native modda /me yeterli; FB modda pageID şart
+	if p.apiBase == graphAPIBase {
+		return p.pageToken != ""
+	}
 	return p.pageToken != "" && p.pageID != ""
+}
+
+// fetchSelfIGSID — işletmenin gerçek Instagram IGSID'sini (/me?fields=user_id) çeker.
+// Bu id, webhook'taki sender.id ve conversations API'deki from/to id'leriyle aynı uzaydadır;
+// kendi giden mesajlarımızı (agent) müşteri mesajından ayırmak için kullanılır.
+func (p *Poller) fetchSelfIGSID() string {
+	url := fmt.Sprintf("%s/me?fields=user_id&access_token=%s", graphAPIBase, p.pageToken)
+	resp, err := p.httpClient.Get(url)
+	if err != nil {
+		log.Printf("[IG-POLLER] fetchSelfIGSID failed: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var r struct {
+		UserID string `json:"user_id"`
+	}
+	json.Unmarshal(body, &r)
+	return r.UserID
 }
 
 func (p *Poller) loadPageID() {
@@ -170,17 +212,18 @@ type igMessage struct {
 }
 
 func (p *Poller) poll() {
-	if p.pageID == "" {
-		log.Println("[IG-POLLER] No page ID, skipping poll")
+	if p.convOwner == "" {
+		log.Println("[IG-POLLER] No conversation owner, skipping poll")
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	// Get conversations - minimal fields to avoid timeout
+	// Get conversations - minimal fields to avoid timeout.
+	// IG-native: /me/conversations · FB: /<pageID>/conversations
 	url := fmt.Sprintf("%s/%s/conversations?platform=instagram&fields=id&limit=10&access_token=%s",
-		fbGraphAPIBase, p.pageID, p.pageToken)
+		p.apiBase, p.convOwner, p.pageToken)
 
 	convs, err := p.fetchConversations(ctx, url)
 	if err != nil {
@@ -229,9 +272,9 @@ func (p *Poller) fetchConversations(ctx context.Context, url string) ([]igConver
 }
 
 func (p *Poller) processConversation(ctx context.Context, conv igConversation) int {
-	// Get messages for this conversation
+	// Get messages for this conversation (apiBase webhook ile aynı id uzayını verir)
 	url := fmt.Sprintf("%s/%s?fields=messages.limit(10){message,from,to,created_time}&access_token=%s",
-		fbGraphAPIBase, conv.ID, p.pageToken)
+		p.apiBase, conv.ID, p.pageToken)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -282,8 +325,11 @@ func (p *Poller) importMessage(ctx context.Context, msg igMessage) bool {
 		return false
 	}
 
-	// Determine if this is from the page (echo) or from a user
-	isFromPage := msg.From.ID == p.pageID || msg.From.ID == p.igAccountID
+	// Determine if this is from the page (echo) or from a user.
+	// selfIGSID = işletmenin gerçek IGSID'si; bunu eklemeden messe'nin kendi
+	// cevapları müşteri lead'i olarak yutuluyordu (Teyze 2026-06-13).
+	isFromPage := msg.From.ID == p.pageID || msg.From.ID == p.igAccountID ||
+		(p.selfIGSID != "" && msg.From.ID == p.selfIGSID)
 
 	if isFromPage {
 		// This is our own message - save as agent message

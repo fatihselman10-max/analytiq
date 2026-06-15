@@ -1452,50 +1452,41 @@ func (h *CustomerHandler) BulkActivity(c *gin.Context) {
 		department = "sales"
 	}
 
-	// Her müşteri için queued activity + task — tek müşterilik "Yeni Görev" akışıyla aynı.
-	// (Teyze 2026-06-13: toplu aksiyon direkt timeline'a yazılmasın, önce Görevler'e/onaya düşsün.
-	//  Task done olunca task_handler.MoveStatus activity'i 'approved' yapar → timeline + pipeline ilerler.)
+	// TEK görev (toplu) — isim isim DEĞİL. Tüm hedef müşterilerin queued aktivitesi bu tek task'a
+	// (source_task_id) bağlanır; task "done" olunca task_handler.MoveStatus source_task_id'si bu olan
+	// TÜM aktiviteleri birden 'approved' yapar → segmentteki herkesin timeline'ına düşer.
+	// (Teyze 2026-06-15: toplu gönderim Görevler'de tek kart olmalı, her müşteriye ayrı görev değil)
+	taskTitle := fmt.Sprintf("%s — %d müşteri", title, len(targets))
+	var taskID int64
+	err = h.db.Pool.QueryRow(ctx,
+		`INSERT INTO tasks (org_id, customer_id, title, department, category,
+		                    source_type, pipeline_action, priority, status)
+		 VALUES ($1,NULL,$2,$3,'Yapılacak','manual_queued',$4,$5,'todo')
+		 RETURNING id`,
+		orgID, taskTitle, department, req.ActivityType, req.Priority,
+	).Scan(&taskID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Toplu görev oluşturulamadı"})
+		return
+	}
+
 	processed := 0
 	for _, t := range targets {
-		var activityID int64
-		err := h.db.Pool.QueryRow(ctx,
+		_, err := h.db.Pool.Exec(ctx,
 			`INSERT INTO customer_activities
 			   (org_id, customer_id, activity_type, title, description, channel, metadata,
-			    created_by, status, detected_by)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'queued','manual')
-			 RETURNING id`,
-			orgID, t.id, req.ActivityType, title, req.Description, channel, req.Metadata, userID,
-		).Scan(&activityID)
+			    created_by, status, detected_by, source_task_id)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'queued','manual',$9)`,
+			orgID, t.id, req.ActivityType, title, req.Description, channel, req.Metadata, userID, taskID,
+		)
 		if err != nil {
 			continue
 		}
-
-		taskTitle := title
-		if t.name != "" {
-			taskTitle = title + " — " + t.name
-		}
-		var taskID int64
-		err = h.db.Pool.QueryRow(ctx,
-			`INSERT INTO tasks (org_id, customer_id, title, department, category,
-			                    source_type, pipeline_action, priority, status)
-			 VALUES ($1,$2,$3,$4,'Yapılacak','manual_queued',$5,$6,'todo')
-			 RETURNING id`,
-			orgID, t.id, taskTitle, department, req.ActivityType, req.Priority,
-		).Scan(&taskID)
-		if err != nil {
-			// Activity oluştu, task açılamadı — temizle (orphan queued activity kalmasın)
-			h.db.Pool.Exec(ctx, `DELETE FROM customer_activities WHERE id=$1`, activityID)
-			continue
-		}
-
-		h.db.Pool.Exec(ctx,
-			`UPDATE customer_activities SET source_task_id=$1 WHERE id=$2 AND org_id=$3`,
-			taskID, activityID, orgID)
 		h.db.Pool.Exec(ctx, `UPDATE customers SET updated_at=NOW() WHERE id=$1`, t.id)
 		processed++
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true, "processed": processed, "targeted": len(targets), "queued": true})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "processed": processed, "targeted": len(targets), "task_id": taskID, "queued": true})
 }
 
 // LinkConversationToCustomer — Inbox'taki orphan konuşmadan tek tıkla CRM kartı yarat.

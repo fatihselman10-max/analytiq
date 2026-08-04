@@ -2175,6 +2175,7 @@ func (h *CustomerHandler) CreateQueuedActivity(c *gin.Context) {
 		Metadata     string `json:"metadata"`
 		Assignee     string `json:"assignee"`
 		Priority     string `json:"priority"`
+		DueDate      string `json:"due_date"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -2186,6 +2187,13 @@ func (h *CustomerHandler) CreateQueuedActivity(c *gin.Context) {
 	}
 	if req.Priority == "" {
 		req.Priority = "normal"
+	}
+
+	var dueDate *time.Time
+	if req.DueDate != "" {
+		if t, err := time.Parse("2006-01-02", req.DueDate); err == nil {
+			dueDate = &t
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Second)
@@ -2235,10 +2243,10 @@ func (h *CustomerHandler) CreateQueuedActivity(c *gin.Context) {
 	var taskID int64
 	err = h.db.Pool.QueryRow(ctx,
 		`INSERT INTO tasks (org_id, customer_id, title, department, category,
-		                    source_type, pipeline_action, priority, status)
-		 VALUES ($1,$2,$3,$4,'Yapılacak','manual_queued',$5,$6,'todo')
+		                    source_type, pipeline_action, priority, status, due_date)
+		 VALUES ($1,$2,$3,$4,'Yapılacak','manual_queued',$5,$6,'todo',$7)
 		 RETURNING id`,
-		orgID, customerID, taskTitle, department, req.ActivityType, req.Priority,
+		orgID, customerID, taskTitle, department, req.ActivityType, req.Priority, dueDate,
 	).Scan(&taskID)
 	if err != nil {
 		// Activity oluştu, task açılamadı — temizle

@@ -350,7 +350,7 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 		return
 	}
 
-	if req.Segment < 1 || req.Segment > 4 {
+	if req.Segment < 1 || req.Segment > 5 {
 		req.Segment = 4
 	}
 
@@ -1555,7 +1555,7 @@ func (h *CustomerHandler) LinkConversationToCustomer(c *gin.Context) {
 			return
 		}
 		segment := req.Segment
-		if segment < 1 || segment > 4 {
+		if segment < 1 || segment > 5 {
 			segment = 4
 		}
 		country := strings.TrimSpace(req.Country)

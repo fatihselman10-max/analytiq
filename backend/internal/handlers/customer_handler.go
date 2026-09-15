@@ -2255,6 +2255,14 @@ func (h *CustomerHandler) CreateQueuedActivity(c *gin.Context) {
 		return
 	}
 
+	// 2b) Description varsa task'in notes dizisine de yaz (task_handler.Create ile ayni kural) —
+	// aksi halde gorev karti icerigi hep bos gorunuyordu, sadece customer_activities.description'a yaziliyordu.
+	if desc := strings.TrimSpace(req.Description); desc != "" {
+		h.db.Pool.Exec(ctx,
+			`UPDATE tasks SET notes = array_append(notes, $1) WHERE id=$2 AND org_id=$3`,
+			desc, taskID, orgID)
+	}
+
 	// 3) Activity ↔ task bağı
 	h.db.Pool.Exec(ctx,
 		`UPDATE customer_activities SET source_task_id=$1 WHERE id=$2 AND org_id=$3`,

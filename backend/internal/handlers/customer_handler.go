@@ -1329,6 +1329,16 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 		if customerName != "" {
 			taskTitle = action.title + " — " + customerName
 		}
+		// Task karti icerigi icin: onay ekraninda duzenlenen description varsa onu,
+		// yoksa aktivitenin kendi (orijinal) description'ini kullan — aksi halde
+		// onaylanan gorev hep icериksiz "Yapilacak"a dusuyordu.
+		taskDesc := strings.TrimSpace(req.Description)
+		if taskDesc == "" {
+			h.db.Pool.QueryRow(ctx,
+				`SELECT COALESCE(description,'') FROM customer_activities WHERE id=$1 AND org_id=$2`,
+				actID, orgID).Scan(&taskDesc)
+			taskDesc = strings.TrimSpace(taskDesc)
+		}
 		var existing int64
 		_ = h.db.Pool.QueryRow(ctx,
 			`SELECT id FROM tasks
@@ -1338,11 +1348,17 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 			orgID, cid, activityType,
 		).Scan(&existing)
 		if existing == 0 {
-			h.db.Pool.Exec(ctx,
+			var newTaskID int64
+			err := h.db.Pool.QueryRow(ctx,
 				`INSERT INTO tasks (org_id, customer_id, title, department, category, source_type, pipeline_action, priority, status)
-				 VALUES ($1,$2,$3,$4,$5,'ai_approval',$6,'normal','todo')`,
+				 VALUES ($1,$2,$3,$4,$5,'ai_approval',$6,'normal','todo') RETURNING id`,
 				orgID, cid, taskTitle, action.department, "AI Tespit", activityType,
-			)
+			).Scan(&newTaskID)
+			if err == nil && taskDesc != "" {
+				h.db.Pool.Exec(ctx, `UPDATE tasks SET notes = array_append(notes, $1) WHERE id=$2`, taskDesc, newTaskID)
+			}
+		} else if taskDesc != "" {
+			h.db.Pool.Exec(ctx, `UPDATE tasks SET notes = array_append(notes, $1) WHERE id=$2 AND org_id=$3`, taskDesc, existing, orgID)
 		}
 	}
 

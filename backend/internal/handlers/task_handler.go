@@ -99,6 +99,70 @@ func (h *TaskHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"tasks": items})
 }
 
+// ListByCustomer — GET /customers/:id/tasks. Frontend'in CustomerTasks.tsx
+// componenti bu endpoint'i cagiriyordu ama route hic tanimlanmamisti (404),
+// bu yuzden musteri sayfasinda gorevler hep "0 acik 0 tamamlandi" gorunuyordu.
+func (h *TaskHandler) ListByCustomer(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	customerID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid customer ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	rows, err := h.db.Pool.Query(ctx,
+		`SELECT id, title, assignee, priority, status, due_date, completed_at,
+		        COALESCE(category, 'Genel'), COALESCE(pipeline_action, ''), created_at
+		 FROM tasks WHERE org_id = $1 AND customer_id = $2
+		 ORDER BY created_at DESC`,
+		orgID, customerID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch"})
+		return
+	}
+	defer rows.Close()
+
+	type customerTaskResponse struct {
+		ID             int64   `json:"id"`
+		Title          string  `json:"title"`
+		Assignee       string  `json:"assignee"`
+		Priority       string  `json:"priority"`
+		Status         string  `json:"status"`
+		DueDate        *string `json:"due_date"`
+		CompletedAt    *string `json:"completed_at"`
+		Category       string  `json:"category"`
+		PipelineAction string  `json:"pipeline_action"`
+		CreatedAt      string  `json:"created_at"`
+	}
+
+	items := []customerTaskResponse{}
+	for rows.Next() {
+		var t customerTaskResponse
+		var dueDate, completedAt *time.Time
+		var createdAt time.Time
+		if err := rows.Scan(&t.ID, &t.Title, &t.Assignee, &t.Priority, &t.Status,
+			&dueDate, &completedAt, &t.Category, &t.PipelineAction, &createdAt); err != nil {
+			continue
+		}
+		if dueDate != nil {
+			s := dueDate.Format("2006-01-02")
+			t.DueDate = &s
+		}
+		if completedAt != nil {
+			s := completedAt.Format("2006-01-02")
+			t.CompletedAt = &s
+		}
+		t.CreatedAt = createdAt.Format(time.RFC3339)
+		items = append(items, t)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"tasks": items})
+}
+
 func (h *TaskHandler) Create(c *gin.Context) {
 	orgID := c.GetInt64("org_id")
 	var req struct {

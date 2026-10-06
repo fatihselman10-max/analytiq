@@ -43,7 +43,8 @@ func (h *CustomerHandler) List(c *gin.Context) {
 	                  COALESCE(c.website, '') as website,
 	                  COALESCE(c.vk, '') as vk,
 	                  COALESCE(c.telegram, '') as telegram,
-	                  COALESCE(c.preferred_channel, '') as preferred_channel
+	                  COALESCE(c.preferred_channel, '') as preferred_channel,
+	                  COALESCE(c.extra_phones, '{}') as extra_phones
 	           FROM customers c
 	           LEFT JOIN users u ON c.assigned_to = u.id
 	           WHERE c.org_id = $1`
@@ -81,7 +82,7 @@ func (h *CustomerHandler) List(c *gin.Context) {
 		argIdx++
 	}
 	if s := c.Query("search"); s != "" {
-		query += fmt.Sprintf(" AND (c.name ILIKE $%d OR c.company ILIKE $%d)", argIdx, argIdx)
+		query += fmt.Sprintf(" AND (c.name ILIKE $%d OR c.company ILIKE $%d OR c.phone ILIKE $%d OR array_to_string(c.extra_phones, ' ') ILIKE $%d)", argIdx, argIdx, argIdx, argIdx)
 		args = append(args, "%"+s+"%")
 		argIdx++
 	}
@@ -132,6 +133,7 @@ func (h *CustomerHandler) List(c *gin.Context) {
 		VK                 string     `json:"vk"`
 		Telegram           string     `json:"telegram"`
 		PreferredChannel   string     `json:"preferred_channel"`
+		ExtraPhones        []string   `json:"extra_phones"`
 		Channels           []chResp   `json:"channels"`
 	}
 
@@ -147,7 +149,7 @@ func (h *CustomerHandler) List(c *gin.Context) {
 			&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName,
 			&cu.PipelineStage, &cu.PipelineUpdatedAt, &cu.InterestedProducts,
 			&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples, &cu.ContactRole,
-			&cu.Website, &cu.VK, &cu.Telegram, &cu.PreferredChannel); err != nil {
+			&cu.Website, &cu.VK, &cu.Telegram, &cu.PreferredChannel, &cu.ExtraPhones); err != nil {
 			continue
 		}
 		cu.Channels = []chResp{}
@@ -228,6 +230,7 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		VK                 string     `json:"vk"`
 		Telegram           string     `json:"telegram"`
 		PreferredChannel   string     `json:"preferred_channel"`
+		ExtraPhones        []string   `json:"extra_phones"`
 	}
 
 	err = h.db.Pool.QueryRow(ctx,
@@ -248,7 +251,8 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		        COALESCE(c.website, '') as website,
 		        COALESCE(c.vk, '') as vk,
 		        COALESCE(c.telegram, '') as telegram,
-		        COALESCE(c.preferred_channel, '') as preferred_channel
+		        COALESCE(c.preferred_channel, '') as preferred_channel,
+		        COALESCE(c.extra_phones, '{}') as extra_phones
 		 FROM customers c
 		 LEFT JOIN users u ON c.assigned_to = u.id
 		 WHERE c.id = $1 AND c.org_id = $2`, id, orgID,
@@ -259,7 +263,7 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName,
 		&cu.PipelineStage, &cu.PipelineUpdatedAt, &cu.InterestedProducts,
 		&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples, &cu.ContactRole,
-		&cu.Website, &cu.VK, &cu.Telegram, &cu.PreferredChannel)
+		&cu.Website, &cu.VK, &cu.Telegram, &cu.PreferredChannel, &cu.ExtraPhones)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
 		return
@@ -339,6 +343,7 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 		VK                string `json:"vk"`
 		Telegram          string `json:"telegram"`
 		PreferredChannel  string `json:"preferred_channel"`
+		ExtraPhones       []string `json:"extra_phones"`
 		Notes             string `json:"notes"`
 		Channels          []struct {
 			ChannelType       string `json:"channel_type"`
@@ -361,12 +366,12 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 	err := h.db.Pool.QueryRow(ctx,
 		`INSERT INTO customers (org_id, name, company, country, segment, customer_type, customer_type_other,
 		                        source, source_detail, assigned_to, phone, email, instagram, notes,
-		                        website, vk, telegram, preferred_channel, last_contact_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW()) RETURNING id`,
+		                        website, vk, telegram, preferred_channel, extra_phones, last_contact_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW()) RETURNING id`,
 		orgID, req.Name, req.Company, req.Country, req.Segment,
 		req.CustomerType, req.CustomerTypeOther, req.Source, req.SourceDetail,
 		req.AssignedTo, req.Phone, req.Email, req.Instagram, req.Notes,
-		req.Website, req.VK, req.Telegram, req.PreferredChannel,
+		req.Website, req.VK, req.Telegram, req.PreferredChannel, cleanPhones(req.ExtraPhones),
 	).Scan(&id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create customer"})
@@ -413,6 +418,7 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 		VK                *string `json:"vk"`
 		Telegram          *string `json:"telegram"`
 		PreferredChannel  *string `json:"preferred_channel"`
+		ExtraPhones       *[]string `json:"extra_phones"`
 		Notes              *string `json:"notes"`
 		Orders             *string `json:"orders"`
 		InterestedProducts *string `json:"interested_products"`
@@ -507,6 +513,11 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 	if req.Phone != nil {
 		query += fmt.Sprintf(", phone=$%d", argIdx)
 		args = append(args, *req.Phone)
+		argIdx++
+	}
+	if req.ExtraPhones != nil {
+		query += fmt.Sprintf(", extra_phones=$%d", argIdx)
+		args = append(args, cleanPhones(*req.ExtraPhones))
 		argIdx++
 	}
 	if req.Email != nil {
@@ -2259,10 +2270,11 @@ func (h *CustomerHandler) CreateQueuedActivity(c *gin.Context) {
 	var taskID int64
 	err = h.db.Pool.QueryRow(ctx,
 		`INSERT INTO tasks (org_id, customer_id, title, department, category,
-		                    source_type, pipeline_action, priority, status, due_date)
-		 VALUES ($1,$2,$3,$4,'Yapılacak','manual_queued',$5,$6,'todo',$7)
+		                    source_type, pipeline_action, priority, status, due_date, assignee)
+		 VALUES ($1,$2,$3,$4,'Yapılacak','manual_queued',$5,$6,'todo',$7,$8)
 		 RETURNING id`,
 		orgID, customerID, taskTitle, department, req.ActivityType, req.Priority, dueDate,
+		strings.TrimSpace(req.Assignee),
 	).Scan(&taskID)
 	if err != nil {
 		// Activity oluştu, task açılamadı — temizle
@@ -3018,4 +3030,19 @@ func (h *CustomerHandler) FairsReport(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"fairs": out})
+}
+
+// cleanPhones — ek telefon listesini kırp, boşları ve tekrarları at
+func cleanPhones(in []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, p := range in {
+		p = strings.TrimSpace(p)
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	return out
 }

@@ -26,7 +26,9 @@ func (h *TaskHandler) List(c *gin.Context) {
 
 	query := `SELECT id, org_id, title, assignee, department, priority, status,
 		        due_date, completed_at, tags, notes, kpi_weight, created_at, updated_at,
-		        COALESCE(category, 'Genel'), COALESCE(source_type, 'manual'), customer_id
+		        COALESCE(category, 'Genel'), COALESCE(source_type, 'manual'), customer_id,
+		        COALESCE((SELECT array_agg('/api/v1/task-photos/' || ta.token ORDER BY ta.id)
+		                  FROM task_attachments ta WHERE ta.task_id = tasks.id), '{}')
 		 FROM tasks WHERE org_id = $1`
 	args := []interface{}{orgID}
 	argIdx := 2
@@ -68,6 +70,7 @@ func (h *TaskHandler) List(c *gin.Context) {
 		Category    string     `json:"category"`
 		SourceType  string     `json:"source_type"`
 		CustomerID  *int64     `json:"customer_id"`
+		Photos      []string   `json:"photos"`
 	}
 
 	items := []taskResponse{}
@@ -76,7 +79,7 @@ func (h *TaskHandler) List(c *gin.Context) {
 		var dueDate, completedAt *time.Time
 		if err := rows.Scan(&t.ID, new(int64), &t.Title, &t.Assignee, &t.Department,
 			&t.Priority, &t.Status, &dueDate, &completedAt, &t.Tags, &t.Notes,
-			&t.KpiWeight, &t.CreatedAt, &t.UpdatedAt, &t.Category, &t.SourceType, &t.CustomerID); err != nil {
+			&t.KpiWeight, &t.CreatedAt, &t.UpdatedAt, &t.Category, &t.SourceType, &t.CustomerID, &t.Photos); err != nil {
 			continue
 		}
 		if dueDate != nil {
@@ -115,7 +118,9 @@ func (h *TaskHandler) ListByCustomer(c *gin.Context) {
 
 	rows, err := h.db.Pool.Query(ctx,
 		`SELECT id, title, assignee, priority, status, due_date, completed_at,
-		        COALESCE(category, 'Genel'), COALESCE(pipeline_action, ''), created_at
+		        COALESCE(category, 'Genel'), COALESCE(pipeline_action, ''), created_at,
+		        COALESCE((SELECT array_agg('/api/v1/task-photos/' || ta.token ORDER BY ta.id)
+		                  FROM task_attachments ta WHERE ta.task_id = tasks.id), '{}')
 		 FROM tasks WHERE org_id = $1 AND customer_id = $2
 		 ORDER BY created_at DESC`,
 		orgID, customerID,
@@ -137,6 +142,7 @@ func (h *TaskHandler) ListByCustomer(c *gin.Context) {
 		Category       string  `json:"category"`
 		PipelineAction string  `json:"pipeline_action"`
 		CreatedAt      string  `json:"created_at"`
+		Photos         []string `json:"photos"`
 	}
 
 	items := []customerTaskResponse{}
@@ -145,7 +151,7 @@ func (h *TaskHandler) ListByCustomer(c *gin.Context) {
 		var dueDate, completedAt *time.Time
 		var createdAt time.Time
 		if err := rows.Scan(&t.ID, &t.Title, &t.Assignee, &t.Priority, &t.Status,
-			&dueDate, &completedAt, &t.Category, &t.PipelineAction, &createdAt); err != nil {
+			&dueDate, &completedAt, &t.Category, &t.PipelineAction, &createdAt, &t.Photos); err != nil {
 			continue
 		}
 		if dueDate != nil {

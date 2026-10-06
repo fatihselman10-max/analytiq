@@ -637,6 +637,7 @@ func main() {
 
 	// Public fabric image (no auth, so <img> tags can load)
 	r.GET("/api/v1/fabric-images/:id", fabricHandler.ServeImage)
+	r.GET("/api/v1/task-photos/:token", taskHandler.ServePhoto)
 
 	// Protected routes
 	api := r.Group("/api/v1")
@@ -748,6 +749,10 @@ func main() {
 
 		// Tasks
 		api.GET("/tasks", taskHandler.List)
+		api.GET("/tasks/due", taskHandler.Due)
+		api.POST("/tasks/:id/photos", taskHandler.UploadPhoto)
+		api.GET("/tasks/:id/photos", taskHandler.ListPhotos)
+		api.DELETE("/task-photos/:id", taskHandler.DeletePhoto)
 		api.POST("/tasks", taskHandler.Create)
 		api.PUT("/tasks/:id", taskHandler.Update)
 		api.DELETE("/tasks/:id", taskHandler.Delete)

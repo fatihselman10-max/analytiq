@@ -878,6 +878,7 @@ func main() {
 	admin.Use(middleware.RequireRole("owner", "admin"))
 	{
 		admin.POST("/team/invite", authHandler.InviteMember)
+		admin.GET("/conversations-summary", conversationHandler.ChannelSummary)
 	}
 
 	// Graceful shutdown

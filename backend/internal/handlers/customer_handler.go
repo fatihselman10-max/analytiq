@@ -44,20 +44,43 @@ func (h *CustomerHandler) List(c *gin.Context) {
 	                  COALESCE(c.vk, '') as vk,
 	                  COALESCE(c.telegram, '') as telegram,
 	                  COALESCE(c.preferred_channel, '') as preferred_channel,
-	                  COALESCE(c.extra_phones, '{}') as extra_phones
+	                  COALESCE(c.extra_phones, '{}') as extra_phones,
+	                  COALESCE(c.firm_size, '') as firm_size
 	           FROM customers c
 	           LEFT JOIN users u ON c.assigned_to = u.id
 	           WHERE c.org_id = $1`
 	args := []interface{}{orgID}
 	argIdx := 2
 
+	// segment ve country virgülle ayrılmış çoklu değer kabul eder (Ekim 2026: çoklu filtre)
 	if s := c.Query("segment"); s != "" {
-		query += fmt.Sprintf(" AND c.segment = $%d", argIdx)
-		args = append(args, s)
-		argIdx++
+		var segs []int
+		for _, p := range strings.Split(s, ",") {
+			if n, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
+				segs = append(segs, n)
+			}
+		}
+		if len(segs) > 0 {
+			query += fmt.Sprintf(" AND c.segment = ANY($%d)", argIdx)
+			args = append(args, segs)
+			argIdx++
+		}
 	}
 	if s := c.Query("country"); s != "" {
-		query += fmt.Sprintf(" AND c.country = $%d", argIdx)
+		var countries []string
+		for _, p := range strings.Split(s, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				countries = append(countries, p)
+			}
+		}
+		if len(countries) > 0 {
+			query += fmt.Sprintf(" AND c.country = ANY($%d)", argIdx)
+			args = append(args, countries)
+			argIdx++
+		}
+	}
+	if s := c.Query("firm_size"); s != "" {
+		query += fmt.Sprintf(" AND COALESCE(c.firm_size,'') = $%d", argIdx)
 		args = append(args, s)
 		argIdx++
 	}
@@ -134,6 +157,7 @@ func (h *CustomerHandler) List(c *gin.Context) {
 		Telegram           string     `json:"telegram"`
 		PreferredChannel   string     `json:"preferred_channel"`
 		ExtraPhones        []string   `json:"extra_phones"`
+		FirmSize           string     `json:"firm_size"`
 		Channels           []chResp   `json:"channels"`
 	}
 
@@ -149,7 +173,7 @@ func (h *CustomerHandler) List(c *gin.Context) {
 			&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName,
 			&cu.PipelineStage, &cu.PipelineUpdatedAt, &cu.InterestedProducts,
 			&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples, &cu.ContactRole,
-			&cu.Website, &cu.VK, &cu.Telegram, &cu.PreferredChannel, &cu.ExtraPhones); err != nil {
+			&cu.Website, &cu.VK, &cu.Telegram, &cu.PreferredChannel, &cu.ExtraPhones, &cu.FirmSize); err != nil {
 			continue
 		}
 		cu.Channels = []chResp{}
@@ -231,6 +255,7 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		Telegram           string     `json:"telegram"`
 		PreferredChannel   string     `json:"preferred_channel"`
 		ExtraPhones        []string   `json:"extra_phones"`
+		FirmSize           string     `json:"firm_size"`
 	}
 
 	err = h.db.Pool.QueryRow(ctx,
@@ -252,7 +277,8 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		        COALESCE(c.vk, '') as vk,
 		        COALESCE(c.telegram, '') as telegram,
 		        COALESCE(c.preferred_channel, '') as preferred_channel,
-		        COALESCE(c.extra_phones, '{}') as extra_phones
+		        COALESCE(c.extra_phones, '{}') as extra_phones,
+	                  COALESCE(c.firm_size, '') as firm_size
 		 FROM customers c
 		 LEFT JOIN users u ON c.assigned_to = u.id
 		 WHERE c.id = $1 AND c.org_id = $2`, id, orgID,
@@ -263,7 +289,7 @@ func (h *CustomerHandler) Get(c *gin.Context) {
 		&cu.LastContactAt, &cu.CreatedAt, &cu.UpdatedAt, &cu.AssignedName,
 		&cu.PipelineStage, &cu.PipelineUpdatedAt, &cu.InterestedProducts,
 		&cu.SentCatalogs, &cu.SentKartelas, &cu.SentSamples, &cu.ContactRole,
-		&cu.Website, &cu.VK, &cu.Telegram, &cu.PreferredChannel, &cu.ExtraPhones)
+		&cu.Website, &cu.VK, &cu.Telegram, &cu.PreferredChannel, &cu.ExtraPhones, &cu.FirmSize)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
 		return
@@ -344,6 +370,7 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 		Telegram          string `json:"telegram"`
 		PreferredChannel  string `json:"preferred_channel"`
 		ExtraPhones       []string `json:"extra_phones"`
+		FirmSize          string `json:"firm_size"`
 		Notes             string `json:"notes"`
 		Channels          []struct {
 			ChannelType       string `json:"channel_type"`
@@ -366,12 +393,12 @@ func (h *CustomerHandler) Create(c *gin.Context) {
 	err := h.db.Pool.QueryRow(ctx,
 		`INSERT INTO customers (org_id, name, company, country, segment, customer_type, customer_type_other,
 		                        source, source_detail, assigned_to, phone, email, instagram, notes,
-		                        website, vk, telegram, preferred_channel, extra_phones, last_contact_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW()) RETURNING id`,
+		                        website, vk, telegram, preferred_channel, extra_phones, firm_size, last_contact_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NOW()) RETURNING id`,
 		orgID, req.Name, req.Company, req.Country, req.Segment,
 		req.CustomerType, req.CustomerTypeOther, req.Source, req.SourceDetail,
 		req.AssignedTo, req.Phone, req.Email, req.Instagram, req.Notes,
-		req.Website, req.VK, req.Telegram, req.PreferredChannel, cleanPhones(req.ExtraPhones),
+		req.Website, req.VK, req.Telegram, req.PreferredChannel, cleanPhones(req.ExtraPhones), normalizeFirmSize(req.FirmSize),
 	).Scan(&id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create customer"})
@@ -419,6 +446,7 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 		Telegram          *string `json:"telegram"`
 		PreferredChannel  *string `json:"preferred_channel"`
 		ExtraPhones       *[]string `json:"extra_phones"`
+		FirmSize          *string `json:"firm_size"`
 		Notes              *string `json:"notes"`
 		Orders             *string `json:"orders"`
 		InterestedProducts *string `json:"interested_products"`
@@ -513,6 +541,11 @@ func (h *CustomerHandler) Update(c *gin.Context) {
 	if req.Phone != nil {
 		query += fmt.Sprintf(", phone=$%d", argIdx)
 		args = append(args, *req.Phone)
+		argIdx++
+	}
+	if req.FirmSize != nil {
+		query += fmt.Sprintf(", firm_size=$%d", argIdx)
+		args = append(args, normalizeFirmSize(*req.FirmSize))
 		argIdx++
 	}
 	if req.ExtraPhones != nil {
@@ -3045,4 +3078,13 @@ func cleanPhones(in []string) []string {
 		out = append(out, p)
 	}
 	return out
+}
+
+// normalizeFirmSize: firma ölçeği yalnızca "buyuk" / "orta" / "kucuk" ya da boş (seçilmemiş) olabilir.
+func normalizeFirmSize(v string) string {
+	switch strings.TrimSpace(v) {
+	case "buyuk", "orta", "kucuk":
+		return strings.TrimSpace(v)
+	}
+	return ""
 }

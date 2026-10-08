@@ -57,6 +57,11 @@ func (h *ConversationHandler) List(c *gin.Context) {
 		args = append(args, channelID)
 		argIdx++
 	}
+	if channelType := c.Query("channel_type"); channelType != "" {
+		query += fmt.Sprintf(" AND ch.type = $%d", argIdx)
+		args = append(args, channelType)
+		argIdx++
+	}
 	if priority := c.Query("priority"); priority != "" {
 		query += fmt.Sprintf(" AND c.priority = $%d", argIdx)
 		args = append(args, priority)
@@ -68,7 +73,11 @@ func (h *ConversationHandler) List(c *gin.Context) {
 		argIdx++
 	}
 
-	query += " ORDER BY c.last_message_at DESC NULLS LAST LIMIT 200"
+	limit := 200
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 500 {
+		limit = l
+	}
+	query += fmt.Sprintf(" ORDER BY c.last_message_at DESC NULLS LAST LIMIT %d", limit)
 
 	rows, err := h.db.Pool.Query(ctx, query, args...)
 	if err != nil {
@@ -443,4 +452,47 @@ func (h *ConversationHandler) UnlinkCustomer(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Customer unlinked"})
+}
+
+// ChannelSummary: Yönetici "Mesaj Takibi" ekranı için kanal bazında özet —
+// hangi kanaldan gerçekten mesaj aktığını gösterir (konuşma sayısı, son mesaj, son 7 gün gelen/giden).
+func (h *ConversationHandler) ChannelSummary(c *gin.Context) {
+	orgID := c.GetInt64("org_id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	rows, err := h.db.Pool.Query(ctx, `
+		SELECT ch.type,
+		       COUNT(DISTINCT cv.id) AS conversations,
+		       MAX(m.created_at) AS last_message_at,
+		       COUNT(m.id) FILTER (WHERE m.created_at > NOW() - INTERVAL '7 days' AND m.sender_type = 'contact') AS incoming_7d,
+		       COUNT(m.id) FILTER (WHERE m.created_at > NOW() - INTERVAL '7 days' AND m.sender_type IN ('agent','bot') AND NOT COALESCE(m.is_internal, false)) AS outgoing_7d
+		FROM conversations cv
+		JOIN channels ch ON ch.id = cv.channel_id
+		LEFT JOIN messages m ON m.conversation_id = cv.id
+		WHERE cv.org_id = $1
+		GROUP BY ch.type
+		ORDER BY ch.type`, orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch summary"})
+		return
+	}
+	defer rows.Close()
+
+	type item struct {
+		ChannelType   string     `json:"channel_type"`
+		Conversations int64      `json:"conversations"`
+		LastMessageAt *time.Time `json:"last_message_at"`
+		Incoming7d    int64      `json:"incoming_7d"`
+		Outgoing7d    int64      `json:"outgoing_7d"`
+	}
+	out := []item{}
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.ChannelType, &it.Conversations, &it.LastMessageAt, &it.Incoming7d, &it.Outgoing7d); err != nil {
+			continue
+		}
+		out = append(out, it)
+	}
+	c.JSON(http.StatusOK, gin.H{"channels": out})
 }

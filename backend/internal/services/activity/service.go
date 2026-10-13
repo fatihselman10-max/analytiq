@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/repliq/backend/internal/database"
+	segsvc "github.com/repliq/backend/internal/services/segment"
 )
 
 type Service struct {
@@ -91,6 +92,9 @@ func (s *Service) AnalyzeOutgoing(orgID int64, customerID *int64, contactID, mes
 		"Personel "+channel+" üzerinden bu aksiyonu gerçekleştirdi.",
 		channel, messageID, truncateLog(text, 280))
 
+	// Segment — fiyat/kartela/numune → 2, satış/kargo → 1 (sadece yukarı; pipeline'dan bağımsız)
+	segsvc.ApplyForActivity(ctx, s.db, orgID, *customerID, 0, mapping.activityType)
+
 	// Pipeline advance — forward-only, mirrors the rule used in customer_handler.UpdatePipelineStage
 	if mapping.pipelineStage == "" {
 		return
@@ -100,27 +104,17 @@ func (s *Service) AnalyzeOutgoing(orgID int64, customerID *int64, contactID, mes
 		"kartela_sent": 3, "sample_sent": 4, "order_received": 5, "shipping": 6,
 	}
 	var oldStage string
-	var currentSegment int
 	if err := s.db.Pool.QueryRow(ctx,
-		`SELECT COALESCE(pipeline_stage,'new_contact'), segment FROM customers WHERE id=$1 AND org_id=$2`,
-		*customerID, orgID).Scan(&oldStage, &currentSegment); err != nil {
+		`SELECT COALESCE(pipeline_stage,'new_contact') FROM customers WHERE id=$1 AND org_id=$2`,
+		*customerID, orgID).Scan(&oldStage); err != nil {
 		return
 	}
 	if pipelineRank[mapping.pipelineStage] <= pipelineRank[oldStage] {
 		return
 	}
-	newSegment := currentSegment
-	if mapping.autoSegment > 0 && mapping.autoSegment < currentSegment {
-		newSegment = mapping.autoSegment
-	}
 	s.db.Pool.Exec(ctx,
-		`UPDATE customers SET pipeline_stage=$1, pipeline_updated_at=NOW(), segment=$2, updated_at=NOW() WHERE id=$3 AND org_id=$4`,
-		mapping.pipelineStage, newSegment, *customerID, orgID)
-	if newSegment != currentSegment {
-		s.db.Pool.Exec(ctx,
-			`INSERT INTO segment_history (org_id, customer_id, old_segment, new_segment) VALUES ($1,$2,$3,$4)`,
-			orgID, *customerID, currentSegment, newSegment)
-	}
+		`UPDATE customers SET pipeline_stage=$1, pipeline_updated_at=NOW(), updated_at=NOW() WHERE id=$2 AND org_id=$3`,
+		mapping.pipelineStage, *customerID, orgID)
 }
 
 type outgoingActionRule struct {

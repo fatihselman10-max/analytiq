@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/repliq/backend/internal/database"
+	segsvc "github.com/repliq/backend/internal/services/segment"
 )
 
 type CustomerHandler struct {
@@ -1321,11 +1322,6 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 		"intro_video_sent":     "catalog_sent",
 		"warehouse_video_sent": "catalog_sent",
 	}
-	segmentForActivity := map[string]int{
-		"kartela_request": 2,
-		"sample_request":  2,
-		"order_intent":    1,
-	}
 	stageOrder := map[string]int{
 		"new_contact": 0, "catalog_sent": 1, "kartela_sent": 2,
 		"sample_sent": 3, "order_received": 4, "shipping": 5,
@@ -1339,16 +1335,7 @@ func (h *CustomerHandler) ApprovePendingActivity(c *gin.Context) {
 				newStage, cid, orgID)
 		}
 	}
-	if newSeg, ok := segmentForActivity[activityType]; ok {
-		var oldSeg int
-		err := h.db.Pool.QueryRow(ctx, `SELECT segment FROM customers WHERE id=$1`, cid).Scan(&oldSeg)
-		if err == nil && newSeg < oldSeg {
-			h.db.Pool.Exec(ctx, `UPDATE customers SET segment=$1 WHERE id=$2`, newSeg, cid)
-			h.db.Pool.Exec(ctx,
-				`INSERT INTO segment_history (org_id, customer_id, old_segment, new_segment, changed_by)
-				 VALUES ($1,$2,$3,$4,$5)`, orgID, cid, oldSeg, newSeg, userID)
-		}
-	}
+	segsvc.ApplyForActivity(ctx, h.db, orgID, cid, userID, activityType)
 
 	// Patron directive (2026-05-11): onaylanan AI tespitleri "Yapılacaklar"a düşsün.
 	// Customer adıyla birlikte standart bir görev oluştur. Source_type=ai_approval ile
@@ -2169,11 +2156,6 @@ func (h *CustomerHandler) CreateActivity(c *gin.Context) {
 		"sample_sent":  "sample_sent",
 		"order":        "order_received",
 	}
-	segmentForActivity := map[string]int{
-		"kartela_sent": 2, // Aktif
-		"sample_sent":  2, // Aktif
-		"order":        1, // VIP
-	}
 
 	// Pipeline stage order for comparison
 	stageOrder := map[string]int{
@@ -2192,21 +2174,8 @@ func (h *CustomerHandler) CreateActivity(c *gin.Context) {
 				newStage, customerID, orgID)
 		}
 	}
-	if newSeg, ok := segmentForActivity[req.ActivityType]; ok {
-		var oldSeg int
-		err := h.db.Pool.QueryRow(ctx, `SELECT segment FROM customers WHERE id=$1`, customerID).Scan(&oldSeg)
-		if err == nil && newSeg < oldSeg {
-			h.db.Pool.Exec(ctx, `UPDATE customers SET segment=$1 WHERE id=$2`, newSeg, customerID)
-			// Log segment change as activity
-			segTitle := fmt.Sprintf("Segment degisikligi: %d → %d", oldSeg, newSeg)
-			h.db.Pool.Exec(ctx,
-				`INSERT INTO segment_history (org_id, customer_id, old_segment, new_segment, changed_by)
-				 VALUES ($1,$2,$3,$4,$5)`, orgID, customerID, oldSeg, newSeg, userID)
-			h.db.Pool.Exec(ctx,
-				`INSERT INTO customer_activities (org_id, customer_id, activity_type, title, created_by)
-				 VALUES ($1,$2,'segment_change',$3,$4)`, orgID, customerID, segTitle, userID)
-		}
-	}
+	// Fiyat/kartela/numune → 2, satış → 1 (sadece yukarı)
+	segsvc.ApplyForActivity(ctx, h.db, orgID, customerID, userID, req.ActivityType)
 
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }

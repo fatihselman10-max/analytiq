@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/repliq/backend/internal/database"
+	segsvc "github.com/repliq/backend/internal/services/segment"
 	"github.com/gin-gonic/gin"
 )
 
@@ -432,6 +433,8 @@ func (h *TaskHandler) MoveStatus(c *gin.Context) {
 			`UPDATE customer_activities SET status='approved', reviewed_at=NOW()
 			 WHERE org_id=$1 AND source_task_id=$2 AND status='queued' AND deleted_at IS NULL`,
 			orgID, id)
+		// Görev tamamlanınca bağlı aktivitenin segment kuralı uygulanır (fiyat/kartela/numune → 2, satış → 1).
+		h.applyTaskSegment(ctx, orgID, id, c.GetInt64("user_id"))
 	} else {
 		h.db.Pool.Exec(ctx,
 			`UPDATE customer_activities SET status='queued'
@@ -442,3 +445,27 @@ func (h *TaskHandler) MoveStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Status updated"})
 }
 
+func (h *TaskHandler) applyTaskSegment(ctx context.Context, orgID, taskID, userID int64) {
+	rows, err := h.db.Pool.Query(ctx,
+		`SELECT customer_id, activity_type FROM customer_activities
+		 WHERE org_id=$1 AND source_task_id=$2 AND customer_id IS NOT NULL AND deleted_at IS NULL`,
+		orgID, taskID)
+	if err != nil {
+		return
+	}
+	type pair struct {
+		customerID   int64
+		activityType string
+	}
+	var items []pair
+	for rows.Next() {
+		var p pair
+		if rows.Scan(&p.customerID, &p.activityType) == nil {
+			items = append(items, p)
+		}
+	}
+	rows.Close()
+	for _, p := range items {
+		segsvc.ApplyForActivity(ctx, h.db, orgID, p.customerID, userID, p.activityType)
+	}
+}

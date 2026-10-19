@@ -260,6 +260,7 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		Tags        []string `json:"tags"`
 		Notes       []string `json:"notes"`
 		KpiWeight   *int     `json:"kpi_weight"`
+		Category    *string  `json:"category"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -330,6 +331,11 @@ func (h *TaskHandler) Update(c *gin.Context) {
 	if req.KpiWeight != nil {
 		query += `, kpi_weight=$` + strconv.Itoa(argIdx)
 		args = append(args, *req.KpiWeight)
+		argIdx++
+	}
+	if req.Category != nil && *req.Category != "" {
+		query += `, category=$` + strconv.Itoa(argIdx)
+		args = append(args, *req.Category)
 		argIdx++
 	}
 

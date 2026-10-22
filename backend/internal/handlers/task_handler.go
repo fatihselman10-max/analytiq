@@ -193,9 +193,7 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	if req.Department == "" {
 		req.Department = "operations"
 	}
-	if req.Priority == "" {
-		req.Priority = "normal"
-	}
+	req.Priority = normalizePriority(req.Priority)
 	if req.KpiWeight < 1 || req.KpiWeight > 5 {
 		req.KpiWeight = 3
 	}
@@ -292,7 +290,7 @@ func (h *TaskHandler) Update(c *gin.Context) {
 	}
 	if req.Priority != nil {
 		query += `, priority=$` + strconv.Itoa(argIdx)
-		args = append(args, *req.Priority)
+		args = append(args, normalizePriority(*req.Priority))
 		argIdx++
 	}
 	if req.Status != nil {
@@ -474,4 +472,15 @@ func (h *TaskHandler) applyTaskSegment(ctx context.Context, orgID, taskID, userI
 	for _, p := range items {
 		segsvc.ApplyForActivity(ctx, h.db, orgID, p.customerID, userID, p.activityType)
 	}
+}
+
+// Görev öncelikleri için izinli değerler; panel (messe-panel src/lib/priorities.ts) ile aynı liste.
+// Bilinmeyen veya boş değer "normal" olarak kaydedilir ki panel tanımadığı bir değerle karşılaşmasın.
+var allowedTaskPriorities = map[string]bool{"urgent": true, "high": true, "normal": true, "low": true}
+
+func normalizePriority(p string) string {
+	if allowedTaskPriorities[p] {
+		return p
+	}
+	return "normal"
 }

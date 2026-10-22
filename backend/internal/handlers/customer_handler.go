@@ -1510,7 +1510,7 @@ func (h *CustomerHandler) BulkActivity(c *gin.Context) {
 		                    source_type, pipeline_action, priority, status)
 		 VALUES ($1,NULL,$2,$3,'Yapılacak','manual_queued',$4,$5,'todo')
 		 RETURNING id`,
-		orgID, taskTitle, department, req.ActivityType, req.Priority,
+		orgID, taskTitle, department, req.ActivityType, normalizePriority(req.Priority),
 	).Scan(&taskID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Toplu görev oluşturulamadı"})
@@ -2275,7 +2275,7 @@ func (h *CustomerHandler) CreateQueuedActivity(c *gin.Context) {
 		                    source_type, pipeline_action, priority, status, due_date, assignee)
 		 VALUES ($1,$2,$3,$4,'Yapılacak','manual_queued',$5,$6,'todo',$7,$8)
 		 RETURNING id`,
-		orgID, customerID, taskTitle, department, req.ActivityType, req.Priority, dueDate,
+		orgID, customerID, taskTitle, department, req.ActivityType, normalizePriority(req.Priority), dueDate,
 		strings.TrimSpace(req.Assignee),
 	).Scan(&taskID)
 	if err != nil {
